@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Stock CFA — Scanner</title>
+  <meta name="theme-color" content="#0ea5e9">
+  <style>
+    :root{--bg:#0b0f14;--fg:#e6edf3;--muted:#9fb3c8;--pri:#0ea5e9;--ok:#10b981;--warn:#f59e0b;--err:#ef4444;--card:#121821;--bd:#1f2a37}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial,sans-serif;background:var(--bg);color:var(--fg)}
+    header{position:sticky;top:0;background:linear-gradient(180deg,#0e1622,#0b0f14);border-bottom:1px solid var(--bd);padding:10px 12px;display:flex;align-items:center;gap:10px;z-index:5}
+    header h1{font-size:16px;margin:0;font-weight:600}
+    header .badge{margin-left:auto;padding:4px 8px;border:1px solid var(--bd);border-radius:999px;color:var(--muted);font-size:12px}
+    #errbar{display:none;position:sticky;top:48px;z-index:6;background:var(--err);color:#200;padding:8px 12px;font-weight:700}
+    nav{display:flex;gap:6px;padding:8px;border-bottom:1px solid var(--bd);background:#0b121a;position:sticky;top:80px;z-index:4;flex-wrap:wrap}
+    nav button{flex:1;padding:10px;border-radius:10px;border:1px solid var(--bd);background:#0e1622;color:var(--fg);font-weight:600;min-width:130px}
+    nav button.active{outline:2px solid var(--pri)}
+    main{padding:12px;display:grid;gap:12px}
+    .card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:12px}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    input,select,textarea{background:#0e1622;color:var(--fg);border:1px solid var(--bd);border-radius:10px;padding:10px 12px;width:100%}
+    input[type=number]{max-width:140px}
+    label{font-size:12px;color:var(--muted)}
+    .btn{background:var(--pri);color:#00151e;border:none;border-radius:10px;padding:10px 14px;font-weight:700}
+    .btn.secondary{background:#0e1622;color:#fff;border:1px solid var(--bd)}
+    .btn.warn{background:var(--warn);color:#201100}
+    .btn.ok{background:var(--ok);color:#00140c}
+    .list{display:grid;gap:8px}
+    .item{display:grid;grid-template-columns:1fr auto;gap:6px;padding:10px;border:1px dashed var(--bd);border-radius:12px;background:#0d141c}
+    .qty{font-weight:800}
+    .muted{color:var(--muted)}
+    .warntext{color:var(--warn);font-weight:700}
+    .oktext{color:var(--ok);font-weight:700}
+    .scanbox{position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--bd)}
+    video{width:100%;height:auto;display:block;background:#000}
+    .overlay{position:absolute;inset:0;outline:2px dashed rgba(14,165,233,.5);pointer-events:none}
+    .grid{display:grid;gap:8px}
+    .two{grid-template-columns:1fr 1fr}
+    .hide{display:none}
+    pre{white-space:pre-wrap; word-break:break-word; background:#0e1622; border:1px solid var(--bd); padding:10px; border-radius:8px; color:#cfe3f7}
+    footer{padding:30px 12px;color:var(--muted);text-align:center}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-bottom:1px solid var(--bd);padding:8px;text-align:left;font-size:14px}
+    .nowrap{white-space:nowrap}
+    @media(min-width:900px){main{max-width:1000px;margin:0 auto}}
+  </style>
+  <script>
+    // PWA uniquement en http(s) pour éviter CORS en file://
+    if (location.protocol.startsWith('http')) {
+      const l = document.createElement('link'); l.rel='manifest'; l.href='manifest.json'; document.head.appendChild(l);
+      if ('serviceWorker' in navigator) { window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{})); }
+    }
+  </script>
+</head>
+<body>
+  <header>
+    <h1>📦 Stock CFA — Scanner</h1>
+    <span class="badge" id="badge">hors ligne</span>
+  </header>
+  <div id="errbar"></div>
+
+  <nav>
+    <button data-tab="scan" class="active">Scanner</button>
+    <button data-tab="items">Articles</button>
+    <button data-tab="new">Nouveau</button>
+    <button data-tab="labels">Étiquettes</button>
+    <button data-tab="journal">Journal</button>
+    <button data-tab="settings">Paramètres</button>
+  </nav>
+
+  <main>
+    <!-- Scanner -->
+    <section id="tab-scan" class="card">
+      <div class="grid">
+        <div class="row">
+          <button class="pill" id="modeOut">− Sortie</button>
+          <button class="pill" id="modeIn">+ Entrée</button>
+          <span class="pill" id="scanStatus">Mode: Sortie</span>
+          <button id="btnShowSamples" class="btn secondary" style="margin-left:auto">Exemples à scanner</button>
+        </div>
+
+        <div class="row">
+          <button id="btnStartScan" class="btn secondary">Démarrer caméra</button>
+          <button id="btnStopScan" class="btn secondary">Arrêter</button>
+          <button id="btnTorch" class="btn secondary">Lampe</button>
+          <button id="btnTestDetect" class="btn secondary">Tester une détection</button>
+          <button id="btnSelfTest" class="btn">Diagnostic</button>
+        </div>
+
+        <div class="scanbox">
+          <video id="video" playsinline muted></video>
+          <div class="overlay"></div>
+        </div>
+
+        <div id="sampleArea" class="card hide"></div>
+
+        <div id="diag" class="hide">
+          <h3>Diagnostic</h3>
+          <pre id="diagOut"></pre>
+        </div>
+
+        <div class="row">
+          <label>Quantité</label>
+          <input type="number" id="qty" value="1" min="1" step="1"/>
+        </div>
+
+        <div id="lastOp" class="muted"></div>
+      </div>
+    </section>
+
+    <!-- Articles -->
+    <section id="tab-items" class="card hide">
+      <div class="row">
+        <input id="search" placeholder="Rechercher nom / code / tags" />
+        <button id="addDummy" class="btn secondary">+ Démo</button>
+      </div>
+      <div id="itemsList" class="list"></div>
+    </section>
+
+    <!-- Nouveau -->
+    <section id="tab-new" class="card hide">
+      <div class="grid">
+        <div class="row two">
+          <div style="flex:1">
+            <label>Nom</label>
+            <input id="newName" placeholder="Ex. Goulotte 60x40"/>
+          </div>
+          <div>
+            <label>Quantité initiale</label>
+            <input id="newQty" type="number" value="0" min="0"/>
+          </div>
+        </div>
+        <div class="row two">
+          <div>
+            <label>Seuil d'alerte</label>
+            <input id="newMin" type="number" value="5" min="0"/>
+          </div>
+          <div>
+            <label>Code (barcode)</label>
+            <input id="newCode" placeholder="Laisser vide pour auto"/>
+          </div>
+        </div>
+        <div>
+          <label>Tags (virgules)</label>
+          <input id="newTags" placeholder="consommable, atelier, TP"/>
+        </div>
+        <div class="row">
+          <button id="createItem" class="btn ok">Créer</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Étiquettes -->
+    <section id="tab-labels" class="card hide">
+      <div class="row">
+        <select id="labelItem"></select>
+        <input id="labelCount" type="number" min="1" value="10" />
+        <button id="btnRenderLabel" class="btn">Générer l'étiquette</button>
+      </div>
+      <div id="labelPreview" class="card"></div>
+      <div class="row">
+        <button id="btnPrintLabels" class="btn secondary">Imprimer / PDF</button>
+      </div>
+    </section>
+
+    <!-- Journal -->
+    <section id="tab-journal" class="card hide">
+      <div class="row">
+        <input id="journalSearch" placeholder="Filtrer (nom / code / mode / source)" />
+        <button id="btnExportMovesCsv" class="btn secondary">Export CSV</button>
+        <button id="btnExportMovesJson" class="btn secondary">Export JSON</button>
+        <input type="file" id="fileImportMovesCsv" accept=".csv,text/csv" class="hide"/>
+        <button id="btnImportMovesCsv" class="btn secondary">Importer CSV</button>
+        <button id="btnClearMoves" class="btn warn">Vider le journal</button>
+      </div>
+      <div style="overflow:auto">
+        <table id="journalTable">
+          <thead><tr>
+            <th class="nowrap">Date/Heure</th><th>Code</th><th>Nom</th>
+            <th class="nowrap">Δ Qté</th><th class="nowrap">Qté après</th><th>Mode</th><th>Source</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Paramètres -->
+    <section id="tab-settings" class="card hide">
+      <h3>Paramètres & Import/Export</h3>
+      <div class="row">
+        <button id="btnExportItemsCsv" class="btn secondary">Export Articles CSV</button>
+        <button id="btnExportItemsJson" class="btn secondary">Export Articles JSON</button>
+        <input type="file" id="fileImportItemsCsv" accept=".csv,text/csv" class="hide"/>
+        <button id="btnImportItemsCsv" class="btn secondary">Importer Articles CSV</button>
+        <input type="file" id="fileImportJson" accept="application/json,text/json" class="hide"/>
+        <button id="btnImportJson" class="btn secondary">Importer Articles JSON</button>
+      </div>
+      <p class="muted">Caméra : nécessite HTTPS ou <code>http://localhost</code>. Le fallback ZXing améliore la lecture sur webcam de PC.</p>
+    </section>
+  </main>
+
+  <footer>Made for CFA — fonctionne hors-ligne (PWA). © <span id="year"></span></footer>
+  <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
+
+  <script src="js/db.js"></script>
+  <script src="js/barcode.js"></script>
+  <!-- ZXing fallback (depuis le CDN) -->
+  <script src="https://unpkg.com/@zxing/browser@latest"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

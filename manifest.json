@@ -1,0 +1,9 @@
+{
+  "name": "Stock CFA — Scanner",
+  "short_name": "Stock CFA",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0b0f14",
+  "theme_color": "#0ea5e9",
+  "icons": []
+}
