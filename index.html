@@ -26,9 +26,6 @@
     .btn.secondary{background:#0e1622;color:#fff;border:1px solid var(--bd)}
     .btn.warn{background:var(--warn);color:#201100}
     .btn.ok{background:var(--ok);color:#00140c}
-    .list{display:grid;gap:8px}
-    .item{display:grid;grid-template-columns:1fr auto;gap:6px;padding:10px;border:1px dashed var(--bd);border-radius:12px;background:#0d141c}
-    .qty{font-weight:800}
     .muted{color:var(--muted)}
     .warntext{color:var(--warn);font-weight:700}
     .oktext{color:var(--ok);font-weight:700}
@@ -38,15 +35,19 @@
     .grid{display:grid;gap:8px}
     .two{grid-template-columns:1fr 1fr}
     .hide{display:none}
-    pre{white-space:pre-wrap; word-break:break-word; background:#0e1622; border:1px solid var(--bd); padding:10px; border-radius:8px; color:#cfe3f7}
     footer{padding:30px 12px;color:var(--muted);text-align:center}
     table{width:100%;border-collapse:collapse}
-    th,td{border-bottom:1px solid var(--bd);padding:8px;text-align:left;font-size:14px}
+    th,td{border-bottom:1px solid var(--bd);padding:8px;text-align:left;font-size:14px;vertical-align:top}
+    th{cursor:pointer;user-select:none}
     .nowrap{white-space:nowrap}
-    @media(min-width:900px){main{max-width:1000px;margin:0 auto}}
+    .tags{display:flex;gap:6px;flex-wrap:wrap}
+    .tag{background:#0e1622;border:1px solid var(--bd);padding:2px 6px;border-radius:999px;font-size:12px}
+    .barcode-svg{max-width:220px;background:#fff;padding:4px;border-radius:6px}
+    .overdue{color:#fff;background:#ef4444;padding:2px 8px;border-radius:999px;font-size:12px}
+    .dueSoon{color:#201100;background:#f59e0b;padding:2px 8px;border-radius:999px;font-size:12px}
+    @media(min-width:900px){main{max-width:1100px;margin:0 auto}}
   </style>
   <script>
-    // PWA uniquement en http(s) pour éviter CORS en file://
     if (location.protocol.startsWith('http')) {
       const l = document.createElement('link'); l.rel='manifest'; l.href='manifest.json'; document.head.appendChild(l);
       if ('serviceWorker' in navigator) { window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{})); }
@@ -63,6 +64,7 @@
   <nav>
     <button data-tab="scan" class="active">Scanner</button>
     <button data-tab="items">Articles</button>
+    <button data-tab="gear">Matériel</button>
     <button data-tab="new">Nouveau</button>
     <button data-tab="labels">Étiquettes</button>
     <button data-tab="journal">Journal</button>
@@ -70,52 +72,119 @@
   </nav>
 
   <main>
-    <!-- Scanner -->
+    <!-- Scanner (stock) -->
     <section id="tab-scan" class="card">
       <div class="grid">
         <div class="row">
           <button class="pill" id="modeOut">− Sortie</button>
           <button class="pill" id="modeIn">+ Entrée</button>
           <span class="pill" id="scanStatus">Mode: Sortie</span>
-          <button id="btnShowSamples" class="btn secondary" style="margin-left:auto">Exemples à scanner</button>
+          <span class="muted">(`BarcodeDetector`)</span>
         </div>
-
         <div class="row">
           <button id="btnStartScan" class="btn secondary">Démarrer caméra</button>
           <button id="btnStopScan" class="btn secondary">Arrêter</button>
           <button id="btnTorch" class="btn secondary">Lampe</button>
           <button id="btnTestDetect" class="btn secondary">Tester une détection</button>
-          <button id="btnSelfTest" class="btn">Diagnostic</button>
         </div>
-
         <div class="scanbox">
           <video id="video" playsinline muted></video>
           <div class="overlay"></div>
         </div>
-
-        <div id="sampleArea" class="card hide"></div>
-
-        <div id="diag" class="hide">
-          <h3>Diagnostic</h3>
-          <pre id="diagOut"></pre>
-        </div>
-
         <div class="row">
           <label>Quantité</label>
           <input type="number" id="qty" value="1" min="1" step="1"/>
         </div>
-
         <div id="lastOp" class="muted"></div>
       </div>
     </section>
 
-    <!-- Articles -->
+    <!-- Articles (tableau) -->
     <section id="tab-items" class="card hide">
       <div class="row">
         <input id="search" placeholder="Rechercher nom / code / tags" />
+        <label class="row" style="align-items:center;gap:6px">
+          <input type="checkbox" id="chkShowBarcodes"/>
+          <span>Afficher les codes-barres dans le tableau</span>
+        </label>
         <button id="addDummy" class="btn secondary">+ Démo</button>
       </div>
-      <div id="itemsList" class="list"></div>
+      <div style="overflow:auto">
+        <table id="itemsTable">
+          <thead>
+            <tr>
+              <th data-sort="name">Nom</th>
+              <th data-sort="barcode">Code</th>
+              <th data-sort="qty" class="nowrap">Qté</th>
+              <th data-sort="min" class="nowrap">Seuil</th>
+              <th>Tags</th>
+              <th>Code-barres</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Matériel (emprunts/retours) -->
+    <section id="tab-gear" class="card hide">
+      <h3>Emprunt & Retour de matériel</h3>
+      <div class="row">
+        <button class="pill" id="gearModeBorrow">Emprunter</button>
+        <button class="pill" id="gearModeReturn">Retour</button>
+        <span id="gearModeText" class="pill">Mode: Emprunter</span>
+      </div>
+
+      <div class="grid two">
+        <div class="card">
+          <div class="row">
+            <label>Nom de la personne</label>
+            <input id="loanWho" placeholder="Nom & prénom"/>
+          </div>
+          <div class="row">
+            <label>Date retour prévue</label>
+            <input id="loanDue" type="date"/>
+          </div>
+          <div class="row">
+            <label>Commentaire</label>
+            <input id="loanNote" placeholder="pile HS, accessoire manquant, etc."/>
+          </div>
+          <div class="row">
+            <label>Quantité</label>
+            <input id="loanQty" type="number" min="1" value="1"/>
+          </div>
+          <div class="row">
+            <button id="gearStart" class="btn secondary">Démarrer caméra</button>
+            <button id="gearStop" class="btn secondary">Arrêter</button>
+            <button id="gearTorch" class="btn secondary">Lampe</button>
+            <button id="gearTest" class="btn secondary">Tester une détection</button>
+          </div>
+          <div class="scanbox">
+            <video id="videoGear" playsinline muted></video>
+            <div class="overlay"></div>
+          </div>
+          <div id="gearLast" class="muted"></div>
+        </div>
+
+        <div class="card">
+          <h4>Emprunts en cours</h4>
+          <div class="row">
+            <input id="loanSearch" placeholder="Filtrer (code, nom matériel, personne)"/>
+            <button id="btnExportLoansCsv" class="btn secondary">Export CSV</button>
+          </div>
+          <div style="overflow:auto; max-height:60vh">
+            <table id="loansTable">
+              <thead>
+                <tr>
+                  <th>Début</th><th>Prévu</th><th>Statut</th><th>Code</th><th>Matériel</th><th>Personne</th><th>Note</th><th>Action</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- Nouveau -->
@@ -124,7 +193,7 @@
         <div class="row two">
           <div style="flex:1">
             <label>Nom</label>
-            <input id="newName" placeholder="Ex. Goulotte 60x40"/>
+            <input id="newName" placeholder="Ex. Voltmètre, Perceuse, etc."/>
           </div>
           <div>
             <label>Quantité initiale</label>
@@ -157,6 +226,7 @@
         <select id="labelItem"></select>
         <input id="labelCount" type="number" min="1" value="10" />
         <button id="btnRenderLabel" class="btn">Générer l'étiquette</button>
+        <button id="btnRenderAllLabels" class="btn secondary">Toutes les étiquettes</button>
       </div>
       <div id="labelPreview" class="card"></div>
       <div class="row">
@@ -196,7 +266,7 @@
         <input type="file" id="fileImportJson" accept="application/json,text/json" class="hide"/>
         <button id="btnImportJson" class="btn secondary">Importer Articles JSON</button>
       </div>
-      <p class="muted">Caméra : nécessite HTTPS ou <code>http://localhost</code>. Le fallback ZXing améliore la lecture sur webcam de PC.</p>
+      <p class="muted">Caméra : HTTPS ou <code>http://localhost</code>. Version **BarcodeDetector only**.</p>
     </section>
   </main>
 
@@ -205,8 +275,6 @@
 
   <script src="js/db.js"></script>
   <script src="js/barcode.js"></script>
-  <!-- ZXing fallback (depuis le CDN) -->
-  <script src="https://unpkg.com/@zxing/browser@latest"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
