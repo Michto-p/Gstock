@@ -1,233 +1,286 @@
-// js/db.js — IndexedDB v2 (items + moves)
-const DB_NAME = 'stockdb';
-const DB_VERSION = 2;
-const STORE_ITEMS = 'items';
-const STORE_MOVES = 'moves';
+// js/db.js — v1.5.0 : items + moves + loans (emprunts)
+(function(){
+  const DB_NAME = 'stock-cfa';
+  const DB_VER  = 5; // ↑ incrémente si tu modifies le schéma
 
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE_ITEMS)) {
-        const store = db.createObjectStore(STORE_ITEMS, { keyPath: 'barcode' });
-        store.createIndex('name', 'name', { unique: false });
-        store.createIndex('tags', 'tags', { unique: false, multiEntry: true });
-      }
-      if (!db.objectStoreNames.contains(STORE_MOVES)) {
-        const moves = db.createObjectStore(STORE_MOVES, { keyPath: 'id', autoIncrement: true });
-        moves.createIndex('barcode', 'barcode', { unique: false });
-        moves.createIndex('time', 'time', { unique: false });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-// ===== ITEMS
-async function dbGet(barcode) {
-  const db = await openDB();
-  return new Promise((resolve, reject)=>{
-    const tx = db.transaction(STORE_ITEMS, 'readonly');
-    const r = tx.objectStore(STORE_ITEMS).get(barcode);
-    r.onsuccess = ()=>resolve(r.result || null);
-    r.onerror = ()=>reject(r.error);
-  });
-}
-
-async function dbPut(item) {
-  const db = await openDB();
-  return new Promise((resolve, reject)=>{
-    const tx = db.transaction(STORE_ITEMS, 'readwrite');
-    tx.oncomplete = ()=>resolve(item);
-    tx.onerror = ()=>reject(tx.error);
-    tx.objectStore(STORE_ITEMS).put(item);
-  });
-}
-
-async function dbDelete(barcode) {
-  const db = await openDB();
-  return new Promise((resolve, reject)=>{
-    const tx = db.transaction(STORE_ITEMS, 'readwrite');
-    tx.oncomplete = ()=>resolve(true);
-    tx.onerror = ()=>reject(tx.error);
-    tx.objectStore(STORE_ITEMS).delete(barcode);
-  });
-}
-
-async function dbList(query) {
-  const q = (query||'').toLowerCase();
-  const db = await openDB();
-  return new Promise((resolve, reject)=>{
-    const tx = db.transaction(STORE_ITEMS, 'readonly');
-    const store = tx.objectStore(STORE_ITEMS);
-    const out = [];
-    store.openCursor().onsuccess = (e)=>{
-      const cur = e.target.result;
-      if (cur) {
-        const it = cur.value;
-        if (!q ||
-            (it.name && it.name.toLowerCase().includes(q)) ||
-            (it.barcode && it.barcode.toLowerCase().includes(q)) ||
-            (Array.isArray(it.tags) && it.tags.join(',').toLowerCase().includes(q))) {
-          out.push(it);
+  function openDB(){
+    return new Promise((resolve,reject)=>{
+      const req = indexedDB.open(DB_NAME, DB_VER);
+      req.onupgradeneeded = (e)=>{
+        const db = req.result;
+        // items
+        if (!db.objectStoreNames.contains('items')){
+          const s = db.createObjectStore('items', { keyPath: 'barcode' });
+          s.createIndex('by_name','name',{ unique:false });
         }
+        // moves (journal)
+        if (!db.objectStoreNames.contains('moves')){
+          const s = db.createObjectStore('moves', { keyPath: 'id', autoIncrement: true });
+          s.createIndex('by_time','time',{ unique:false });
+          s.createIndex('by_barcode','barcode',{ unique:false });
+        }
+        // loans (emprunts)
+        if (!db.objectStoreNames.contains('loans')){
+          const s = db.createObjectStore('loans', { keyPath: 'id', autoIncrement: true });
+          s.createIndex('by_barcode','barcode',{ unique:false });
+          s.createIndex('by_returned','returned',{ unique:false });
+          s.createIndex('by_start','start',{ unique:false });
+          s.createIndex('by_due','due',{ unique:false });
+        }
+      };
+      req.onsuccess = ()=> resolve(req.result);
+      req.onerror = ()=> reject(req.error);
+    });
+  }
+
+  function tx(storeNames, mode, fn){
+    return openDB().then(db=>{
+      return new Promise((resolve,reject)=>{
+        const t = db.transaction(storeNames, mode);
+        t.oncomplete = ()=> resolve(result);
+        t.onerror = ()=> reject(t.error);
+        let result;
+        fn(t, (v)=>{ result=v; });
+      });
+    });
+  }
+
+  // ===== Items
+  async function dbPut(item){
+    item.updatedAt = Date.now();
+    return tx(['items'],'readwrite',(t,done)=>{
+      t.objectStore('items').put(item);
+      done(true);
+    });
+  }
+  async function dbGet(code){
+    return tx(['items'],'readonly',(t,done)=>{
+      const r = t.objectStore('items').get(code);
+      r.onsuccess = ()=> done(r.result || null);
+    });
+  }
+  async function dbDelete(code){
+    return tx(['items'],'readwrite',(t,done)=>{
+      t.objectStore('items').delete(code);
+      done(true);
+    });
+  }
+  async function dbList(query){
+    query = (query||'').toLowerCase();
+    return tx(['items'],'readonly',(t,done)=>{
+      const s = t.objectStore('items').openCursor();
+      const out = [];
+      s.onsuccess = ()=>{
+        const cur = s.result;
+        if (!cur){ done(out); return; }
+        const it = cur.value;
+        const str = ((it.name||'')+' '+(it.barcode||'')+' '+(it.tags||[]).join(' ')+' '+(it.location||'')).toLowerCase();
+        if (!query || str.includes(query)) out.push(it);
         cur.continue();
-      } else resolve(out);
-    };
-    tx.onerror = ()=>reject(tx.error);
-  });
-}
-
-async function dbAdjustQty(barcode, delta, meta){
-  const m = meta || {};
-  const item = await dbGet(barcode);
-  if (!item) throw new Error('Article introuvable: ' + barcode);
-  item.qty = Math.max(0, (item.qty || 0) + delta);
-  item.updatedAt = Date.now();
-  await dbPut(item);
-  await dbAddMove({
-    time: Date.now(),
-    barcode, name: item.name || '',
-    delta, qtyAfter: item.qty,
-    mode: m.mode || (delta>=0?'in':'out'),
-    source: m.source || 'scan'
-  });
-  return item;
-}
-
-async function dbEnsureDemo() {
-  const existing = await dbList('');
-  if (existing.length) return;
-  const demo = [
-    { barcode:'CFA-00001', name:'Domino 6mm²', qty:42, min:10, tags:['consommable'] },
-    { barcode:'CFA-00002', name:'Disjoncteur 10A', qty:12, min:5, tags:['protection','TP'] },
-    { barcode:'CFA-00003', name:'Goulotte 60x40', qty:25, min:5, tags:['atelier'] },
-  ];
-  for (var i=0;i<demo.length;i++){
-    var d = demo[i];
-    await dbPut({ ...d, createdAt:Date.now(), updatedAt:Date.now() });
-  }
-}
-
-// ===== MOVES (journal)
-async function dbAddMove(move){
-  const db = await openDB();
-  return new Promise((resolve,reject)=>{
-    const tx = db.transaction(STORE_MOVES,'readwrite');
-    tx.oncomplete = ()=>resolve(true);
-    tx.onerror = ()=>reject(tx.error);
-    tx.objectStore(STORE_MOVES).add(move);
-  });
-}
-
-async function dbListMoves(){
-  const db = await openDB();
-  return new Promise((resolve,reject)=>{
-    const tx = db.transaction(STORE_MOVES,'readonly');
-    const out = [];
-    tx.objectStore(STORE_MOVES).index('time').openCursor(null, 'prev').onsuccess = (e)=>{
-      const cur = e.target.result;
-      if (cur){ out.push(cur.value); cur.continue(); } else resolve(out);
-    };
-    tx.onerror = ()=>reject(tx.error);
-  });
-}
-
-async function dbClearMoves(){
-  const db = await openDB();
-  return new Promise((resolve,reject)=>{
-    const tx = db.transaction(STORE_MOVES,'readwrite');
-    tx.oncomplete = ()=>resolve(true);
-    tx.onerror = ()=>reject(tx.error);
-    tx.objectStore(STORE_MOVES).clear();
-  });
-}
-
-// ===== EXPORT/IMPORT
-async function exportItemsJson(){ const items = await dbList(''); return JSON.stringify({ items }, null, 2); }
-async function exportMovesJson(){ const moves = await dbListMoves(); return JSON.stringify({ moves }, null, 2); }
-
-async function exportItemsCsv(){
-  const items = await dbList('');
-  const header = ['barcode','name','qty','min','tags'];
-  const rows = [header.join(',')];
-  for (var i=0;i<items.length;i++){
-    const it = items[i];
-    rows.push([csv(it.barcode), csv(it.name), it.qty||0, it.min||0, csv((it.tags||[]).join('|'))].join(','));
-  }
-  return rows.join('\n');
-}
-
-async function exportMovesCsv(){
-  const moves = await dbListMoves();
-  const header = ['timeISO','barcode','name','delta','qtyAfter','mode','source'];
-  const rows = [header.join(',')];
-  for (var i=0;i<moves.length;i++){
-    const m = moves[i];
-    rows.push([new Date(m.time).toISOString(), csv(m.barcode), csv(m.name), m.delta, m.qtyAfter, m.mode, m.source].join(','));
-  }
-  return rows.join('\n');
-}
-
-function csv(v){ v = v==null?'':String(v); return (v.includes(',')||v.includes('"')||v.includes('\n')) ? '"'+v.replace(/"/g,'""')+'"' : v; }
-
-async function importItemsJson(text){
-  const data = JSON.parse(text);
-  const items = data.items || [];
-  for (var i=0;i<items.length;i++){
-    const it = items[i];
-    await dbPut({ ...it, updatedAt: Date.now(), createdAt: it.createdAt||Date.now() });
-  }
-}
-
-async function importItemsCsv(text){
-  const lines = text.split(/\r?\n/).filter(Boolean);
-  const header = lines.shift(); // ignore
-  for (var i=0;i<lines.length;i++){
-    const cols = parseCsv(lines[i]);
-    const barcode = cols[0]||'', name = cols[1]||'', qty = cols[2]||'0', min = cols[3]||'0', tags = cols[4]||'';
-    if (!barcode) continue;
-    await dbPut({
-      barcode, name: name||barcode,
-      qty: parseInt(qty,10)||0, min: parseInt(min,10)||0,
-      tags: tags ? String(tags).split('|').map(s=>s.trim()).filter(Boolean) : [],
-      updatedAt: Date.now(), createdAt: Date.now()
+      };
     });
   }
-}
 
-async function importMovesCsv(text){
-  const lines = text.split(/\r?\n/).filter(Boolean);
-  const header = lines.shift(); // ignore
-  for (var i=0;i<lines.length;i++){
-    const cols = parseCsv(lines[i]);
-    const timeISO = cols[0]||'', barcode = cols[1]||'', name = cols[2]||'';
-    const delta = cols[3]||'0', qtyAfter = cols[4]||'0', mode = cols[5]||'in', source = cols[6]||'import';
-    if (!barcode) continue;
+  // Ajuste quantité + log move
+  async function dbAdjustQty(code, delta, info){
+    const item = await dbGet(code);
+    if (!item) throw new Error('Article introuvable: ' + code);
+    let q = parseInt(item.qty||0,10) + parseInt(delta||0,10);
+    if (q < 0) q = 0; // clamp
+    const updated = { ...item, qty: q, updatedAt: Date.now() };
+    await dbPut(updated);
     await dbAddMove({
-      time: timeISO ? Date.parse(timeISO) : Date.now(),
-      barcode, name,
-      delta: parseInt(delta,10)||0, qtyAfter: parseInt(qtyAfter,10)||0,
-      mode, source
+      time: Date.now(),
+      barcode: item.barcode,
+      name: item.name,
+      delta: parseInt(delta||0,10),
+      qtyAfter: q,
+      mode: (info && info.mode) || 'adj',
+      source: (info && info.source) || 'ui'
+    });
+    return updated;
+  }
+
+  // ===== Moves (journal)
+  async function dbAddMove(m){
+    return tx(['moves'],'readwrite',(t,done)=>{
+      t.objectStore('moves').add(m);
+      done(true);
     });
   }
-}
+  async function dbListMoves(){
+    return tx(['moves'],'readonly',(t,done)=>{
+      const s = t.objectStore('moves').index('by_time').openCursor(null,'prev');
+      const out = [];
+      s.onsuccess = ()=>{
+        const cur = s.result;
+        if (!cur){ done(out); return; }
+        out.push(cur.value); cur.continue();
+      };
+    });
+  }
+  async function dbClearMoves(){
+    return tx(['moves'],'readwrite',(t,done)=>{
+      t.objectStore('moves').clear(); done(true);
+    });
+  }
 
-// Simple CSV parser
-function parseCsv(line){
-  const out = []; var cur = ''; var inQ = false;
-  for (var i=0;i<line.length;i++){
-    const c = line[i];
-    if (inQ){
-      if (c === '"'){ if (line[i+1] === '"'){ cur+='"'; i++; } else { inQ=false; } }
-      else { cur+=c; }
-    } else {
-      if (c === ','){ out.push(cur); cur=''; }
-      else if (c === '"'){ inQ = true; }
-      else { cur+=c; }
+  // ===== Loans (emprunts)
+  async function dbCreateLoan({ barcode, name, borrower, qty, start, due, note }){
+    // qty: nombre de pièces empruntées (par défaut 1)
+    return tx(['loans'],'readwrite',(t,done)=>{
+      t.objectStore('loans').add({
+        barcode, name,
+        borrower: borrower||'',
+        qty: parseInt(qty||1,10),
+        start: start||Date.now(),
+        due: due||null,
+        note: note||'',
+        returned: false,
+        returnDate: null
+      });
+      done(true);
+    });
+  }
+  async function dbReturnLoan(barcode){
+    // Retourne le prêt actif le plus récent pour ce code
+    return tx(['loans'],'readwrite',(t,done)=>{
+      const s = t.objectStore('loans').index('by_barcode').openCursor(IDBKeyRange.only(barcode), 'prev');
+      s.onsuccess = ()=>{
+        let cur = s.result, found=null;
+        while(cur){
+          const v = cur.value;
+          if (!v.returned){ found = { cursor: cur, value: v }; break; }
+          cur.continue();
+          return; // important: on attend le prochain onsuccess
+        }
+        if (!found){ done(false); return; }
+        found.value.returned = true;
+        found.value.returnDate = Date.now();
+        found.cursor.update(found.value);
+        done(true);
+      };
+    });
+  }
+  async function dbListLoans(activeOnly){
+    return tx(['loans'],'readonly',(t,done)=>{
+      const s = t.objectStore('loans').index('by_start').openCursor(null,'prev');
+      const out=[];
+      s.onsuccess = ()=>{
+        const cur = s.result;
+        if (!cur){ done(out); return; }
+        const v = cur.value;
+        if (!activeOnly || (activeOnly && !v.returned)) out.push(v);
+        cur.continue();
+      };
+    });
+  }
+
+  // ===== Imports/Exports utilitaires (identiques)
+  async function exportItemsCsv(){
+    const items = await dbList('');
+    const headers = ['barcode','name','qty','min','tags','createdAt','updatedAt'];
+    const rows = [headers.join(';')];
+    for (const it of items){
+      rows.push([it.barcode, it.name, it.qty||0, it.min||0, (it.tags||[]).join(','), it.createdAt||'', it.updatedAt||''].map(v=>String(v).replace(/;/g,',')).join(';'));
+    }
+    return rows.join('\n');
+  }
+  async function exportItemsJson(){
+    const items = await dbList('');
+    return JSON.stringify(items, null, 2);
+  }
+  async function importItemsCsv(text){
+    const lines = text.split(/\r?\n/).filter(Boolean); if (!lines.length) return;
+    const hdr = lines.shift().split(/;|,/).map(h=>h.trim().toLowerCase());
+    const idx = (k)=> hdr.indexOf(k);
+    for (const line of lines){
+      const cols = line.split(/;|,/);
+      const item = {
+        barcode: cols[idx('barcode')] || cols[0],
+        name: cols[idx('name')] || '',
+        qty: parseInt(cols[idx('qty')]||'0',10),
+        min: parseInt(cols[idx('min')]||'0',10),
+        tags: (cols[idx('tags')]||'').split(',').map(s=>s.trim()).filter(Boolean),
+        createdAt: Date.now(), updatedAt: Date.now()
+      };
+      if (item.barcode) await dbPut(item);
     }
   }
-  out.push(cur); return out;
-}
+  async function importItemsJson(text){
+    const arr = JSON.parse(text||'[]');
+    for (const it of arr){ if (it && it.barcode) await dbPut(it); }
+  }
+
+  async function exportMovesCsv(){
+    const moves = await dbListMoves();
+    const headers = ['time','barcode','name','delta','qtyAfter','mode','source'];
+    const rows = [headers.join(';')];
+    for (const m of moves){
+      rows.push([m.time, m.barcode, m.name||'', m.delta, m.qtyAfter, m.mode||'', m.source||''].map(v=>String(v).replace(/;/g,',')).join(';'));
+    }
+    return rows.join('\n');
+  }
+  async function exportMovesJson(){
+    const moves = await dbListMoves();
+    return JSON.stringify(moves, null, 2);
+  }
+  async function importMovesCsv(text){
+    const lines = text.split(/\r?\n/).filter(Boolean); if (!lines.length) return;
+    const hdr = lines.shift().split(/;|,/).map(h=>h.trim().toLowerCase());
+    const idx = (k)=> hdr.indexOf(k);
+    for (const line of lines){
+      const cols = line.split(/;|,/);
+      await dbAddMove({
+        time: parseInt(cols[idx('time')]||Date.now(),10),
+        barcode: cols[idx('barcode')]||'',
+        name: cols[idx('name')]||'',
+        delta: parseInt(cols[idx('delta')]||'0',10),
+        qtyAfter: parseInt(cols[idx('qtyafter')]||'0',10),
+        mode: cols[idx('mode')]||'',
+        source: cols[idx('source')]||''
+      });
+    }
+  }
+
+  // Démo
+  async function dbEnsureDemo(){
+    const have = await dbList('');
+    if (have.length) return;
+    const demo = [
+      { barcode:'VM-0001', name:'Voltmètre numérique', qty:2, min:1, tags:['atelier','mesure'] },
+      { barcode:'MULTI-0002', name:'Multimètre', qty:3, min:1, tags:['atelier','mesure'] },
+      { barcode:'PINCE-AMP', name:'Pince ampèremétrique', qty:1, min:0, tags:['mesure'] },
+      { barcode:'PERCEUSE-01', name:'Perceuse', qty:2, min:0, tags:['atelier','outillage'] }
+    ];
+    for (const it of demo){
+      await dbPut({ ...it, createdAt: Date.now(), updatedAt: Date.now() });
+    }
+  }
+
+  // Expose
+  window.dbPut = dbPut;
+  window.dbGet = dbGet;
+  window.dbDelete = dbDelete;
+  window.dbList = dbList;
+  window.dbAdjustQty = dbAdjustQty;
+
+  window.dbAddMove = dbAddMove;
+  window.dbListMoves = dbListMoves;
+  window.dbClearMoves = dbClearMoves;
+
+  window.dbCreateLoan = dbCreateLoan;
+  window.dbReturnLoan = dbReturnLoan;
+  window.dbListLoans = dbListLoans;
+
+  window.exportItemsCsv = exportItemsCsv;
+  window.exportItemsJson = exportItemsJson;
+  window.importItemsCsv = importItemsCsv;
+  window.importItemsJson = importItemsJson;
+
+  window.exportMovesCsv = exportMovesCsv;
+  window.exportMovesJson = exportMovesJson;
+  window.importMovesCsv = importMovesCsv;
+
+  window.dbEnsureDemo = dbEnsureDemo;
+})();
