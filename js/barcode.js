@@ -1,7 +1,7 @@
-// js/barcode.js — Detector + ZXing fallback + Code128/EAN13 (v1.3.0)
+// js/barcode.js — Camera + BarcodeDetector + Code128/EAN13 (v1.4.0 no-ZXing)
 const Barcode = (()=> {
   // ===== Camera & Detector
-  let _stream = null, _track = null, _detector = null, _canvas = null, _ctx = null, _zxingReader = null;
+  let _stream = null, _track = null, _detector = null, _canvas = null, _ctx = null;
   const SUPPORTED_FORMATS = ['code_128','ean_13','ean_8','upc_a','upc_e','qr_code','code_39','itf','codabar'];
 
   async function ensureDetector(){
@@ -22,7 +22,6 @@ const Barcode = (()=> {
     video.srcObject = _stream;
     await video.play();
     _track = _stream.getVideoTracks()[0];
-
     try{
       const caps = _track.getCapabilities ? _track.getCapabilities() : {};
       const cons = {};
@@ -30,11 +29,8 @@ const Barcode = (()=> {
       if (caps.zoom) cons.zoom = Math.min(caps.zoom.max, Math.max(caps.zoom.min, (caps.zoom.min + caps.zoom.max)/3));
       if (Object.keys(cons).length) await _track.applyConstraints({ advanced:[cons] });
     }catch(e){}
-
     _canvas = document.createElement('canvas');
-    _canvas.width = video.videoWidth || 800;
-    _canvas.height = video.videoHeight || 600;
-    _ctx = _canvas.getContext('2d');
+    _canvas.width = video.videoWidth || 800; _canvas.height = video.videoHeight || 600; _ctx = _canvas.getContext('2d');
     return _stream;
   }
 
@@ -44,7 +40,6 @@ const Barcode = (()=> {
       if (_stream) _stream.getTracks().forEach(t=>t.stop());
     }catch(e){}
     _stream = null; _track = null;
-    if (_zxingReader){ try{ _zxingReader.reset(); }catch(e){}; _zxingReader = null; }
   }
 
   async function toggleTorch(){
@@ -61,8 +56,7 @@ const Barcode = (()=> {
     return false;
   }
 
-  // --- Essai 1 : BarcodeDetector (rapide)
-  async function scanWithDetector(video){
+  async function scanOnce(video){
     const det = await ensureDetector();
     if (!det || !video || !video.srcObject) return null;
     try{
@@ -70,7 +64,6 @@ const Barcode = (()=> {
         _canvas = document.createElement('canvas');
         _canvas.width = video.videoWidth || 800; _canvas.height = video.videoHeight || 600; _ctx = _canvas.getContext('2d');
       }
-      // downscale léger pour la stabilité
       const W = Math.min(_canvas.width, 960);
       const H = Math.round(W * (_canvas.height/_canvas.width));
       _ctx.drawImage(video, 0, 0, W, H);
@@ -85,39 +78,7 @@ const Barcode = (()=> {
     return null;
   }
 
-  // --- Essai 2 : ZXing (très robuste sur webcam)
-  async function scanWithZXing(video){
-    if (!window.ZXing || !video || !video.srcObject) return null;
-    if (!_zxingReader){
-      try{
-        // Multi-format reader avec hints par défaut
-        _zxingReader = new ZXing.BrowserMultiFormatReader();
-      }catch(e){
-        _zxingReader = null;
-        return null;
-      }
-    }
-    try{
-      // Décode UNE fois sur l'image courante du <video> (ne prend pas le contrôle de la caméra)
-      const result = await _zxingReader.decodeOnceFromVideoElement(video);
-      _zxingReader.reset();
-      return result && result.text ? result.text : null;
-    }catch(e){
-      try{ _zxingReader.reset(); }catch(_){}
-      return null;
-    }
-  }
-
-  // --- API simple : essaye Detector puis ZXing
-  async function scanAny(video){
-    // 1) Detector natif
-    let v = await scanWithDetector(video);
-    if (v) return v;
-    // 2) ZXing fallback
-    return await scanWithZXing(video);
-  }
-
-  // ===== Code128-B (étiquettes)
+  // ===== Code128-B generator
   const CODE128B_TABLE = (function(){
     return [
       [2,1,2,2,2,2],[2,2,2,1,2,2],[2,2,2,2,2,1],[1,2,1,2,2,3],[1,2,1,3,2,2],[1,3,1,2,2,2],[1,2,2,2,1,3],[1,2,2,3,1,2],[1,3,2,2,1,2],[2,2,1,2,1,3],
@@ -148,13 +109,13 @@ const Barcode = (()=> {
     const codes = code128Encode(value); let x = margin, rects = [];
     for (let i=0;i<codes.length;i++){ const patt = codeToPattern(codes[i]); for (let j=0;j<patt.length;j++){ const w=patt[j]*module; if (j%2===0) rects.push({x,y:margin,w,h:height}); x+=w; } }
     const total = x + margin, H = height + margin*2 + fontSize + 4;
-    const svg = [`<svg xmlns="http://www.w3.org/2000/svg" width="${total}" height="${H}" viewBox="0 0 ${total} ${H}">`,`<rect width="100%" height="100%" fill="#fff"/>`];
+    const svg = [`<svg class="barcode-svg" xmlns="http://www.w3.org/2000/svg" width="${total}" height="${H}" viewBox="0 0 ${total} ${H}">`,`<rect width="100%" height="100%" fill="#fff"/>`];
     for (const r of rects){ svg.push(`<rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" fill="#000"/>`); }
     svg.push(`<text x="${total/2}" y="${height+margin*1.8}" text-anchor="middle" font-family="monospace" font-size="${fontSize}" fill="#000">${esc(value)}</text>`,`</svg>`);
     return svg.join('');
   }
 
-  // ===== EAN-13 (étiquettes)
+  // ===== EAN-13
   const EAN_L = {'0':'0001101','1':'0011001','2':'0010011','3':'0111101','4':'0100011','5':'0110001','6':'0101111','7':'0111011','8':'0110111','9':'0001011'};
   const EAN_G = {'0':'0100111','1':'0110011','2':'0011011','3':'0100001','4':'0011101','5':'0111001','6':'0000101','7':'0010001','8':'0001001','9':'0010111'};
   const EAN_R = {'0':'1110010','1':'1100110','2':'1101100','3':'1000010','4':'1011100','5':'1001110','6':'1010000','7':'1000100','8':'1001000','9':'1110100'};
@@ -170,17 +131,14 @@ const Barcode = (()=> {
     bits += '01010';
     for (let j=0;j<6;j++){ bits += EAN_R[right[j]]; }
     bits += '101';
-
     let x = margin, rects = [], cur = bits[0], run = 1;
     for (let k=1;k<bits.length;k++){
       if (bits[k]===cur) run++;
       else { if (cur==='1') rects.push({x,y:margin,w:run*module,h:height}); x += run*module; cur=bits[k]; run=1; }
     }
     if (cur==='1') rects.push({x,y:margin,w:run*module,h:height}); else x += run*module;
-    const total = x + margin, H = height + margin*2 + fontSize + 4;
-    const human = s[0]+' '+s.slice(1,7)+' '+s.slice(7);
-
-    const svg = [`<svg xmlns="http://www.w3.org/2000/svg" width="${total}" height="${H}" viewBox="0 0 ${total} ${H}">`,`<rect width="100%" height="100%" fill="#fff"/>`];
+    const total = x + margin, H = height + margin*2 + fontSize + 4, human = s[0]+' '+s.slice(1,7)+' '+s.slice(7);
+    const svg = [`<svg class="barcode-svg" xmlns="http://www.w3.org/2000/svg" width="${total}" height="${H}" viewBox="0 0 ${total} ${H}">`,`<rect width="100%" height="100%" fill="#fff"/>`];
     for (const r of rects){ svg.push(`<rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" fill="#000"/>`); }
     svg.push(`<text x="${total/2}" y="${height+margin*1.8}" text-anchor="middle" font-family="monospace" font-size="${fontSize}" fill="#000">${human}</text>`,`</svg>`);
     return svg.join('');
@@ -188,10 +146,8 @@ const Barcode = (()=> {
 
   function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
-  // API publique
   return {
-    startCamera, stopCamera, toggleTorch,
-    scanAny,                 // <-- à utiliser côté app
+    startCamera, stopCamera, toggleTorch, scanOnce,
     renderCode128Svg, renderEAN13Svg
   };
 })();
