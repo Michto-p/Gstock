@@ -1,4 +1,4 @@
-// js/app.js — v1.3.1 avec Diagnostic + échantillons + Detector→ZXing
+// js/app.js — v1.5.0 : + onglet Matériel (emprunts/retours avec scan)
 (function(){
   const errbar = document.getElementById('errbar');
   function showError(msg){ if (!errbar) return; errbar.textContent = msg; errbar.style.display = 'block'; }
@@ -10,6 +10,7 @@
   const sections = {
     scan: document.getElementById('tab-scan'),
     items: document.getElementById('tab-items'),
+    gear: document.getElementById('tab-gear'),
     new: document.getElementById('tab-new'),
     labels: document.getElementById('tab-labels'),
     journal: document.getElementById('tab-journal'),
@@ -19,9 +20,10 @@
   function showTab(name){
     tabs.forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
     Object.entries(sections).forEach(([k,el])=>el && el.classList.toggle('hide', k!==name));
-    if (name==='items') refreshList();
+    if (name==='items') refreshTable();
     if (name==='labels') refreshLabelItems();
     if (name==='journal') refreshJournal();
+    if (name==='gear') { refreshLoansTable(); }
   }
 
   // Badge réseau
@@ -31,7 +33,7 @@
   window.addEventListener('offline', updateBadge);
   updateBadge();
 
-  // ====== Scanner ======
+  // ====== Scanner (stock)
   const video = document.getElementById('video');
   const scanStatus = document.getElementById('scanStatus');
   const qtyInput = document.getElementById('qty');
@@ -41,29 +43,35 @@
   const btnStopScan = document.getElementById('btnStopScan');
   const btnTorch = document.getElementById('btnTorch');
   const btnTestDetect = document.getElementById('btnTestDetect');
-  const btnSelfTest = document.getElementById('btnSelfTest');
-  const btnShowSamples = document.getElementById('btnShowSamples');
-  const diag = document.getElementById('diag');
-  const diagOut = document.getElementById('diagOut');
-  const sampleArea = document.getElementById('sampleArea');
+  const lastOp = document.getElementById('lastOp');
 
-  let mode = 'out';
-  if (modeOutBtn) modeOutBtn.classList.add('active');
+  let mode = 'out'; if (modeOutBtn) modeOutBtn.classList.add('active');
   if (modeInBtn) modeInBtn.addEventListener('click', ()=>{ mode='in'; if (scanStatus) scanStatus.textContent='Mode: Entrée'; modeInBtn.classList.add('active'); modeOutBtn && modeOutBtn.classList.remove('active'); });
   if (modeOutBtn) modeOutBtn.addEventListener('click', ()=>{ mode='out'; if (scanStatus) scanStatus.textContent='Mode: Sortie'; modeOutBtn.classList.add('active'); modeInBtn && modeInBtn.classList.remove('active'); });
 
-  const lastOp = document.getElementById('lastOp');
   let scanning = false;
+  let lastDetected = '', lastBeepAt = 0;
+
+  // Sons
+  function beepOK(){ tone(880, 0.06, 120); }
+  function beepErr(){ tone(240, 0.07, 220); }
+  function tone(freq, vol, dur){
+    try{
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = freq; g.gain.value = vol;
+      o.connect(g); g.connect(ctx.destination); o.start();
+      setTimeout(()=>{ o.stop(); ctx.close(); }, dur||120);
+    }catch(e){}
+  }
 
   async function startScan(){
     try{
       scanning = true;
       await Barcode.startCamera(video);
-      if (lastOp) lastOp.innerHTML = '🎥 Caméra active — pointez un code (EAN-13/Code128).';
+      if (lastOp) lastOp.innerHTML = '🎥 Caméra active — pointez un code.';
       loopScan();
-    }catch(e){
-      showError('Caméra indisponible : ' + (e && e.message ? e.message : e));
-    }
+    }catch(e){ showError('Caméra indisponible : ' + (e && e.message ? e.message : e)); }
   }
   if (btnStartScan) btnStartScan.addEventListener('click', startScan);
   if (btnStopScan) btnStopScan.addEventListener('click', ()=>{
@@ -77,8 +85,9 @@
     if (lastOp) lastOp.innerHTML = on ? '💡 Lampe ON' : '💡 Lampe OFF';
   });
   if (btnTestDetect) btnTestDetect.addEventListener('click', async ()=>{
-    const v = await Barcode.scanAny(video);
-    if (lastOp) lastOp.innerHTML = v ? ('🔎 Détecté : <b>'+v+'</b>') : 'Aucune détection.';
+    const v = await Barcode.scanOnce(video);
+    if (v){ if (v!==lastDetected){ lastDetected=v; beepOK(); } if (lastOp) lastOp.innerHTML = '🔎 Détecté : <b>'+v+'</b>'; }
+    else if (lastOp) lastOp.innerHTML = 'Aucune détection.';
   });
 
   async function loopScan(){
@@ -86,10 +95,13 @@
       await new Promise(r=>setTimeout(r, 650));
       try{
         if (!video || !video.srcObject) { scanning=false; break; }
-        const val = await Barcode.scanAny(video); // Detector -> ZXing
+        const val = await Barcode.scanOnce(video);
         if (val){
+          const now = Date.now();
+          if (val !== lastDetected || now - lastBeepAt > 1500){ beepOK(); lastBeepAt = now; }
+          lastDetected = val;
           await processScan(val, 'scan');
-          await new Promise(r=>setTimeout(r, 1200));
+          await new Promise(r=>setTimeout(r, 1000));
         }
       }catch(e){}
     }
@@ -108,95 +120,95 @@
     if (lastOp) lastOp.innerHTML = (mode==='in'?'✅ Entrée':'📤 Sortie') + ' <b>'+q+
       '</b> × <b>'+ (item.name||'') + '</b> (<code>'+ item.barcode +
       '</code>) — stock: <span class="'+(warn?'warntext':'oktext')+'">'+ item.qty +'</span>';
-    refreshList(); refreshJournal();
+    refreshTable(); refreshJournal();
   }
 
-  // ====== Exemples à l’écran (EAN-13 + Code128)
-  if (btnShowSamples) btnShowSamples.addEventListener('click', ()=>{
-    const samples = [
-      { name:'Exemple EAN-13', code:'5901234123457', type:'ean13' },
-      { name:'Exemple Code128', code:'TEST-12345', type:'code128' }
-    ];
-    const cards = samples.map(s=>{
-      const svg = (s.type==='ean13')
-        ? Barcode.renderEAN13Svg(s.code, { moduleWidth: 3, height: 90, margin: 12, fontSize: 13 })
-        : Barcode.renderCode128Svg(s.code, { moduleWidth: 3, height: 90, margin: 12, fontSize: 13 });
-      return `<div class="card"><div><b>${s.name}</b> — <code>${s.code}</code></div>${svg}</div>`;
-    }).join('');
-    sampleArea.innerHTML = `<p class="muted">Place ces codes en plein écran et scanne-les avec la webcam.</p>${cards}`;
-    sampleArea.classList.remove('hide');
-    if (lastOp) lastOp.innerHTML = '🧪 Exemples affichés. Lance la caméra et clique “Tester une détection”.';
-  });
-
-  // ====== Diagnostic
-  if (btnSelfTest) btnSelfTest.addEventListener('click', async ()=>{
-    const lines = [];
-    lines.push(`SecureContext: ${window.isSecureContext}`);
-    lines.push(`getUserMedia: ${!!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)}`);
-    lines.push(`BarcodeDetector in window: ${'BarcodeDetector' in window}`);
-    lines.push(`ZXing chargé: ${typeof window.ZXing !== 'undefined'}`);
-    try{
-      const st = await navigator.mediaDevices.getUserMedia({ video:true, audio:false });
-      const track = st.getVideoTracks()[0];
-      const caps = track.getCapabilities ? track.getCapabilities() : {};
-      const settings = track.getSettings ? track.getSettings() : {};
-      lines.push(`Caméra OK. Résolution: ${settings.width||'?'}x${settings.height||'?'}; facingMode: ${settings.facingMode||'?'}`);
-      lines.push(`Torch: ${caps && 'torch' in caps ? 'oui' : 'non'}`);
-      st.getTracks().forEach(t=>t.stop());
-    }catch(e){
-      lines.push(`Caméra test KO: ${e && e.message ? e.message : e}`);
-    }
-    diagOut.textContent = lines.join('\n');
-    diag.classList.remove('hide');
-  });
-
-  // ====== Liste Articles ======
+  // ====== Tableau Articles (identique à v1.4, conservé)
   const search = document.getElementById('search');
-  const itemsList = document.getElementById('itemsList');
-  if (search) search.addEventListener('input', ()=>refreshList());
+  const itemsTable = document.getElementById('itemsTable');
+  const itemsTbody = itemsTable ? itemsTable.querySelector('tbody') : null;
+  const chkShowBarcodes = document.getElementById('chkShowBarcodes');
   const addDummyBtn = document.getElementById('addDummy');
-  if (addDummyBtn) addDummyBtn.addEventListener('click', async ()=>{ await dbEnsureDemo(); refreshList(); });
 
-  async function refreshList(){
+  if (chkShowBarcodes){
+    chkShowBarcodes.checked = localStorage.getItem('showBarcodesInList') === '1';
+    chkShowBarcodes.addEventListener('change', ()=>{
+      localStorage.setItem('showBarcodesInList', chkShowBarcodes.checked ? '1' : '0');
+      refreshTable();
+    });
+  }
+  if (search) search.addEventListener('input', ()=>refreshTable());
+  if (addDummyBtn) addDummyBtn.addEventListener('click', async ()=>{ await dbEnsureDemo(); refreshTable(); });
+
+  let sortKey = 'name', sortAsc = true;
+  if (itemsTable){
+    itemsTable.querySelectorAll('th[data-sort]').forEach(th=>{
+      th.addEventListener('click', ()=>{
+        const k = th.getAttribute('data-sort');
+        if (sortKey===k) sortAsc = !sortAsc; else { sortKey=k; sortAsc = true; }
+        refreshTable();
+      });
+    });
+  }
+
+  async function refreshTable(){
     const q = (search && search.value ? search.value : '').trim().toLowerCase();
-    const items = await dbList(q);
-    items.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-    if (!itemsList) return;
-    itemsList.innerHTML = '';
+    let items = await dbList('');
+    if (q){
+      items = items.filter(it=>{
+        const s = ((it.name||'')+' '+(it.barcode||'')+' '+(it.tags||[]).join(' ')+' '+(it.location||'')).toLowerCase();
+        return s.includes(q);
+      });
+    }
+    items.sort((a,b)=>{
+      const va = (a[sortKey] ?? '').toString().toLowerCase();
+      const vb = (b[sortKey] ?? '').toString().toLowerCase();
+      if (sortKey==='qty' || sortKey==='min') return (sortAsc?1:-1) * ((a[sortKey]||0) - (b[sortKey]||0));
+      return (sortAsc?1:-1) * va.localeCompare(vb);
+    });
+    if (!itemsTbody) return;
+    itemsTbody.innerHTML = '';
+    const showCodes = !!(chkShowBarcodes && chkShowBarcodes.checked);
     for (const it of items){
       const warn = (it.qty||0) <= (it.min||0);
-      const div = document.createElement('div');
-      div.className = 'item';
-      div.innerHTML = `
-        <div>
-          <div><b>${it.name||'(sans nom)'}</b> <span class="muted">— <code>${it.barcode}</code></span></div>
-          <div class="muted">${(it.tags||[]).join(', ')}</div>
-          <div>${warn?'<span class="warntext">⚠️ seuil atteint</span>':''}</div>
-        </div>
-        <div style="text-align:right">
-          <div>Qté: <span class="qty">${it.qty||0}</span></div>
-          <div class="row" style="margin-top:6px">
-            <button class="btn secondary" data-act="minus">−</button>
-            <button class="btn secondary" data-act="plus">+</button>
-          </div>
-          <div class="row" style="margin-top:6px">
-            <button class="btn warn" data-act="del">Suppr.</button>
-          </div>
-        </div>`;
-      div.querySelector('[data-act="minus"]').addEventListener('click', async ()=>{
-        await dbAdjustQty(it.barcode, -1, {mode:'out', source:'ui'}); refreshList(); refreshJournal();
+      const tr = document.createElement('tr');
+      let svgHtml = '';
+      if (showCodes){
+        const isNum = /^[0-9]+$/.test(it.barcode||'');
+        const isEANish = isNum && ((it.barcode||'').length===12 || (it.barcode||'').length===13);
+        try{
+          svgHtml = isEANish
+            ? Barcode.renderEAN13Svg(it.barcode, { moduleWidth: 2.5, height: 70, margin: 8, fontSize: 11 })
+            : Barcode.renderCode128Svg(it.barcode, { moduleWidth: 2.5, height: 70, margin: 8, fontSize: 11 });
+        }catch(e){ svgHtml = ''; }
+      }
+      tr.innerHTML = `
+        <td><b>${escapeHtml(it.name||'(sans nom)')}</b></td>
+        <td class="nowrap"><code>${escapeHtml(it.barcode||'')}</code></td>
+        <td class="nowrap">${it.qty||0}${warn? ' <span class="warntext">⚠</span>':''}</td>
+        <td class="nowrap">${it.min||0}</td>
+        <td><div class="tags">${(it.tags||[]).map(t=>`<span class="tag">${escapeHtml(t)}</span>`).join(' ')}</div></td>
+        <td>${svgHtml || '<span class="muted">—</span>'}</td>
+        <td class="nowrap">
+          <button class="btn secondary" data-act="minus">−</button>
+          <button class="btn secondary" data-act="plus">+</button>
+          <button class="btn warn" data-act="del">Suppr.</button>
+        </td>
+      `;
+      tr.querySelector('[data-act="minus"]').addEventListener('click', async ()=>{
+        await dbAdjustQty(it.barcode, -1, {mode:'out', source:'ui'}); refreshTable(); refreshJournal();
       });
-      div.querySelector('[data-act="plus"]').addEventListener('click', async ()=>{
-        await dbAdjustQty(it.barcode, +1, {mode:'in', source:'ui'}); refreshList(); refreshJournal();
+      tr.querySelector('[data-act="plus"]').addEventListener('click', async ()=>{
+        await dbAdjustQty(it.barcode, +1, {mode:'in', source:'ui'}); refreshTable(); refreshJournal();
       });
-      div.querySelector('[data-act="del"]').addEventListener('click', async ()=>{
-        if (confirm("Supprimer cet article ?")){ await dbDelete(it.barcode); refreshList(); }
+      tr.querySelector('[data-act="del"]').addEventListener('click', async ()=>{
+        if (confirm("Supprimer cet article ?")){ await dbDelete(it.barcode); refreshTable(); }
       });
-      itemsList.appendChild(div);
+      itemsTbody.appendChild(tr);
     }
   }
 
-  // ====== Nouveau ======
+  // ====== Nouveau (création article)
   const newName = document.getElementById('newName');
   const newQty = document.getElementById('newQty');
   const newMin = document.getElementById('newMin');
@@ -207,64 +219,76 @@
     const name = (newName && newName.value ? newName.value : '').trim();
     if (!name) return alert("Nom requis");
     const code = (newCode && newCode.value ? newCode.value.trim() : '') || genSku();
+    const tags = (newTags && newTags.value ? newTags.value : '').split(',').map(s=>s.trim()).filter(Boolean);
     const item = {
       barcode: code, name, qty: parseInt((newQty && newQty.value) ? newQty.value : '0',10),
       min: parseInt((newMin && newMin.value) ? newMin.value : '0',10),
-      tags: (newTags && newTags.value ? newTags.value : '').split(',').map(s=>s.trim()).filter(Boolean),
+      tags,
       createdAt: Date.now(), updatedAt: Date.now()
     };
     await dbPut(item);
     if (item.qty) await dbAddMove({ time: Date.now(), barcode: item.barcode, name: item.name, delta: item.qty, qtyAfter: item.qty, mode:'init', source:'create' });
     if (newName) newName.value=''; if (newQty) newQty.value='0'; if (newMin) newMin.value='5'; if (newCode) newCode.value=''; if (newTags) newTags.value='';
-    alert("Article créé"); showTab('items'); refreshList(); refreshJournal();
+    alert("Article créé"); showTab('items'); refreshTable(); refreshJournal();
   });
   function genSku(){ const n = Math.floor(Math.random()*99999).toString().padStart(5,'0'); return "CFA-"+n; }
 
-  // ====== Étiquettes ======
+  // ====== Étiquettes
   const labelItem = document.getElementById('labelItem');
   const labelCount = document.getElementById('labelCount');
   const labelPreview = document.getElementById('labelPreview');
   const btnRenderLabel = document.getElementById('btnRenderLabel');
+  const btnRenderAllLabels = document.getElementById('btnRenderAllLabels');
   const btnPrintLabels = document.getElementById('btnPrintLabels');
 
   async function refreshLabelItems(){
     const items = await dbList('');
     if (!labelItem) return;
-    labelItem.innerHTML = items.map(i=>`<option value="${i.barcode}">${i.name} — ${i.barcode}</option>`).join('');
+    labelItem.innerHTML = items.map(i=>`<option value="${i.barcode}">${escapeHtml(i.name)} — ${escapeHtml(i.barcode)}</option>`).join('');
   }
-  if (btnRenderLabel) btnRenderLabel.addEventListener('click', async ()=>{
-    const code = labelItem && labelItem.value ? labelItem.value : '';
-    const item = code ? await dbGet(code) : null;
-    if (!item) return;
-    const count = Math.max(1, parseInt((labelCount && labelCount.value) ? labelCount.value : '1',10));
 
-    const isNumeric = /^[0-9]+$/.test(item.barcode);
-    const isEANish = isNumeric && (item.barcode.length===12 || item.barcode.length===13);
+  function labelCard(name, code){
+    const isNumeric = /^[0-9]+$/.test(code);
+    const isEANish = isNumeric && (code.length===12 || code.length===13);
     let svgOne;
     try{
-      if (isEANish){ svgOne = Barcode.renderEAN13Svg(item.barcode, { moduleWidth: 3, height: 90, margin: 12, fontSize: 13 }); }
-      else { svgOne = Barcode.renderCode128Svg(item.barcode, { moduleWidth: 3, height: 90, margin: 12, fontSize: 13 }); }
+      svgOne = isEANish
+        ? Barcode.renderEAN13Svg(code, { moduleWidth: 3, height: 90, margin: 12, fontSize: 13 })
+        : Barcode.renderCode128Svg(code, { moduleWidth: 3, height: 90, margin: 12, fontSize: 13 });
     }catch(e){
-      svgOne = Barcode.renderCode128Svg(String(item.barcode), { moduleWidth: 3, height: 90, margin: 12, fontSize: 13 });
+      svgOne = Barcode.renderCode128Svg(String(code), { moduleWidth: 3, height: 90, margin: 12, fontSize: 13 });
     }
-
-    const labelHtml = (name, code)=>`<div class="lbl">${svgOne}<div class="ln">${escapeHtml(name)}</div></div>`;
-    const grid = Array.from({length:count}).map(()=>labelHtml(item.name, item.barcode)).join('');
+    return `<div class="lbl">${svgOne}<div class="ln">${escapeHtml(name)}</div></div>`;
+  }
+  function renderSheet(html){
     if (labelPreview) {
       labelPreview.innerHTML = `<style>
         .sheet{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;padding:12px}
         @media print{body{background:#fff} .sheet{gap:6px;padding:6px} nav,header,footer,#errbar{display:none !important} .card{border:none !important}}
         .lbl{border:1px dashed var(--bd);border-radius:8px;padding:6px;background:#fff;color:#000}
         .ln{font-size:12px;font-weight:700;margin-top:4px}
-      </style><div class="sheet">` + grid + `</div>`;
+      </style><div class="sheet">` + html + `</div>`;
     }
+  }
+  if (btnRenderLabel) btnRenderLabel.addEventListener('click', async ()=>{
+    const code = labelItem && labelItem.value ? labelItem.value : '';
+    const item = code ? await dbGet(code) : null;
+    if (!item) return;
+    const count = Math.max(1, parseInt((labelCount && labelCount.value) ? labelCount.value : '1',10));
+    const grid = Array.from({length:count}).map(()=>labelCard(item.name, item.barcode)).join('');
+    renderSheet(grid);
+  });
+  if (btnRenderAllLabels) btnRenderAllLabels.addEventListener('click', async ()=>{
+    const items = await dbList('');
+    const grid = items.map(it=>labelCard(it.name, it.barcode)).join('');
+    renderSheet(grid);
   });
   if (btnPrintLabels) btnPrintLabels.addEventListener('click', ()=>{
     if (!labelPreview || !labelPreview.innerHTML) return alert("Générez les étiquettes d'abord.");
     window.print();
   });
 
-  // ====== Journal ======
+  // ====== Journal
   const journalTableBody = (document.getElementById('journalTable')||{}).querySelector ? document.getElementById('journalTable').querySelector('tbody') : null;
   const journalSearch = document.getElementById('journalSearch');
   const btnExportMovesCsv = document.getElementById('btnExportMovesCsv');
@@ -305,26 +329,156 @@
     }
   }
 
-  // ====== Paramètres (import/export Articles) ======
-  const btnExportItemsCsv = document.getElementById('btnExportItemsCsv');
-  const btnExportItemsJson = document.getElementById('btnExportItemsJson');
-  const btnImportItemsCsv = document.getElementById('btnImportItemsCsv');
-  const fileImportItemsCsv = document.getElementById('fileImportItemsCsv');
-  const btnImportJson = document.getElementById('btnImportJson');
-  const fileImportJson = document.getElementById('fileImportJson');
+  // ====== Matériel (emprunts/retours)
+  const gearModeBorrow = document.getElementById('gearModeBorrow');
+  const gearModeReturn = document.getElementById('gearModeReturn');
+  const gearModeText = document.getElementById('gearModeText');
+  let gearMode = 'borrow';
+  if (gearModeBorrow) gearModeBorrow.classList.add('active');
+  if (gearModeBorrow) gearModeBorrow.addEventListener('click', ()=>{ gearMode='borrow'; gearModeBorrow.classList.add('active'); gearModeReturn && gearModeReturn.classList.remove('active'); if (gearModeText) gearModeText.textContent='Mode: Emprunter'; });
+  if (gearModeReturn) gearModeReturn.addEventListener('click', ()=>{ gearMode='return'; gearModeReturn.classList.add('active'); gearModeBorrow && gearModeBorrow.classList.remove('active'); if (gearModeText) gearModeText.textContent='Mode: Retour'; });
 
-  if (btnExportItemsCsv) btnExportItemsCsv.addEventListener('click', async ()=>{ const csv = await exportItemsCsv(); downloadText('articles.csv', csv); });
-  if (btnExportItemsJson) btnExportItemsJson.addEventListener('click', async ()=>{ const json = await exportItemsJson(); downloadText('articles.json', json); });
-  if (btnImportItemsCsv) btnImportItemsCsv.addEventListener('click', ()=> fileImportItemsCsv && fileImportItemsCsv.click());
-  if (fileImportItemsCsv) fileImportItemsCsv.addEventListener('change', async (e)=>{
-    const f = e.target.files[0]; if (!f) return;
-    const text = await f.text(); await importItemsCsv(text); refreshList(); refreshLabelItems(); e.target.value='';
+  const loanWho = document.getElementById('loanWho');
+  const loanDue = document.getElementById('loanDue');
+  const loanNote = document.getElementById('loanNote');
+  const loanQty = document.getElementById('loanQty');
+
+  const videoGear = document.getElementById('videoGear');
+  const gearStart = document.getElementById('gearStart');
+  const gearStop = document.getElementById('gearStop');
+  const gearTorch = document.getElementById('gearTorch');
+  const gearTest = document.getElementById('gearTest');
+  const gearLast = document.getElementById('gearLast');
+
+  let scanningGear = false, lastGearDetected = '', lastGearBeep = 0;
+
+  async function startGear(){
+    try{
+      scanningGear = true;
+      await Barcode.startCamera(videoGear);
+      if (gearLast) gearLast.innerHTML = '🎥 Caméra active — scannez le matériel.';
+      loopGear();
+    }catch(e){ showError('Caméra (matériel) indisponible : ' + (e && e.message ? e.message : e)); }
+  }
+  if (gearStart) gearStart.addEventListener('click', startGear);
+  if (gearStop) gearStop.addEventListener('click', ()=>{
+    scanningGear=false;
+    try{ if (videoGear && videoGear.srcObject){ videoGear.srcObject.getTracks().forEach(t=>t.stop()); videoGear.pause(); videoGear.srcObject=null; } }catch(e){}
+    Barcode.stopCamera();
+    if (gearLast) gearLast.innerHTML = '⏹️ Caméra arrêtée.';
   });
-  if (btnImportJson) btnImportJson.addEventListener('click', ()=> fileImportJson && fileImportJson.click());
-  if (fileImportJson) fileImportJson.addEventListener('change', async (e)=>{
-    const f = e.target.files[0]; if (!f) return;
-    const text = await f.text(); await importItemsJson(text); refreshList(); refreshLabelItems(); e.target.value='';
+  if (gearTorch) gearTorch.addEventListener('click', async ()=>{
+    const on = await Barcode.toggleTorch();
+    if (gearLast) gearLast.innerHTML = on ? '💡 Lampe ON' : '💡 Lampe OFF';
   });
+  if (gearTest) gearTest.addEventListener('click', async ()=>{
+    const v = await Barcode.scanOnce(videoGear);
+    if (v){ if (v!==lastGearDetected){ lastGearDetected=v; beepOK(); } if (gearLast) gearLast.innerHTML = '🔎 Détecté : <b>'+v+'</b>'; }
+    else if (gearLast) gearLast.innerHTML = 'Aucune détection.';
+  });
+
+  async function loopGear(){
+    while(scanningGear){
+      await new Promise(r=>setTimeout(r, 650));
+      try{
+        if (!videoGear || !videoGear.srcObject) { scanningGear=false; break; }
+        const val = await Barcode.scanOnce(videoGear);
+        if (val){
+          const now = Date.now();
+          if (val !== lastGearDetected || now - lastGearBeep > 1500){ beepOK(); lastGearBeep = now; }
+          lastGearDetected = val;
+          await handleLoanAction(val);
+          await new Promise(r=>setTimeout(r, 1000));
+        }
+      }catch(e){}
+    }
+  }
+
+  async function handleLoanAction(code){
+    const who = (loanWho && loanWho.value ? loanWho.value.trim() : '');
+    const qty = Math.max(1, parseInt((loanQty && loanQty.value) ? loanQty.value : '1',10));
+    const dueStr = (loanDue && loanDue.value ? loanDue.value : '');
+    const note = (loanNote && loanNote.value ? loanNote.value.trim() : '');
+
+    let it = await dbGet(code);
+    if (!it){ beepErr(); if (gearLast) gearLast.innerHTML = '❌ Code inconnu : <code>'+escapeHtml(code)+'</code>'; return; }
+
+    if (gearMode==='borrow'){
+      if (!who){ beepErr(); alert('Nom de la personne requis pour un emprunt.'); return; }
+      if ((it.qty||0) < qty){ beepErr(); if (gearLast) gearLast.innerHTML = '❌ Stock insuffisant ('+(it.qty||0)+') pour '+qty; return; }
+      // Ajuste stock
+      it = await dbAdjustQty(code, -qty, { mode:'loan', source:'gear' });
+      // Crée le prêt
+      const dueTs = dueStr ? (new Date(dueStr+'T23:59:59').getTime()) : null;
+      await dbCreateLoan({ barcode: code, name: it.name, borrower: who, qty, start: Date.now(), due: dueTs, note });
+      if (gearLast) gearLast.innerHTML = '✅ Emprunt: '+qty+' × <b>'+escapeHtml(it.name)+'</b> par <b>'+escapeHtml(who)+'</b>';
+      refreshLoansTable(); refreshTable(); refreshJournal();
+    } else {
+      // Retour
+      const ok = await dbReturnLoan(code);
+      if (!ok){ beepErr(); if (gearLast) gearLast.innerHTML = '❌ Aucun emprunt actif trouvé pour <code>'+escapeHtml(code)+'</code>'; return; }
+      it = await dbAdjustQty(code, +qty, { mode:'return', source:'gear' });
+      if (gearLast) gearLast.innerHTML = '⬅️ Retour: '+qty+' × <b>'+escapeHtml(it.name)+'</b>';
+      refreshLoansTable(); refreshTable(); refreshJournal();
+    }
+  }
+
+  // Tableau des emprunts
+  const loansTable = document.getElementById('loansTable');
+  const loansTbody = loansTable ? loansTable.querySelector('tbody') : null;
+  const loanSearch = document.getElementById('loanSearch');
+  const btnExportLoansCsv = document.getElementById('btnExportLoansCsv');
+  if (loanSearch) loanSearch.addEventListener('input', refreshLoansTable);
+  if (btnExportLoansCsv) btnExportLoansCsv.addEventListener('click', async ()=>{
+    const arr = await dbListLoans(false);
+    const headers = ['start','due','returned','returnDate','barcode','name','borrower','qty','note'];
+    const rows = [headers.join(';')];
+    for (const l of arr){
+      rows.push([l.start||'', l.due||'', l.returned?'1':'0', l.returnDate||'', l.barcode, l.name||'', l.borrower||'', l.qty||1, (l.note||'').replace(/;/g,',')].join(';'));
+    }
+    downloadText('emprunts.csv', rows.join('\n'));
+  });
+
+  async function refreshLoansTable(){
+    let loans = await dbListLoans(true); // actifs
+    const q = (loanSearch && loanSearch.value ? loanSearch.value.trim().toLowerCase() : '');
+    if (q){
+      loans = loans.filter(l=>{
+        const s = ((l.barcode||'')+' '+(l.name||'')+' '+(l.borrower||'')+' '+(l.note||'')).toLowerCase();
+        return s.includes(q);
+      });
+    }
+    if (!loansTbody) return;
+    loansTbody.innerHTML = '';
+    const now = Date.now();
+    for (const l of loans){
+      const dueTxt = l.due ? new Date(l.due).toLocaleDateString() : '—';
+      const startTxt = l.start ? new Date(l.start).toLocaleString() : '—';
+      let statusHtml = '<span class="oktext">en cours</span>';
+      if (l.due){
+        if (now > l.due) statusHtml = '<span class="overdue">en retard</span>';
+        else if (l.due - now < 48*3600*1000) statusHtml = '<span class="dueSoon">bientôt dû</span>';
+      }
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="nowrap">${startTxt}</td>
+        <td class="nowrap">${dueTxt}</td>
+        <td>${statusHtml}</td>
+        <td class="nowrap"><code>${escapeHtml(l.barcode)}</code></td>
+        <td>${escapeHtml(l.name||'')}</td>
+        <td>${escapeHtml(l.borrower||'')}</td>
+        <td>${escapeHtml(l.note||'')}</td>
+        <td><button class="btn ok" data-act="return">Marquer rendu</button></td>
+      `;
+      tr.querySelector('[data-act="return"]').addEventListener('click', async ()=>{
+        const ok = await dbReturnLoan(l.barcode);
+        if (!ok){ beepErr(); return; }
+        await dbAdjustQty(l.barcode, + (l.qty||1), { mode:'return', source:'gear' });
+        refreshLoansTable(); refreshTable(); refreshJournal();
+      });
+      loansTbody.appendChild(tr);
+    }
+  }
 
   // Helpers
   function downloadText(filename, text){
