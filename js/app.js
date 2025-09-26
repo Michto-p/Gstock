@@ -24,6 +24,19 @@
     if (name==='labels') refreshLabelItems();
     if (name==='journal') refreshJournal();
     if (name==='gear') { refreshLoansTable(); }
+
+    // Quand on affiche l'onglet Paramètres, rafraîchir le statut d'update
+if (name === 'settings' && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistration('./sw.js').then(reg=>{
+    const status = document.getElementById('updateStatus');
+    const btnApply = document.getElementById('btnApplyUpdate');
+    if (!status || !btnApply) return;
+    if (!reg) { status.textContent = 'Service Worker non actif.'; return; }
+    status.textContent = reg.waiting ? 'Nouvelle version disponible.' : 'Version actuelle chargée.';
+    btnApply.classList.toggle('hide', !reg.waiting);
+  });
+}
+
   }
 
   // Badge réseau
