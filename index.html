@@ -6,28 +6,51 @@
   <title>Stock CFA — Scanner</title>
   <meta name="theme-color" content="#0ea5e9">
   <style>
-    /* ===== Thème clair, lisible ===== */
+    /* ===== Thème clair + barre d’onglets sticky ===== */
     :root{
       --bg:#f6f8fa; --fg:#0b1220; --muted:#5b6b7a; --pri:#0ea5e9;
       --ok:#16a34a; --warn:#f59e0b; --err:#dc2626;
       --card:#ffffff; --bd:#e2e8f0;
+      --header-h: 56px;   /* hauteur header */
+      --nav-h: 44px;      /* hauteur nav */
     }
     *{box-sizing:border-box}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial,sans-serif;background:var(--bg);color:var(--fg)}
-    header{position:sticky;top:0;background:linear-gradient(180deg,#ffffff,#f6f8fa);border-bottom:1px solid var(--bd);padding:8px 10px;display:flex;align-items:center;gap:10px;z-index:5}
+    html,body{margin:0;height:100%}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial,sans-serif;background:var(--bg);color:var(--fg)}
+
+    /* Header collé en haut */
+    header{
+      position:sticky; top:0; z-index:10;
+      height:var(--header-h); display:flex; align-items:center; gap:10px;
+      background:linear-gradient(180deg,#ffffff,#f6f8fa);
+      border-bottom:1px solid var(--bd);
+      padding:0 12px;
+    }
     header h1{font-size:16px;margin:0;font-weight:700}
     header .badge{margin-left:auto;padding:2px 8px;border:1px solid var(--bd);border-radius:999px;color:var(--muted);font-size:12px;background:#fff}
-    #errbar{display:none;position:sticky;top:44px;z-index:6;background:var(--err);color:#fff;padding:8px 12px;font-weight:700}
 
-    /* ===== Onglets plus compacts ===== */
-    nav{display:flex;gap:6px;padding:6px;border-bottom:1px solid var(--bd);background:#fff;position:sticky;top:76px;z-index:4;flex-wrap:wrap}
+    /* Barre d’alerte + ajustement des offsets */
+    #errbar{
+      display:none; position:sticky; top:var(--header-h); z-index:11;
+      background:var(--err); color:#fff; padding:8px 12px; font-weight:700
+    }
+
+    /* Nav collée sous le header, compacte */
+    nav{
+      position:sticky; top:calc(var(--header-h)); z-index:9;
+      display:flex; gap:6px; padding:6px 8px; background:#fff;
+      border-bottom:1px solid var(--bd); flex-wrap:wrap;
+      height:var(--nav-h);
+    }
     nav button{
       flex:0 0 auto; padding:6px 10px; border-radius:10px; border:1px solid var(--bd);
-      background:#ffffff; color:var(--fg); font-weight:600; min-width:96px; font-size:13px;
+      background:#ffffff; color:var(--fg); font-weight:600; min-width:96px; font-size:13px; height:32px;
     }
     nav button.active{outline:2px solid var(--pri); outline-offset:0}
 
-    main{padding:10px;display:grid;gap:10px}
+    /* Contenu : on ajoute un petit padding-top pour ne jamais être masqué
+       (utile si le navigateur gère sticky différemment) */
+    main{padding:12px; display:grid; gap:12px}
     .card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
     .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
     input,select,textarea{background:#fff;color:var(--fg);border:1px solid var(--bd);border-radius:10px;padding:9px 11px;width:100%}
@@ -56,14 +79,16 @@
     .barcode-svg{max-width:220px;background:#fff;padding:4px;border-radius:6px;border:1px solid var(--bd)}
     .overdue{color:#fff;background:#ef4444;padding:2px 8px;border-radius:999px;font-size:12px}
     .dueSoon{color:#201100;background:#f59e0b;padding:2px 8px;border-radius:999px;font-size:12px}
-    @media(min-width:900px){main{max-width:1100px;margin:0 auto}}
+
+    @media(min-width:900px){
+      main{max-width:1100px;margin:0 auto}
+    }
   </style>
 
-  <!-- PWA: manifest + SW registration (mise à jour via Paramètres) -->
+  <!-- PWA: manifest + SW (l’UI d’update est dans Paramètres) -->
   <script>
     if (location.protocol.startsWith('http')) {
       const l = document.createElement('link'); l.rel='manifest'; l.href='manifest.json'; document.head.appendChild(l);
-      // On enregistre le SW; l’UI d’update est contrôlée depuis l’onglet Paramètres (voir script en bas)
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', ()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
       }
@@ -75,6 +100,7 @@
     <h1>📦 Stock CFA — Scanner</h1>
     <span class="badge" id="badge">hors ligne</span>
   </header>
+
   <div id="errbar"></div>
 
   <nav>
@@ -145,23 +171,130 @@
 
     <!-- Matériel (emprunts/retours) -->
     <section id="tab-gear" class="card hide">
-      <!-- (conserve exactement le contenu que je t’ai donné en v1.5.0) -->
-      <!-- … -->
+      <h3>Emprunt & Retour de matériel</h3>
+      <div class="row">
+        <button class="pill" id="gearModeBorrow">Emprunter</button>
+        <button class="pill" id="gearModeReturn">Retour</button>
+        <span id="gearModeText" class="pill">Mode: Emprunter</span>
+      </div>
+
+      <div class="grid two">
+        <div class="card">
+          <div class="row">
+            <label>Nom de la personne</label>
+            <input id="loanWho" placeholder="Nom & prénom"/>
+          </div>
+          <div class="row">
+            <label>Date retour prévue</label>
+            <input id="loanDue" type="date"/>
+          </div>
+          <div class="row">
+            <label>Commentaire</label>
+            <input id="loanNote" placeholder="pile HS, accessoire manquant, etc."/>
+          </div>
+          <div class="row">
+            <label>Quantité</label>
+            <input id="loanQty" type="number" min="1" value="1"/>
+          </div>
+          <div class="row">
+            <button id="gearStart" class="btn secondary">Démarrer caméra</button>
+            <button id="gearStop" class="btn secondary">Arrêter</button>
+            <button id="gearTorch" class="btn secondary">Lampe</button>
+            <button id="gearTest" class="btn secondary">Tester une détection</button>
+          </div>
+          <div class="scanbox">
+            <video id="videoGear" playsinline muted></video>
+            <div class="overlay"></div>
+          </div>
+          <div id="gearLast" class="muted"></div>
+        </div>
+
+        <div class="card">
+          <h4>Emprunts en cours</h4>
+          <div class="row">
+            <input id="loanSearch" placeholder="Filtrer (code, nom matériel, personne)"/>
+            <button id="btnExportLoansCsv" class="btn secondary">Export CSV</button>
+          </div>
+          <div style="overflow:auto; max-height:60vh">
+            <table id="loansTable">
+              <thead>
+                <tr>
+                  <th>Début</th><th>Prévu</th><th>Statut</th><th>Code</th><th>Matériel</th><th>Personne</th><th>Note</th><th>Action</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- Nouveau -->
     <section id="tab-new" class="card hide">
-      <!-- (inchangé) -->
+      <div class="grid">
+        <div class="row two">
+          <div style="flex:1">
+            <label>Nom</label>
+            <input id="newName" placeholder="Ex. Voltmètre, Perceuse, etc."/>
+          </div>
+          <div>
+            <label>Quantité initiale</label>
+            <input id="newQty" type="number" value="0" min="0"/>
+          </div>
+        </div>
+        <div class="row two">
+          <div>
+            <label>Seuil d'alerte</label>
+            <input id="newMin" type="number" value="5" min="0"/>
+          </div>
+          <div>
+            <label>Code (barcode)</label>
+            <input id="newCode" placeholder="Laisser vide pour auto"/>
+          </div>
+        </div>
+        <div>
+          <label>Tags (virgules)</label>
+          <input id="newTags" placeholder="consommable, atelier, TP"/>
+        </div>
+        <div class="row">
+          <button id="createItem" class="btn ok">Créer</button>
+        </div>
+      </div>
     </section>
 
     <!-- Étiquettes -->
     <section id="tab-labels" class="card hide">
-      <!-- (inchangé) -->
+      <div class="row">
+        <select id="labelItem"></select>
+        <input id="labelCount" type="number" min="1" value="10" />
+        <button id="btnRenderLabel" class="btn">Générer l'étiquette</button>
+        <button id="btnRenderAllLabels" class="btn secondary">Toutes les étiquettes</button>
+      </div>
+      <div id="labelPreview" class="card"></div>
+      <div class="row">
+        <button id="btnPrintLabels" class="btn secondary">Imprimer / PDF</button>
+      </div>
     </section>
 
     <!-- Journal -->
     <section id="tab-journal" class="card hide">
-      <!-- (inchangé) -->
+      <div class="row">
+        <input id="journalSearch" placeholder="Filtrer (nom / code / mode / source)" />
+        <button id="btnExportMovesCsv" class="btn secondary">Export CSV</button>
+        <button id="btnExportMovesJson" class="btn secondary">Export JSON</button>
+        <input type="file" id="fileImportMovesCsv" accept=".csv,text/csv" class="hide"/>
+        <button id="btnImportMovesCsv" class="btn secondary">Importer CSV</button>
+        <button id="btnClearMoves" class="btn warn">Vider le journal</button>
+      </div>
+      <div style="overflow:auto">
+        <table id="journalTable">
+          <thead><tr>
+            <th class="nowrap">Date/Heure</th><th>Code</th><th>Nom</th>
+            <th class="nowrap">Δ Qté</th><th class="nowrap">Qté après</th><th>Mode</th><th>Source</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </section>
 
     <!-- Paramètres -->
@@ -192,39 +325,30 @@
   <footer>Made for CFA — PWA hors-ligne. © <span id="year"></span></footer>
   <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
 
-  <script src="js/db.js?v=1.6.1"></script>
-  <script src="js/barcode.js?v=1.6.1"></script>
-  <script src="js/app.js?v=1.6.1"></script>
+  <!-- Tes scripts (garde tes versions actuelles) -->
+  <script src="js/db.js?v=1.6.2"></script>
+  <script src="js/barcode.js?v=1.6.2"></script>
+  <script src="js/app.js?v=1.6.2"></script>
 
-  <!-- Gestion UI des mises à jour (interagit avec sw.js) -->
+  <!-- Panneau de mise à jour dans Paramètres -->
   <script>
     (function(){
       if (!('serviceWorker' in navigator) || !location.protocol.startsWith('http')) return;
       let reg = null;
+      const $ = (id)=>document.getElementById(id);
+      const status = $('updateStatus'), btnCheck = $('btnCheckUpdate'), btnApply = $('btnApplyUpdate');
 
-      function $(id){ return document.getElementById(id); }
-      const box = $('updateBox'), status = $('updateStatus'), btnCheck = $('btnCheckUpdate'), btnApply = $('btnApplyUpdate');
-
-      // Récupère l’instance du SW déjà enregistrée (par le script dans <head>)
       navigator.serviceWorker.getRegistration('./sw.js').then(r=>{
-        reg = r;
-        wire();
-      }).catch(()=>{ wire(); });
+        reg = r; wire();
+      }).catch(()=> wire());
 
       function showApply(){
         if (status) status.textContent = 'Nouvelle version disponible.';
         if (btnApply) btnApply.classList.remove('hide');
       }
-
       function wire(){
-        if (!reg){
-          if (status) status.textContent = "Service Worker non actif.";
-          return;
-        }
-        // Si une version est déjà en attente
+        if (!reg){ if (status) status.textContent = "Service Worker non actif."; return; }
         if (reg.waiting) showApply();
-
-        // Sur découverte d’une nouvelle update
         reg.addEventListener('updatefound', ()=>{
           const installing = reg.installing;
           if (!installing) return;
@@ -234,24 +358,21 @@
             }
           });
         });
-
-        // Bouton "Vérifier"
         if (btnCheck) btnCheck.addEventListener('click', async ()=>{
           if (status) status.textContent = 'Recherche de mise à jour…';
           try{
-            await reg.update(); // déclenche updatefound si nouvelle version
+            await reg.update();
             if (!reg.waiting && status) status.textContent = 'Version actuelle chargée.';
-          }catch(e){
-            if (status) status.textContent = 'Erreur de vérification.';
-          }
+          }catch(e){ if (status) status.textContent = 'Erreur de vérification.'; }
         });
-
-        // Bouton "Mettre à jour"
         if (btnApply) btnApply.addEventListener('click', ()=>{
           const waiting = reg.waiting;
-          if (!waiting) return location.reload();
-          waiting.postMessage({ type: 'SKIP_WAITING' });
-          navigator.serviceWorker.addEventListener('controllerchange', ()=> location.reload());
+          if (waiting){
+            waiting.postMessage({ type:'SKIP_WAITING' });
+            navigator.serviceWorker.addEventListener('controllerchange', ()=> location.reload());
+          } else {
+            location.reload();
+          }
         });
       }
     })();
