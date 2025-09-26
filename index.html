@@ -47,12 +47,52 @@
     .dueSoon{color:#201100;background:#f59e0b;padding:2px 8px;border-radius:999px;font-size:12px}
     @media(min-width:900px){main{max-width:1100px;margin:0 auto}}
   </style>
-  <script>
-    if (location.protocol.startsWith('http')) {
-      const l = document.createElement('link'); l.rel='manifest'; l.href='manifest.json'; document.head.appendChild(l);
-      if ('serviceWorker' in navigator) { window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{})); }
-    }
-  </script>
+<script>
+  // Enregistrement SW + bandeau de mise à jour
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    window.addEventListener('load', async () => {
+      try{
+        const reg = await navigator.serviceWorker.register('./sw.js');
+
+        // Quand un SW “waiting” existe (nouvelle version installée), on affiche un bandeau
+        function showUpdateBar() {
+          const bar = document.getElementById('updateBar');
+          if (bar) bar.style.display = 'flex';
+        }
+
+        // si déjà waiting (page ouverte pendant une maj)
+        if (reg.waiting) showUpdateBar();
+
+        // nouvelle update trouvée => écoute l’état
+        reg.addEventListener('updatefound', () => {
+          const newSW = reg.installing;
+          if (!newSW) return;
+          newSW.addEventListener('statechange', () => {
+            if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+              showUpdateBar();
+            }
+          });
+        });
+
+        // bouton “Mettre à jour” -> skipWaiting + reload
+        const btn = document.getElementById('btnUpdateNow');
+        if (btn) btn.addEventListener('click', async () => {
+          const waiting = reg.waiting;
+          if (waiting) {
+            waiting.postMessage({ type: 'SKIP_WAITING' });
+            // Quand le nouveau SW prend le contrôle, cet event se déclenche
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+              location.reload();
+            });
+          } else {
+            location.reload();
+          }
+        });
+      }catch(e){ /* ignore */ }
+    });
+  }
+</script>
+
 </head>
 <body>
   <header>
@@ -60,6 +100,10 @@
     <span class="badge" id="badge">hors ligne</span>
   </header>
   <div id="errbar"></div>
+<div id="updateBar" style="display:none;position:sticky;top:48px;z-index:7;background:#10b981;color:#00140c;padding:10px 12px;font-weight:700;display:flex;gap:10px;align-items:center;">
+  Nouvelle version disponible.
+  <button id="btnUpdateNow" class="btn" style="background:#064e3b;color:#fff;border:0;padding:6px 10px;border-radius:8px;">Mettre à jour</button>
+</div>
 
   <nav>
     <button data-tab="scan" class="active">Scanner</button>
