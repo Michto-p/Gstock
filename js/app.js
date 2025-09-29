@@ -1,4 +1,4 @@
-// js/app.js — v1.7.0 : tags prédéfinis (filtre/tri) + code couleur stock + sauvegarde via fichier
+// js/app.js — v1.7.1 : réassort + indicateur + réintégration "Matériel" (refreshLoansTable)
 (function(){
   const errbar = document.getElementById('errbar');
   function showError(msg){ if (!errbar) return; errbar.textContent = msg; errbar.style.display = 'block'; }
@@ -34,7 +34,7 @@
   window.addEventListener('offline', updateBadge);
   updateBadge();
 
-  // ========== SCANNER STOCK (identique à v1.5.0, bip OK/err) ==========
+  // ========== SCANNER STOCK ==========
   const video = document.getElementById('video');
   const scanStatus = document.getElementById('scanStatus');
   const qtyInput = document.getElementById('qty');
@@ -108,7 +108,7 @@
     refreshTable(); refreshJournal();
   }
 
-  // ========== TABLEAU ARTICLES : filtre/tri TAGS + code couleur ==========
+  // ========== TABLEAU ARTICLES : filtre/tri TAGS + code couleur + réassort ==========
   const search = document.getElementById('search');
   const itemsTable = document.getElementById('itemsTable');
   const itemsTbody = itemsTable ? itemsTable.querySelector('tbody') : null;
@@ -116,12 +116,12 @@
   const addDummyBtn = document.getElementById('addDummy');
   const presetFilter = document.getElementById('presetFilter');
   const presetSort = document.getElementById('presetSort');
+  const stockBadges = document.getElementById('stockBadges');
+  const btnExportReassort = document.getElementById('btnExportReassort');
 
-  // ▶ presets & buffer (chargés depuis Paramètres)
   let TAG_PRESETS = loadPresets();        // Array<string>
   let WARN_BUFFER = loadWarnBuffer();     // number
 
-  // init UI
   function populatePresetFilter(){
     if (!presetFilter) return;
     const cur = presetFilter.value || '';
@@ -141,6 +141,8 @@
   if (presetFilter) presetFilter.addEventListener('change', refreshTable);
   if (presetSort) presetSort.addEventListener('change', refreshTable);
   if (addDummyBtn) addDummyBtn.addEventListener('click', async ()=>{ await dbEnsureDemo(); scheduleFileSave(); refreshTable(); });
+
+  if (btnExportReassort) btnExportReassort.addEventListener('click', exportReassortCsv);
 
   let sortKey = 'name', sortAsc = true;
   if (itemsTable){
@@ -164,19 +166,17 @@
     const q = (search && search.value ? search.value : '').trim().toLowerCase();
     const tagFilter = (presetFilter && presetFilter.value) ? presetFilter.value : '';
     let items = await dbList('');
-    // filtre rapide texte
     if (q){
       items = items.filter(it=>{
         const s = ((it.name||'')+' '+(it.barcode||'')+' '+(it.tags||[]).join(' ')+' '+(it.location||'')).toLowerCase();
         return s.includes(q);
       });
     }
-    // filtre tag prédéfini
     if (tagFilter){
       items = items.filter(it => (it.tags||[]).map(t=>String(t).toLowerCase()).includes(tagFilter.toLowerCase()));
     }
 
-    // tri personnalisé (select) prioritaire
+    // tri (sélecteur)
     if (presetSort && presetSort.value){
       const v = presetSort.value;
       if (v==='qtyAsc') items.sort((a,b)=>(a.qty||0)-(b.qty||0));
@@ -198,8 +198,11 @@
     itemsTbody.innerHTML = '';
     const showCodes = !!(chkShowBarcodes && chkShowBarcodes.checked);
 
+    let cntAlert=0, cntWarn=0;
     for (const it of items){
-      const st = getStatus(it); // {level:'ok'|'warn'|'alert'}
+      const st = getStatus(it);
+      if (st.level==='alert') cntAlert++; else if (st.level==='warn') cntWarn++;
+
       const tr = document.createElement('tr');
       tr.classList.add(st.level==='ok'?'lvl-ok':st.level==='warn'?'lvl-warn':'lvl-alert');
 
@@ -239,9 +242,32 @@
 
       itemsTbody.appendChild(tr);
     }
+    // indicateur haut de page
+    if (stockBadges){
+      const parts = [];
+      if (cntAlert>0) parts.push(`🔴 <b>${cntAlert}</b> sous seuil`);
+      if (cntWarn>0) parts.push(`🟠 <b>${cntWarn}</b> en approche`);
+      stockBadges.innerHTML = parts.length? parts.join(' · ') : 'OK';
+    }
   }
 
-  // ========== NOUVEAU (création) ==========
+  // ▶ Export réassort CSV (articles avec qty ≤ min + buffer)
+  async function exportReassortCsv(){
+    const items = await dbList('');
+    const rows = [['barcode','name','qty','min','buffer','status','tags'].join(';')];
+    for (const it of items){
+      const st = getStatus(it);
+      if (st.level==='ok') continue;
+      rows.push([
+        it.barcode, (it.name||'').replace(/;/g,','), it.qty||0, it.min||0, WARN_BUFFER,
+        (st.level==='alert'?'UNDER':'NEAR'),
+        (it.tags||[]).join(',').replace(/;/g, ',')
+      ].join(';'));
+    }
+    downloadText('reassort.csv', rows.join('\n'));
+  }
+
+  // ========== NOUVEAU ==========
   const newName = document.getElementById('newName');
   const newQty = document.getElementById('newQty');
   const newMin = document.getElementById('newMin');
@@ -267,7 +293,7 @@
   });
   function genSku(){ const n = Math.floor(Math.random()*99999).toString().padStart(5,'0'); return "CFA-"+n; }
 
-  // ========== ÉTIQUETTES (libellé déjà sous le code-barres) ==========
+  // ========== ÉTIQUETTES ==========
   const labelItem = document.getElementById('labelItem');
   const labelCount = document.getElementById('labelCount');
   const labelPreview = document.getElementById('labelPreview');
@@ -290,7 +316,6 @@
     }catch(e){
       svgOne = Barcode.renderCode128Svg(String(code), { moduleWidth: 3, height: 90, margin: 12, fontSize: 13 });
     }
-    // ▶ libellé encore + visible (gras)
     return `<div class="lbl">${svgOne}<div class="ln" style="font-weight:700;margin-top:4px">${esc(name)}</div></div>`;
   }
   function renderSheet(html){
@@ -321,7 +346,7 @@
     window.print();
   });
 
-  // ========== JOURNAL (identique) ==========
+  // ========== JOURNAL ==========
   const journalTableBody = (document.getElementById('journalTable')||{}).querySelector ? document.getElementById('journalTable').querySelector('tbody') : null;
   const journalSearch = document.getElementById('journalSearch');
   const btnExportMovesCsv = document.getElementById('btnExportMovesCsv');
@@ -360,12 +385,154 @@
     }
   }
 
-  // ========== MATERIEL (emprunts/retours) — inchangé vs v1.5.0 ==========
-  // (pour économiser de la place ici, garde exactement la logique de ta v1.5.0 :
-  // gearModeBorrow/Return, start/stop camera vidéoGear, handleLoanAction, refreshLoansTable, etc.)
-  // Si tu as perdu le fichier, dis-le et je recolle la section complète.
+  // ========== MATERIEL (emprunts/retours) — rétabli ==========
+  const gearModeBorrow = document.getElementById('gearModeBorrow');
+  const gearModeReturn = document.getElementById('gearModeReturn');
+  const gearModeText = document.getElementById('gearModeText');
+  let gearMode = 'borrow';
+  if (gearModeBorrow) gearModeBorrow.classList.add('active');
+  if (gearModeBorrow) gearModeBorrow.addEventListener('click', ()=>{ gearMode='borrow'; gearModeBorrow.classList.add('active'); gearModeReturn && gearModeReturn.classList.remove('active'); if (gearModeText) gearModeText.textContent='Mode: Emprunter'; });
+  if (gearModeReturn) gearModeReturn.addEventListener('click', ()=>{ gearMode='return'; gearModeReturn.classList.add('active'); gearModeBorrow && gearModeBorrow.classList.remove('active'); if (gearModeText) gearModeText.textContent='Mode: Retour'; });
 
-  // ========== PARAMÈTRES : presets + fichier (FS Access) ==========
+  const loanWho = document.getElementById('loanWho');
+  const loanDue = document.getElementById('loanDue');
+  const loanNote = document.getElementById('loanNote');
+  const loanQty = document.getElementById('loanQty');
+
+  const videoGear = document.getElementById('videoGear');
+  const gearStart = document.getElementById('gearStart');
+  const gearStop = document.getElementById('gearStop');
+  const gearTorch = document.getElementById('gearTorch');
+  const gearTest = document.getElementById('gearTest');
+  const gearLast = document.getElementById('gearLast');
+
+  let scanningGear = false, lastGearDetected = '', lastGearBeep = 0;
+
+  async function startGear(){
+    try{
+      scanningGear = true;
+      await Barcode.startCamera(videoGear);
+      if (gearLast) gearLast.innerHTML = '🎥 Caméra active — scannez le matériel.';
+      loopGear();
+    }catch(e){ showError('Caméra (matériel) indisponible : ' + (e && e.message ? e.message : e)); }
+  }
+  if (gearStart) gearStart.addEventListener('click', startGear);
+  if (gearStop) gearStop.addEventListener('click', ()=>{
+    scanningGear=false;
+    try{ if (videoGear && videoGear.srcObject){ videoGear.srcObject.getTracks().forEach(t=>t.stop()); videoGear.pause(); videoGear.srcObject=null; } }catch(e){}
+    Barcode.stopCamera();
+    if (gearLast) gearLast.innerHTML = '⏹️ Caméra arrêtée.';
+  });
+  if (gearTorch) gearTorch.addEventListener('click', async ()=>{
+    const on = await Barcode.toggleTorch();
+    if (gearLast) gearLast.innerHTML = on ? '💡 Lampe ON' : '💡 Lampe OFF';
+  });
+  if (gearTest) gearTest.addEventListener('click', async ()=>{
+    const v = await Barcode.scanOnce(videoGear);
+    if (v){ if (v!==lastGearDetected){ lastGearDetected=v; beepOK(); } if (gearLast) gearLast.innerHTML = '🔎 Détecté : <b>'+v+'</b>'; }
+    else if (gearLast) gearLast.innerHTML = 'Aucune détection.';
+  });
+
+  async function loopGear(){
+    while(scanningGear){
+      await delay(650);
+      try{
+        if (!videoGear || !videoGear.srcObject) { scanningGear=false; break; }
+        const val = await Barcode.scanOnce(videoGear);
+        if (val){
+          const now = Date.now();
+          if (val !== lastGearDetected || now - lastGearBeep > 1500){ beepOK(); lastGearBeep = now; }
+          lastGearDetected = val;
+          await handleLoanAction(val);
+          await delay(1000);
+        }
+      }catch(e){}
+    }
+  }
+
+  async function handleLoanAction(code){
+    const who = (loanWho && loanWho.value ? loanWho.value.trim() : '');
+    const qty = Math.max(1, parseInt((loanQty && loanQty.value) ? loanQty.value : '1',10));
+    const dueStr = (loanDue && loanDue.value ? loanDue.value : '');
+    const note = (loanNote && loanNote.value ? loanNote.value.trim() : '');
+
+    let it = await dbGet(code);
+    if (!it){ beepErr(); if (gearLast) gearLast.innerHTML = '❌ Code inconnu : <code>'+esc(code)+'</code>'; return; }
+
+    if (gearMode==='borrow'){
+      if (!who){ beepErr(); alert('Nom de la personne requis pour un emprunt.'); return; }
+      if ((it.qty||0) < qty){ beepErr(); if (gearLast) gearLast.innerHTML = '❌ Stock insuffisant ('+(it.qty||0)+') pour '+qty; return; }
+      it = await dbAdjustQty(code, -qty, { mode:'loan', source:'gear' });
+      const dueTs = dueStr ? (new Date(dueStr+'T23:59:59').getTime()) : null;
+      await dbCreateLoan({ barcode: code, name: it.name, borrower: who, qty, start: Date.now(), due: dueTs, note });
+      if (gearLast) gearLast.innerHTML = '✅ Emprunt: '+qty+' × <b>'+esc(it.name)+'</b> par <b>'+esc(who)+'</b>';
+      refreshLoansTable(); refreshTable(); refreshJournal();
+    } else {
+      const ok = await dbReturnLoan(code);
+      if (!ok){ beepErr(); if (gearLast) gearLast.innerHTML = '❌ Aucun emprunt actif pour <code>'+esc(code)+'</code>'; return; }
+      it = await dbAdjustQty(code, +qty, { mode:'return', source:'gear' });
+      if (gearLast) gearLast.innerHTML = '⬅️ Retour: '+qty+' × <b>'+esc(it.name)+'</b>';
+      refreshLoansTable(); refreshTable(); refreshJournal();
+    }
+  }
+
+  const loansTable = document.getElementById('loansTable');
+  const loansTbody = loansTable ? loansTable.querySelector('tbody') : null;
+  const loanSearch = document.getElementById('loanSearch');
+  const btnExportLoansCsv = document.getElementById('btnExportLoansCsv');
+  if (loanSearch) loanSearch.addEventListener('input', refreshLoansTable);
+  if (btnExportLoansCsv) btnExportLoansCsv.addEventListener('click', async ()=>{
+    const arr = await dbListLoans(false);
+    const headers = ['start','due','returned','returnDate','barcode','name','borrower','qty','note'];
+    const rows = [headers.join(';')];
+    for (const l of arr){
+      rows.push([l.start||'', l.due||'', l.returned?'1':'0', l.returnDate||'', l.barcode, l.name||'', l.borrower||'', l.qty||1, (l.note||'').replace(/;/g,',')].join(';'));
+    }
+    downloadText('emprunts.csv', rows.join('\n'));
+  });
+
+  async function refreshLoansTable(){
+    if (!loansTbody) return;
+    let loans = await dbListLoans(true); // actifs
+    const q = (loanSearch && loanSearch.value ? loanSearch.value.trim().toLowerCase() : '');
+    if (q){
+      loans = loans.filter(l=>{
+        const s = ((l.barcode||'')+' '+(l.name||'')+' '+(l.borrower||'')+' '+(l.note||'')).toLowerCase();
+        return s.includes(q);
+      });
+    }
+    loansTbody.innerHTML = '';
+    const now = Date.now();
+    for (const l of loans){
+      const dueTxt = l.due ? new Date(l.due).toLocaleDateString() : '—';
+      const startTxt = l.start ? new Date(l.start).toLocaleString() : '—';
+      let statusHtml = '<span class="oktext">en cours</span>';
+      if (l.due){
+        if (now > l.due) statusHtml = '<span class="overdue">en retard</span>';
+        else if (l.due - now < 48*3600*1000) statusHtml = '<span class="dueSoon">bientôt dû</span>';
+      }
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="nowrap">${startTxt}</td>
+        <td class="nowrap">${dueTxt}</td>
+        <td>${statusHtml}</td>
+        <td class="nowrap"><code>${esc(l.barcode)}</code></td>
+        <td>${esc(l.name||'')}</td>
+        <td>${esc(l.borrower||'')}</td>
+        <td>${esc(l.note||'')}</td>
+        <td><button class="btn ok" data-act="return">Marquer rendu</button></td>
+      `;
+      tr.querySelector('[data-act="return"]').addEventListener('click', async ()=>{
+        const ok = await dbReturnLoan(l.barcode);
+        if (!ok){ beepErr(); return; }
+        await dbAdjustQty(l.barcode, + (l.qty||1), { mode:'return', source:'gear' });
+        refreshLoansTable(); refreshTable(); refreshJournal();
+      });
+      loansTbody.appendChild(tr);
+    }
+  }
+
+  // ========== PARAMÈTRES : presets + fichier ==========
   const presetTags = document.getElementById('presetTags');
   const warnBufferInput = document.getElementById('warnBuffer');
   const btnSavePresets = document.getElementById('btnSavePresets');
@@ -375,16 +542,13 @@
   const fileStatus = document.getElementById('fileStatus');
   const autoSaveChk = document.getElementById('autoSave');
 
-  // Mémoire fichier ouvert
-  let fileHandle = null;       // handle vers stock-data.json
+  let fileHandle = null;
   let saveTimer = null;
 
   function initSettingsPanel(){
-    // presets -> UI
     if (presetTags) presetTags.value = TAG_PRESETS.join(', ');
     if (warnBufferInput) warnBufferInput.value = String(WARN_BUFFER);
-    // statut fichier
-    if (fileStatus) fileStatus.textContent = fileHandle ? 'Fichier actif: ' + fileHandle.name : 'Aucun fichier ouvert';
+    if (fileStatus) fileStatus.textContent = fileHandle ? 'Fichier actif: ' + (fileHandle.name||'stock-data.json') : 'Aucun fichier ouvert';
     if (autoSaveChk) autoSaveChk.checked = localStorage.getItem('autoSave')==='1';
   }
 
@@ -409,8 +573,7 @@
       return;
     }
     try{
-      // Choix ouvrir OU créer
-      let choice = await chooseOpenOrCreate();
+      let choice = await new Promise(res=>{ const ok = confirm("OK = Ouvrir un fichier existant\nAnnuler = Créer un nouveau fichier"); res(ok?'open':'create'); });
       if (choice === 'open'){
         const [h] = await window.showOpenFilePicker({
           multiple:false,
@@ -424,38 +587,23 @@
           suggestedName:'stock-data.json',
           types:[{description:'Stock data JSON', accept:{'application/json':['.json']}}]
         });
-        await saveAllToFile(); // crée le squelette
+        await saveAllToFile();
       }
       if (fileStatus) fileStatus.textContent = 'Fichier actif: ' + (fileHandle.name || 'stock-data.json');
-      alert('Fichier actif prêt. Les changements pourront être enregistrés dedans.');
+      alert('Fichier actif prêt.');
     }catch(e){
       if (e && e.name==='AbortError') return;
       showError('Fichier: ' + (e.message||e));
     }
   }
-  async function chooseOpenOrCreate(){
-    return new Promise(resolve=>{
-      const ok = confirm("OK = Ouvrir un fichier existant\nAnnuler = Créer un nouveau fichier");
-      resolve(ok?'open':'create');
-    });
-  }
-
   async function loadFromFileHandle(h){
     const f = await h.getFile();
     const text = await f.text();
     let data = {};
     try{ data = JSON.parse(text||'{}'); }catch(e){ data={}; }
-    // structure attendue :
-    // { items:[], moves:[], loans:[], presets:{ tags:[], warnBuffer:2 } }
     if (Array.isArray(data.items)) await importItemsJson(JSON.stringify(data.items));
-    if (Array.isArray(data.moves)){
-      // import moves : simple ajout
-      for (const m of data.moves){ await dbAddMove(m); }
-    }
-    if (Array.isArray(data.loans) && window.dbCreateLoan){
-      // on injecte seulement les prêts "actifs" pour éviter doublons
-      for (const l of data.loans){ if (l && !l.returned) await dbCreateLoan(l); }
-    }
+    if (Array.isArray(data.moves)){ for (const m of data.moves){ await dbAddMove(m); } }
+    if (Array.isArray(data.loans) && window.dbCreateLoan){ for (const l of data.loans){ if (l && !l.returned) await dbCreateLoan(l); } }
     if (data.presets){
       TAG_PRESETS = Array.isArray(data.presets.tags)? data.presets.tags : TAG_PRESETS;
       WARN_BUFFER = Number.isFinite(data.presets.warnBuffer)? data.presets.warnBuffer : WARN_BUFFER;
@@ -463,22 +611,15 @@
       localStorage.setItem('warnBuffer', String(WARN_BUFFER));
     }
     populatePresetFilter(); initSettingsPanel();
-    refreshTable(); refreshLabelItems(); refreshJournal(); if (sections.gear) { /* refreshLoansTable(); */ }
+    refreshTable(); refreshLabelItems(); refreshJournal(); refreshLoansTable();
   }
-
   async function saveAllToFile(){
-    if (!fileHandle){
-      alert('Aucun fichier actif. Cliquez “Ouvrir / créer un fichier…” d’abord.');
-      return;
-    }
+    if (!fileHandle){ alert('Aucun fichier actif. Cliquez “Ouvrir / créer un fichier…” d’abord.'); return; }
     try{
       const items = JSON.parse(await exportItemsJson());
       const moves = JSON.parse(await exportMovesJson());
       const loans = (window.dbListLoans ? await dbListLoans(false) : []);
-      const blob = new Blob([ JSON.stringify({
-        items, moves, loans,
-        presets:{ tags: TAG_PRESETS, warnBuffer: WARN_BUFFER }
-      }, null, 2) ], {type:'application/json'});
+      const blob = new Blob([ JSON.stringify({ items, moves, loans, presets:{ tags: TAG_PRESETS, warnBuffer: WARN_BUFFER } }, null, 2) ], {type:'application/json'});
       const w = await fileHandle.createWritable();
       await w.write(blob); await w.close();
       if (fileStatus) fileStatus.textContent = 'Enregistré dans ' + (fileHandle.name||'stock-data.json') + ' à ' + new Date().toLocaleTimeString();
@@ -490,7 +631,7 @@
     saveTimer = setTimeout(saveAllToFile, 800);
   }
 
-  // ========== HELPERS ==========
+  // Helpers
   function delay(ms){ return new Promise(r=>setTimeout(r, ms)); }
   function esc(s){ return (s||'').replace(/[&<>"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
   function downloadText(filename, text){
@@ -504,6 +645,4 @@
     const v = parseInt(localStorage.getItem('warnBuffer')||'2',10); return Number.isFinite(v)&&v>=0 ? v : 2;
   }
 
-  // Afficher l’onglet initial
-  // showTab('items');
 })();
