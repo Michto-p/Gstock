@@ -3,147 +3,604 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Stock CFA — Scanner</title>
+  <title>Stock CFA — Scanner V2.0</title>
   <meta name="theme-color" content="#0ea5e9">
   <style>
     :root{
-      --bg:#f6f8fa; --fg:#0b1220; --muted:#5b6b7a; --pri:#0ea5e9;
-      --ok:#16a34a; --warn:#f59e0b; --err:#dc2626;
-      --card:#ffffff; --bd:#e2e8f0;
-      --header-h: 56px; --nav-h: 44px;
+      --bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      --bg-card: rgba(255, 255, 255, 0.95);
+      --bg-glass: rgba(255, 255, 255, 0.1);
+      --fg: #1a202c; 
+      --muted: #4a5568; 
+      --pri: #0ea5e9;
+      --pri-dark: #0284c7;
+      --ok: #10b981; 
+      --warn: #f59e0b; 
+      --err: #ef4444;
+      --card: #ffffff; 
+      --bd: rgba(226, 232, 240, 0.3);
+      --shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+      --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.15);
+      --header-h: 64px; 
+      --nav-h: 52px;
+      --border-radius: 16px;
     }
-    *{box-sizing:border-box}
-    html,body{margin:0;height:100%}
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial,sans-serif;background:var(--bg);color:var(--fg)}
-    header{position:sticky;top:0;z-index:10;height:var(--header-h);display:flex;align-items:center;gap:10px;background:linear-gradient(180deg,#ffffff,#f6f8fa);border-bottom:1px solid var(--bd);padding:0 12px}
-    header h1{font-size:16px;margin:0;font-weight:700}
-    header .badge{margin-left:auto;padding:2px 8px;border:1px solid var(--bd);border-radius:999px;color:var(--muted);font-size:12px;background:#fff}
-    #errbar{display:none;position:sticky;top:var(--header-h);z-index:11;background:var(--err);color:#fff;padding:8px 12px;font-weight:700}
-    nav{position:sticky;top:calc(var(--header-h));z-index:9;display:flex;gap:6px;padding:6px 8px;background:#fff;border-bottom:1px solid var(--bd);flex-wrap:wrap;height:var(--nav-h)}
-    nav button{flex:0 0 auto;padding:6px 10px;border-radius:10px;border:1px solid var(--bd);background:#ffffff;color:var(--fg);font-weight:600;min-width:96px;font-size:13px;height:32px}
-    nav button.active{outline:2px solid var(--pri);outline-offset:0}
-    main{padding:12px;display:grid;gap:12px}
-    .card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
-    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-    input,select,textarea{background:#fff;color:var(--fg);border:1px solid var(--bd);border-radius:10px;padding:9px 11px;width:100%}
-    input[type=number]{max-width:140px}
-    label{font-size:12px;color:var(--muted)}
-    .btn{background:var(--pri);color:#fff;border:none;border-radius:10px;padding:9px 12px;font-weight:700}
-    .btn.secondary{background:#fff;color:var(--fg);border:1px solid var(--bd)}
-    .btn.warn{background:#f59e0b;color:#201100}
-    .btn.ok{background:#16a34a;color:#fff}
-    .muted{color:var(--muted)}
-    .scanbox{position:relative;border-radius:12px;overflow:hidden;border:1px dashed var(--bd);background:#000}
-    video{width:100%;height:auto;display:block;background:#000}
-    .overlay{position:absolute;inset:0;outline:2px dashed rgba(14,165,233,.35);pointer-events:none}
-    .grid{display:grid;gap:8px}
-    .two{grid-template-columns:1fr 1fr}
-    .hide{display:none}
-    footer{padding:20px 10px;color:var(--muted);text-align:center}
-    table{width:100%;border-collapse:collapse;background:#fff}
-    th,td{border-bottom:1px solid var(--bd);padding:8px;text-align:left;font-size:14px;vertical-align:top}
-    th{cursor:pointer;user-select:none;background:#fafbfc}
-    .nowrap{white-space:nowrap}
-    .tags{display:flex;gap:6px;flex-wrap:wrap}
-    .tag{background:#f1f5f9;border:1px solid var(--bd);padding:2px 6px;border-radius:999px;font-size:12px;color:#0b1220}
-    .barcode-svg{max-width:220px;background:#fff;padding:4px;border-radius:6px;border:1px solid var(--bd)}
-    .overdue{color:#fff;background:#ef4444;padding:2px 8px;border-radius:999px;font-size:12px}
-    .dueSoon{color:#201100;background:#f59e0b;padding:2px 8px;border-radius:999px;font-size:12px}
-    .lvl-ok{background:#ecfdf5}
-    .lvl-warn{background:#fff7ed}
-    .lvl-alert{background:#fef2f2}
-    @media(min-width:900px){main{max-width:1100px;margin:0 auto}}
+    
+    * { box-sizing: border-box; }
+    
+    html, body { 
+      margin: 0; 
+      height: 100%; 
+      font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Arial, sans-serif;
+    }
+    
+    body { 
+      background: var(--bg);
+      color: var(--fg);
+      min-height: 100vh;
+    }
+    
+    /* Glass morphism header */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      height: var(--header-h);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      background: var(--bg-glass);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--bd);
+      padding: 0 20px;
+      box-shadow: var(--shadow);
+    }
+    
+    header h1 {
+      font-size: 20px;
+      margin: 0;
+      font-weight: 800;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    
+    header .badge {
+      margin-left: auto;
+      padding: 6px 12px;
+      border: 1px solid var(--bd);
+      border-radius: 20px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      background: var(--bg-glass);
+      backdrop-filter: blur(10px);
+    }
+    
+    /* Error bar */
+    #errbar {
+      display: none;
+      position: sticky;
+      top: var(--header-h);
+      z-index: 99;
+      background: var(--err);
+      color: #fff;
+      padding: 12px 20px;
+      font-weight: 600;
+      animation: slideDown 0.3s ease;
+    }
+    
+    @keyframes slideDown {
+      from { transform: translateY(-100%); }
+      to { transform: translateY(0); }
+    }
+    
+    /* Modern navigation */
+    nav {
+      position: sticky;
+      top: calc(var(--header-h));
+      z-index: 90;
+      display: flex;
+      gap: 8px;
+      padding: 12px 16px;
+      background: var(--bg-glass);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--bd);
+      overflow-x: auto;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    
+    nav::-webkit-scrollbar { display: none; }
+    
+    nav button {
+      flex: 0 0 auto;
+      padding: 10px 16px;
+      border-radius: 12px;
+      border: 1px solid var(--bd);
+      background: var(--bg-glass);
+      color: var(--fg);
+      font-weight: 600;
+      min-width: 100px;
+      font-size: 14px;
+      height: 40px;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(10px);
+    }
+    
+    nav button:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow);
+    }
+    
+    nav button.active {
+      background: var(--pri);
+      color: white;
+      border-color: var(--pri);
+      box-shadow: var(--shadow);
+    }
+    
+    /* Main content */
+    main {
+      padding: 20px;
+      display: grid;
+      gap: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    /* Enhanced cards */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--bd);
+      border-radius: var(--border-radius);
+      padding: 24px;
+      box-shadow: var(--shadow-lg);
+      backdrop-filter: blur(20px);
+      transition: all 0.3s ease;
+    }
+    
+    .card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.2);
+    }
+    
+    .card h3 {
+      margin: 0 0 20px 0;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--pri);
+    }
+    
+    /* Form elements */
+    .row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    
+    input, select, textarea {
+      background: rgba(255, 255, 255, 0.9);
+      color: var(--fg);
+      border: 2px solid var(--bd);
+      border-radius: 12px;
+      padding: 12px 16px;
+      width: 100%;
+      font-size: 14px;
+      transition: all 0.3s ease;
+    }
+    
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--pri);
+      box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+    }
+    
+    input[type=number] { max-width: 140px; }
+    
+    label {
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 600;
+      margin-bottom: 4px;
+      display: block;
+    }
+    
+    /* Enhanced buttons */
+    .btn {
+      background: linear-gradient(135deg, var(--pri), var(--pri-dark));
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 12px 20px;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: var(--shadow);
+    }
+    
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-lg);
+    }
+    
+    .btn:active {
+      transform: translateY(0);
+    }
+    
+    .btn.secondary {
+      background: rgba(255, 255, 255, 0.9);
+      color: var(--fg);
+      border: 2px solid var(--bd);
+    }
+    
+    .btn.warn {
+      background: linear-gradient(135deg, var(--warn), #d97706);
+      color: white;
+    }
+    
+    .btn.ok {
+      background: linear-gradient(135deg, var(--ok), #059669);
+      color: white;
+    }
+    
+    .btn.danger {
+      background: linear-gradient(135deg, var(--err), #dc2626);
+      color: white;
+    }
+    
+    /* Scanner box */
+    .scanbox {
+      position: relative;
+      border-radius: var(--border-radius);
+      overflow: hidden;
+      border: 2px dashed var(--pri);
+      background: #000;
+      min-height: 300px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    video {
+      width: 100%;
+      height: auto;
+      display: block;
+      background: #000;
+      border-radius: var(--border-radius);
+    }
+    
+    .overlay {
+      position: absolute;
+      inset: 20px;
+      outline: 3px dashed rgba(14, 165, 233, 0.5);
+      pointer-events: none;
+      border-radius: 12px;
+    }
+    
+    /* Grid layouts */
+    .grid { display: grid; gap: 16px; }
+    .two { grid-template-columns: 1fr 1fr; }
+    .three { grid-template-columns: repeat(3, 1fr); }
+    .four { grid-template-columns: repeat(4, 1fr); }
+    
+    @media (max-width: 768px) {
+      .two, .three, .four { grid-template-columns: 1fr; }
+    }
+    
+    .hide { display: none; }
+    
+    /* Enhanced tables */
+    .table-container {
+      overflow: auto;
+      border-radius: var(--border-radius);
+      box-shadow: var(--shadow);
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+    }
+    
+    th, td {
+      border-bottom: 1px solid var(--bd);
+      padding: 12px 16px;
+      text-align: left;
+      font-size: 14px;
+      vertical-align: top;
+    }
+    
+    th {
+      cursor: pointer;
+      user-select: none;
+      background: linear-gradient(135deg, #f8fafc, #e2e8f0);
+      font-weight: 700;
+      color: var(--pri);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    
+    th:hover {
+      background: linear-gradient(135deg, #e2e8f0, #cbd5e1);
+    }
+    
+    tr:hover {
+      background: rgba(14, 165, 233, 0.05);
+    }
+    
+    /* Status indicators */
+    .status-badge {
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      text-align: center;
+      min-width: 80px;
+      display: inline-block;
+    }
+    
+    .status-ok { background: #d1fae5; color: #065f46; }
+    .status-warn { background: #fef3c7; color: #92400e; }
+    .status-alert { background: #fee2e2; color: #991b1b; }
+    
+    /* Tags */
+    .tags {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    
+    .tag {
+      background: linear-gradient(135deg, #e0e7ff, #c7d2fe);
+      border: 1px solid #a5b4fc;
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      color: #3730a3;
+      font-weight: 600;
+    }
+    
+    /* Statistics cards */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    
+    .stat-card {
+      background: var(--bg-glass);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--bd);
+      border-radius: var(--border-radius);
+      padding: 20px;
+      text-align: center;
+      transition: all 0.3s ease;
+    }
+    
+    .stat-card:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-lg);
+    }
+    
+    .stat-number {
+      font-size: 32px;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+    
+    .stat-label {
+      font-size: 14px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    
+    /* Animations */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .card {
+      animation: fadeIn 0.5s ease;
+    }
+    
+    /* Dark mode support */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --fg: #f7fafc;
+        --muted: #a0aec0;
+        --bg-card: rgba(26, 32, 44, 0.95);
+        --card: #2d3748;
+      }
+    }
+    
+    /* Mobile optimizations */
+    @media (max-width: 768px) {
+      main { padding: 16px; }
+      .card { padding: 16px; }
+      header { padding: 0 16px; }
+      nav { padding: 8px 12px; }
+      .row { flex-direction: column; align-items: stretch; }
+    }
+    
+    /* Loading states */
+    .loading {
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .loading::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+      animation: loading 1.5s infinite;
+    }
+    
+    @keyframes loading {
+      0% { left: -100%; }
+      100% { left: 100%; }
+    }
+    
+    /* Footer */
+    footer {
+      padding: 40px 20px;
+      text-align: center;
+      color: var(--muted);
+      background: var(--bg-glass);
+      backdrop-filter: blur(20px);
+      margin-top: 40px;
+    }
   </style>
 
   <script>
     if (location.protocol.startsWith('http')) {
-      const l = document.createElement('link'); l.rel='manifest'; l.href='manifest.json'; document.head.appendChild(l);
-      if ('serviceWorker' in navigator) { window.addEventListener('load', ()=>navigator.serviceWorker.register('./sw.js').catch(()=>{})); }
+      const l = document.createElement('link'); 
+      l.rel='manifest'; 
+      l.href='manifest.json'; 
+      document.head.appendChild(l);
+      if ('serviceWorker' in navigator) { 
+        window.addEventListener('load', ()=>navigator.serviceWorker.register('./sw.js').catch(()=>{})); 
+      }
     }
   </script>
 </head>
 <body>
   <header>
-    <h1>📦 Stock CFA — Scanner</h1>
+    <h1>📦 Stock CFA — Scanner V2.0</h1>
     <span class="badge" id="badge">hors ligne</span>
   </header>
+  
   <div id="errbar"></div>
 
   <nav>
-    <button data-tab="scan" class="active">Scanner</button>
-    <button data-tab="items">Articles</button>
-    <button data-tab="gear">Matériel</button>
-    <button data-tab="new">Nouveau</button>
-    <button data-tab="labels">Étiquettes</button>
-    <button data-tab="journal">Journal</button>
-    <button data-tab="settings">Paramètres</button>
+    <button data-tab="dashboard" class="active">📊 Tableau de bord</button>
+    <button data-tab="scan">📱 Scanner</button>
+    <button data-tab="items">📋 Articles</button>
+    <button data-tab="gear">🔧 Matériel</button>
+    <button data-tab="new">➕ Nouveau</button>
+    <button data-tab="labels">🏷️ Étiquettes</button>
+    <button data-tab="journal">📖 Journal</button>
+    <button data-tab="settings">⚙️ Paramètres</button>
   </nav>
 
   <main>
-    <!-- Scanner -->
-    <section id="tab-scan" class="card">
-      <div class="grid">
-        <div class="row">
-          <button class="pill" id="modeOut">− Sortie</button>
-          <button class="pill" id="modeIn">+ Entrée</button>
-          <span class="pill" id="scanStatus">Mode: Sortie</span>
-          <span class="muted">(BarcodeDetector)</span>
+    <!-- Dashboard -->
+    <section id="tab-dashboard" class="card">
+      <h3>📊 Tableau de bord</h3>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-number" id="totalItems" style="color: var(--pri);">0</div>
+          <div class="stat-label">Articles total</div>
         </div>
-        <div class="row">
-          <button id="btnStartScan" class="btn secondary">Démarrer caméra</button>
-          <button id="btnStopScan" class="btn secondary">Arrêter</button>
-          <button id="btnTorch" class="btn secondary">Lampe</button>
-          <button id="btnTestDetect" class="btn secondary">Tester une détection</button>
+        <div class="stat-card">
+          <div class="stat-number" id="lowStock" style="color: var(--err);">0</div>
+          <div class="stat-label">Stock faible</div>
         </div>
-        <div class="scanbox">
-          <video id="video" playsinline muted></video>
-          <div class="overlay"></div>
+        <div class="stat-card">
+          <div class="stat-number" id="totalValue" style="color: var(--ok);">0€</div>
+          <div class="stat-label">Valeur totale</div>
         </div>
-        <div class="row">
-          <label>Quantité</label>
-          <input type="number" id="qty" value="1" min="1" step="1"/>
+        <div class="stat-card">
+          <div class="stat-number" id="activeLoans" style="color: var(--warn);">0</div>
+          <div class="stat-label">Emprunts actifs</div>
         </div>
-        <div id="lastOp" class="muted"></div>
       </div>
+      
+      <div class="grid two">
+        <div>
+          <h4>🔴 Articles en rupture</h4>
+          <div id="outOfStock" class="muted">Aucun article en rupture</div>
+        </div>
+        <div>
+          <h4>📈 Activité récente</h4>
+          <div id="recentActivity" class="muted">Aucune activité récente</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Scanner -->
+    <section id="tab-scan" class="card hide">
+      <h3>📱 Scanner de codes-barres</h3>
+      <div class="row">
+        <button id="modeOut" class="btn">📤 Sortie</button>
+        <button id="modeIn" class="btn secondary">📥 Entrée</button>
+        <div>
+          <label>Quantité</label>
+          <input id="qty" type="number" value="1" min="1" style="max-width:80px" />
+        </div>
+        <span id="scanStatus" class="muted">Mode: Sortie</span>
+      </div>
+
+      <div class="scanbox">
+        <video id="video" muted playsinline></video>
+        <div class="overlay"></div>
+      </div>
+
+      <div class="row">
+        <button id="btnStartScan" class="btn">🎥 Démarrer le scan</button>
+        <button id="btnStopScan" class="btn secondary">⏹️ Arrêter</button>
+        <button id="btnTorch" class="btn secondary">💡 Lampe</button>
+        <button id="btnTestDetect" class="btn secondary">🔍 Test détection</button>
+      </div>
+
+      <div id="lastOp" class="muted">Prêt à scanner.</div>
     </section>
 
     <!-- Articles -->
     <section id="tab-items" class="card hide">
+      <h3>📋 Gestion des articles</h3>
       <div class="row">
-        <input id="search" placeholder="Rechercher nom / code / tags" />
+        <input id="search" placeholder="🔍 Rechercher nom / code / tags" />
         <label class="row" style="align-items:center;gap:6px">
           <input type="checkbox" id="chkShowBarcodes"/>
           <span>Afficher les codes-barres</span>
         </label>
-        <button id="addDummy" class="btn secondary">+ Démo</button>
+        <button id="addDummy" class="btn secondary">📦 Ajouter démo</button>
         <span id="stockBadges" class="muted" style="margin-left:auto"></span>
       </div>
 
       <div class="row">
-        <label style="min-width:160px">Tag prédéfini</label>
-        <select id="presetFilter" style="min-width:220px"><option value="">(Tous)</option></select>
-        <label style="min-width:160px">Tri</label>
-        <select id="presetSort" style="min-width:220px">
-          <option value="name">Nom A→Z</option>
-          <option value="qtyAsc">Qté (croissant)</option>
-          <option value="qtyDesc">Qté (décroissant)</option>
-          <option value="status">Statut stock (critique d’abord)</option>
-          <option value="tag">Tag (A→Z)</option>
-        </select>
-        <button id="btnExportReassort" class="btn">Export réassort CSV</button>
+        <div>
+          <label>Filtrer par tag</label>
+          <select id="presetFilter" style="min-width:200px">
+            <option value="">(Tous)</option>
+          </select>
+        </div>
+        <div>
+          <label>Trier par</label>
+          <select id="presetSort" style="min-width:200px">
+            <option value="name">Nom A→Z</option>
+            <option value="qtyAsc">Quantité (croissant)</option>
+            <option value="qtyDesc">Quantité (décroissant)</option>
+            <option value="status">Statut stock</option>
+            <option value="tag">Tag (A→Z)</option>
+          </select>
+        </div>
+        <button id="btnExportReassort" class="btn warn">📊 Export réassort</button>
       </div>
 
-      <div style="overflow:auto">
+      <div class="table-container">
         <table id="itemsTable">
           <thead>
             <tr>
-              <th data-sort="name">Nom</th>
-              <th data-sort="barcode">Code</th>
-              <th data-sort="qty" class="nowrap">Qté</th>
-              <th data-sort="min" class="nowrap">Seuil</th>
-              <th>Tags</th>
-              <th>Code-barres</th>
-              <th>Actions</th>
+              <th data-sort="name">📝 Nom</th>
+              <th data-sort="barcode">🏷️ Code</th>
+              <th data-sort="qty">📊 Quantité</th>
+              <th data-sort="min">⚠️ Seuil</th>
+              <th>🏷️ Tags</th>
+              <th>📋 Code-barres</th>
+              <th>⚡ Actions</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -153,127 +610,159 @@
 
     <!-- Matériel -->
     <section id="tab-gear" class="card hide">
-      <h3>Emprunt & Retour de matériel</h3>
+      <h3>🔧 Gestion du matériel</h3>
       <div class="row">
-        <button class="pill" id="gearModeBorrow">Emprunter</button>
-        <button class="pill" id="gearModeReturn">Retour</button>
-        <span id="gearModeText" class="pill">Mode: Emprunter</span>
+        <button id="gearModeBorrow" class="btn">📤 Emprunter</button>
+        <button id="gearModeReturn" class="btn secondary">📥 Retour</button>
+        <span id="gearModeText" class="muted">Mode: Emprunter</span>
+      </div>
+      
+      <div class="grid two">
+        <div>
+          <label>👤 Nom de la personne</label>
+          <input id="loanWho" placeholder="Nom complet" />
+        </div>
+        <div>
+          <label>📊 Quantité</label>
+          <input id="loanQty" type="number" value="1" min="1" />
+        </div>
+        <div>
+          <label>📅 Date limite (optionnel)</label>
+          <input id="loanDue" type="date" />
+        </div>
+        <div>
+          <label>📝 Note (optionnel)</label>
+          <input id="loanNote" placeholder="Remarques..." />
+        </div>
       </div>
 
-      <div class="grid two">
-        <div class="card">
-          <div class="row">
-            <label>Nom de la personne</label>
-            <input id="loanWho" placeholder="Nom & prénom"/>
-          </div>
-          <div class="row">
-            <label>Date retour prévue</label>
-            <input id="loanDue" type="date"/>
-          </div>
-          <div class="row">
-            <label>Commentaire</label>
-            <input id="loanNote" placeholder="pile HS, accessoire manquant, etc."/>
-          </div>
-          <div class="row">
-            <label>Quantité</label>
-            <input id="loanQty" type="number" min="1" value="1"/>
-          </div>
-          <div class="row">
-            <button id="gearStart" class="btn secondary">Démarrer caméra</button>
-            <button id="gearStop" class="btn secondary">Arrêter</button>
-            <button id="gearTorch" class="btn secondary">Lampe</button>
-            <button id="gearTest" class="btn secondary">Tester une détection</button>
-          </div>
-          <div class="scanbox">
-            <video id="videoGear" playsinline muted></video>
-            <div class="overlay"></div>
-          </div>
-          <div id="gearLast" class="muted"></div>
-        </div>
+      <div class="scanbox">
+        <video id="videoGear" muted playsinline></video>
+        <div class="overlay"></div>
+      </div>
 
-        <div class="card">
-          <h4>Emprunts en cours</h4>
-          <div class="row">
-            <input id="loanSearch" placeholder="Filtrer (code, nom matériel, personne)"/>
-            <button id="btnExportLoansCsv" class="btn secondary">Export CSV</button>
-          </div>
-          <div style="overflow:auto; max-height:60vh">
-            <table id="loansTable">
-              <thead>
-                <tr>
-                  <th>Début</th><th>Prévu</th><th>Statut</th><th>Code</th><th>Matériel</th><th>Personne</th><th>Note</th><th>Action</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </div>
+      <div class="row">
+        <button id="gearStart" class="btn">🎥 Démarrer le scan</button>
+        <button id="gearStop" class="btn secondary">⏹️ Arrêter</button>
+        <button id="gearTorch" class="btn secondary">💡 Lampe</button>
+        <button id="gearTest" class="btn secondary">🔍 Test détection</button>
+      </div>
+
+      <div id="gearLast" class="muted">Prêt à scanner.</div>
+
+      <h4>📋 Emprunts en cours</h4>
+      <div class="row">
+        <input id="loanSearch" placeholder="🔍 Rechercher emprunts..." />
+        <button id="btnExportLoansCsv" class="btn secondary">📊 Export CSV</button>
+      </div>
+      
+      <div class="table-container">
+        <table id="loansTable">
+          <thead>
+            <tr>
+              <th>📅 Début</th>
+              <th>⏰ Échéance</th>
+              <th>📊 Statut</th>
+              <th>🏷️ Code</th>
+              <th>📝 Nom</th>
+              <th>👤 Emprunteur</th>
+              <th>📝 Note</th>
+              <th>⚡ Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
       </div>
     </section>
 
     <!-- Nouveau -->
     <section id="tab-new" class="card hide">
-      <div class="grid">
-        <div class="row two">
-          <div style="flex:1">
-            <label>Nom</label>
-            <input id="newName" placeholder="Ex. Voltmètre, Perceuse, etc."/>
-          </div>
-          <div>
-            <label>Quantité initiale</label>
-            <input id="newQty" type="number" value="0" min="0"/>
-          </div>
-        </div>
-        <div class="row two">
-          <div>
-            <label>Seuil d'alerte</label>
-            <input id="newMin" type="number" value="5" min="0"/>
-          </div>
-          <div>
-            <label>Code (barcode)</label>
-            <input id="newCode" placeholder="Laisser vide pour auto"/>
-          </div>
+      <h3>➕ Créer un nouvel article</h3>
+      <div class="grid two">
+        <div>
+          <label>📝 Nom de l'article *</label>
+          <input id="newName" placeholder="Ex: Multimètre" />
         </div>
         <div>
-          <label>Tags (virgules)</label>
-          <input id="newTags" placeholder="consommable, atelier, TP"/>
+          <label>🏷️ Code-barres (auto si vide)</label>
+          <input id="newCode" placeholder="Ex: CFA-12345" />
         </div>
-        <div class="row">
-          <button id="createItem" class="btn ok">Créer</button>
+        <div>
+          <label>📊 Quantité initiale</label>
+          <input id="newQty" type="number" value="0" min="0" />
+        </div>
+        <div>
+          <label>⚠️ Seuil minimum</label>
+          <input id="newMin" type="number" value="5" min="0" />
+        </div>
+        <div>
+          <label>💰 Prix unitaire (€)</label>
+          <input id="newPrice" type="number" value="0" min="0" step="0.01" />
+        </div>
+        <div>
+          <label>📍 Emplacement</label>
+          <input id="newLocation" placeholder="Ex: Armoire A, Étagère 2" />
         </div>
       </div>
+      
+      <div>
+        <label>🏷️ Tags (séparés par des virgules)</label>
+        <input id="newTags" placeholder="Ex: atelier, mesure, outillage" />
+      </div>
+      
+      <div class="row">
+        <button id="createItem" class="btn">✅ Créer l'article</button>
+        <button id="btnGenerateQR" class="btn secondary">📱 Générer QR Code</button>
+      </div>
+      
+      <div id="qrPreview"></div>
     </section>
 
     <!-- Étiquettes -->
     <section id="tab-labels" class="card hide">
+      <h3>🏷️ Génération d'étiquettes</h3>
       <div class="row">
-        <select id="labelItem"></select>
-        <input id="labelCount" type="number" min="1" value="10" />
-        <button id="btnRenderLabel" class="btn">Générer l'étiquette</button>
-        <button id="btnRenderAllLabels" class="btn secondary">Toutes les étiquettes</button>
+        <div>
+          <label>📦 Article</label>
+          <select id="labelItem"></select>
+        </div>
+        <div>
+          <label>📊 Nombre d'étiquettes</label>
+          <input id="labelCount" type="number" value="1" min="1" max="50" />
+        </div>
+        <button id="btnRenderLabel" class="btn">🏷️ Générer</button>
+        <button id="btnRenderAllLabels" class="btn secondary">📋 Tous les articles</button>
+        <button id="btnPrintLabels" class="btn ok">🖨️ Imprimer</button>
       </div>
-      <div id="labelPreview" class="card"></div>
-      <div class="row">
-        <button id="btnPrintLabels" class="btn secondary">Imprimer / PDF</button>
-      </div>
+      
+      <div id="labelPreview"></div>
     </section>
 
     <!-- Journal -->
     <section id="tab-journal" class="card hide">
+      <h3>📖 Journal des mouvements</h3>
       <div class="row">
-        <input id="journalSearch" placeholder="Filtrer (nom / code / mode / source)" />
-        <button id="btnExportMovesCsv" class="btn secondary">Export CSV</button>
-        <button id="btnExportMovesJson" class="btn secondary">Export JSON</button>
-        <input type="file" id="fileImportMovesCsv" accept=".csv,text/csv" class="hide"/>
-        <button id="btnImportMovesCsv" class="btn secondary">Importer CSV</button>
-        <button id="btnClearMoves" class="btn warn">Vider le journal</button>
+        <input id="journalSearch" placeholder="🔍 Rechercher dans le journal..." />
+        <button id="btnExportMovesCsv" class="btn secondary">📊 Export CSV</button>
+        <button id="btnExportMovesJson" class="btn secondary">📄 Export JSON</button>
+        <input type="file" id="fileImportMovesCsv" accept=".csv" class="hide"/>
+        <button id="btnImportMovesCsv" class="btn secondary">📥 Import CSV</button>
+        <button id="btnClearMoves" class="btn danger">🗑️ Vider le journal</button>
       </div>
-      <div style="overflow:auto">
+      
+      <div class="table-container">
         <table id="journalTable">
-          <thead><tr>
-            <th class="nowrap">Date/Heure</th><th>Code</th><th>Nom</th>
-            <th class="nowrap">Δ Qté</th><th class="nowrap">Qté après</th><th>Mode</th><th>Source</th>
-          </tr></thead>
+          <thead>
+            <tr>
+              <th>📅 Date/Heure</th>
+              <th>🏷️ Code</th>
+              <th>📝 Nom</th>
+              <th>📊 Δ</th>
+              <th>📦 Stock après</th>
+              <th>🔄 Mode</th>
+              <th>📍 Source</th>
+            </tr>
+          </thead>
           <tbody></tbody>
         </table>
       </div>
@@ -281,72 +770,131 @@
 
     <!-- Paramètres -->
     <section id="tab-settings" class="card hide">
-      <h3>Paramètres & Import/Export</h3>
-      <div class="row">
-        <button id="btnExportItemsCsv" class="btn secondary">Export Articles CSV</button>
-        <button id="btnExportItemsJson" class="btn secondary">Export Articles JSON</button>
-        <input type="file" id="fileImportItemsCsv" accept=".csv,text/csv" class="hide"/>
-        <button id="btnImportItemsCsv" class="btn secondary">Importer Articles CSV</button>
-        <input type="file" id="fileImportJson" accept="application/json,text/json" class="hide"/>
-        <button id="btnImportJson" class="btn secondary">Importer Articles JSON</button>
+      <h3>⚙️ Paramètres & Configuration</h3>
+      
+      <div class="grid two">
+        <div>
+          <h4>📊 Import/Export Articles</h4>
+          <div class="row">
+            <button id="btnExportItemsCsv" class="btn secondary">📊 Export CSV</button>
+            <button id="btnExportItemsJson" class="btn secondary">📄 Export JSON</button>
+          </div>
+          <div class="row">
+            <input type="file" id="fileImportItemsCsv" accept=".csv,text/csv" class="hide"/>
+            <button id="btnImportItemsCsv" class="btn secondary">📥 Import CSV</button>
+            <input type="file" id="fileImportJson" accept="application/json,text/json" class="hide"/>
+            <button id="btnImportJson" class="btn secondary">📥 Import JSON</button>
+          </div>
+        </div>
+        
+        <div>
+          <h4>💾 Sauvegarde fichier</h4>
+          <div class="row">
+            <button id="btnOpenDataFile" class="btn secondary">📁 Ouvrir fichier</button>
+            <button id="btnSaveNow" class="btn secondary">💾 Sauvegarder</button>
+          </div>
+          <div class="row">
+            <label class="row" style="align-items:center;gap:6px">
+              <input type="checkbox" id="autoSave"/> 
+              <span>Auto-sauvegarde</span>
+            </label>
+            <span id="fileStatus" class="muted">Aucun fichier ouvert</span>
+          </div>
+        </div>
       </div>
 
-      <hr style="border:none;border-top:1px solid var(--bd);margin:10px 0">
+      <hr style="border:none;border-top:1px solid var(--bd);margin:20px 0">
 
-      <h4>Tags prédéfinis</h4>
-      <p class="muted">Liste séparée par des virgules. Sert au filtre & tri.</p>
+      <h4>🏷️ Configuration des tags</h4>
+      <p class="muted">Liste des tags prédéfinis (séparés par des virgules)</p>
       <textarea id="presetTags" rows="3" placeholder="atelier, mesure, outillage, consommable"></textarea>
+      
       <div class="row">
-        <label>Marges d’alerte (approche du seuil)</label>
-        <input id="warnBuffer" type="number" min="0" value="2" style="max-width:120px"/>
-        <button id="btnSavePresets" class="btn ok">Enregistrer</button>
+        <div>
+          <label>⚠️ Marge d'alerte (stock faible)</label>
+          <input id="warnBuffer" type="number" min="0" value="2" style="max-width:120px"/>
+        </div>
+        <button id="btnSavePresets" class="btn ok">💾 Enregistrer</button>
       </div>
 
-      <hr style="border:none;border-top:1px solid var(--bd);margin:10px 0">
+      <hr style="border:none;border-top:1px solid var(--bd);margin:20px 0">
 
-      <h4>Données via fichier (multi-utilisateurs)</h4>
-      <div class="row">
-        <button id="btnOpenDataFile" class="btn secondary">Ouvrir / créer un fichier…</button>
-        <button id="btnSaveNow" class="btn secondary">Enregistrer maintenant</button>
-        <label class="row" style="align-items:center;gap:6px"><input type="checkbox" id="autoSave"/> Auto-sauvegarde</label>
-        <span id="fileStatus" class="muted">Aucun fichier ouvert</span>
-      </div>
-      <p class="muted">Format: un seul fichier <code>stock-data.json</code> (articles, journal, prêts, presets).</p>
-
-      <hr style="border:none;border-top:1px solid var(--bd);margin:10px 0">
-
-      <h4>Mises à jour</h4>
+      <h4>🔄 Mises à jour</h4>
       <div id="updateBox" class="row" style="align-items:center">
-        <button id="btnCheckUpdate" class="btn secondary">Vérifier les mises à jour</button>
+        <button id="btnCheckUpdate" class="btn secondary">🔍 Vérifier</button>
         <span id="updateStatus" class="muted">Version actuelle chargée.</span>
-        <button id="btnApplyUpdate" class="btn ok hide">Mettre à jour maintenant</button>
+        <button id="btnApplyUpdate" class="btn ok hide">⬆️ Mettre à jour</button>
       </div>
 
-      <p class="muted">Caméra : HTTPS ou <code>http://localhost</code>. Version <b>BarcodeDetector only</b>.</p>
+      <p class="muted">
+        📱 Caméra disponible sur HTTPS ou localhost<br>
+        🔧 Version BarcodeDetector native<br>
+        💾 Données stockées localement (IndexedDB)
+      </p>
     </section>
   </main>
 
-  <footer>Made for CFA — PWA hors-ligne. © <span id="year"></span></footer>
+  <footer>
+    <p>Made with ❤️ for CFA — PWA Application hors-ligne</p>
+    <p>© <span id="year"></span> - Version 2.0</p>
+  </footer>
+  
   <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
 
-  <script src="js/db.js?v=1.7.0"></script>
-  <script src="js/barcode.js?v=1.7.0"></script>
-  <script src="js/app.js?v=1.7.1"></script>
+  <script src="js/db.js?v=2.0.0"></script>
+  <script src="js/barcode.js?v=2.0.0"></script>
+  <script src="js/app.js?v=2.0.0"></script>
 
-  <!-- Panneau de mise à jour (si tu utilises sw.js) -->
+  <!-- Service Worker et mises à jour -->
   <script>
     (function(){
       if (!('serviceWorker' in navigator) || !location.protocol.startsWith('http')) return;
-      let reg = null; const $=(id)=>document.getElementById(id);
+      let reg = null; 
+      const $=(id)=>document.getElementById(id);
       const status=$('updateStatus'), btnCheck=$('btnCheckUpdate'), btnApply=$('btnApplyUpdate');
+      
       navigator.serviceWorker.getRegistration('./sw.js').then(r=>{reg=r;wire();}).catch(()=>wire());
-      function showApply(){ if(status) status.textContent='Nouvelle version disponible.'; if(btnApply) btnApply.classList.remove('hide');}
+      
+      function showApply(){ 
+        if(status) status.textContent='🎉 Nouvelle version disponible!'; 
+        if(btnApply) btnApply.classList.remove('hide');
+      }
+      
       function wire(){
-        if(!reg){ if(status) status.textContent="Service Worker non actif."; return; }
+        if(!reg){ 
+          if(status) status.textContent="❌ Service Worker non actif."; 
+          return; 
+        }
         if(reg.waiting) showApply();
-        reg.addEventListener('updatefound', ()=>{ const i=reg.installing; if(!i)return; i.addEventListener('statechange', ()=>{ if(i.state==='installed'&&navigator.serviceWorker.controller){ showApply(); } }); });
-        if(btnCheck) btnCheck.addEventListener('click', async()=>{ if(status) status.textContent='Recherche…'; try{ await reg.update(); if(!reg.waiting&&status) status.textContent='Version actuelle chargée.'; }catch(e){ if(status) status.textContent='Erreur de vérification.'; } });
-        if(btnApply) btnApply.addEventListener('click', ()=>{ const w=reg.waiting; if(w){ w.postMessage({type:'SKIP_WAITING'}); navigator.serviceWorker.addEventListener('controllerchange', ()=>location.reload()); } else { location.reload(); } });
+        reg.addEventListener('updatefound', ()=>{ 
+          const i=reg.installing; 
+          if(!i)return; 
+          i.addEventListener('statechange', ()=>{ 
+            if(i.state==='installed'&&navigator.serviceWorker.controller){ 
+              showApply(); 
+            } 
+          }); 
+        });
+        
+        if(btnCheck) btnCheck.addEventListener('click', async()=>{ 
+          if(status) status.textContent='🔍 Recherche de mises à jour...'; 
+          try{ 
+            await reg.update(); 
+            if(!reg.waiting&&status) status.textContent='✅ Version actuelle à jour.'; 
+          }catch(e){ 
+            if(status) status.textContent='❌ Erreur de vérification.'; 
+          } 
+        });
+        
+        if(btnApply) btnApply.addEventListener('click', ()=>{ 
+          const w=reg.waiting; 
+          if(w){ 
+            w.postMessage({type:'SKIP_WAITING'}); 
+            navigator.serviceWorker.addEventListener('controllerchange', ()=>location.reload()); 
+          } else { 
+            location.reload(); 
+          } 
+        });
       }
     })();
   </script>
