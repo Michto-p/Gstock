@@ -41,7 +41,7 @@
     .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;padding:.1rem .35rem;border:1px solid #d1d5db;border-bottom-width:2px;border-radius:.35rem}
   </style>
   <script>
-    window.APP_VERSION = '2.0.2'; // <- bump
+    window.APP_VERSION = '2.0.3';
     (function(){
       const saved = localStorage.getItem('gstock.theme');
       const prefersDark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
@@ -54,7 +54,7 @@
     <div style="display:flex;align-items:center;gap:.6rem">
       <img src="icons/icon-192.png" alt="" width="28" height="28" style="border-radius:6px">
       <strong>Gstock</strong><span class="muted">— Gestion de stock</span>
-      <span class="pill muted">v<span id="appVersion">2.0.2</span></span>
+      <span class="pill muted">v<span id="appVersion">2.0.3</span></span>
     </div>
     <div class="toggle">
       <label for="themeToggle" class="muted">Thème</label>
@@ -114,11 +114,11 @@
       </table>
     </section>
 
-    <!-- Scanner (nouveau : 1 bouton = 1 scan) -->
+    <!-- Scanner -->
     <section id="tab-scanner" hidden>
       <div class="toolbar">
         <button id="btnScanOnce" class="btn primary">Scanner un article</button>
-        <span class="muted">La caméra s’ouvre, *bip* à la détection, puis la saisie quantité s’affiche.</span>
+        <span class="muted">Bip uniquement si l’article est reconnu. Les codes inconnus ne ferment pas la caméra.</span>
       </div>
     </section>
 
@@ -180,7 +180,7 @@
     </section>
   </main>
 
-  <!-- Modale AJUSTEMENT (existe déjà) -->
+  <!-- Modale AJUSTEMENT -->
   <dialog id="adjustDialog">
     <header style="display:flex;justify-content:space-between;align-items:center;padding:.75rem 1rem">
       <strong>Ajuster le stock</strong>
@@ -202,15 +202,20 @@
     </div>
   </dialog>
 
-  <!-- Nouvelle modale SCAN -->
+  <!-- Modale SCAN améliorée -->
   <dialog id="scanDialog">
     <header style="display:flex;justify-content:space-between;align-items:center;padding:.75rem 1rem">
       <strong>Scanner un article</strong>
-      <button id="scanClose" class="btn">Fermer</button>
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <button id="scanTorch" class="btn" title="Activer la lampe (si disponible)">Lampe</button>
+        <button id="scanClose" class="btn">Fermer</button>
+      </div>
     </header>
     <div class="content">
       <video id="scanVideo" playsinline style="width:100%;max-height:55vh;background:#000;border-radius:8px"></video>
-      <p class="muted" style="margin:.5rem 0 0">Visez le code-barres. À la détection : *bip* puis la saisie quantité s’ouvre.</p>
+      <p id="scanHint" class="muted" style="margin:.5rem 0 0">
+        Visez le code-barres. Les codes inconnus ne ferment pas la caméra.
+      </p>
     </div>
     <div class="actions">
       <button id="scanCancel" class="btn">Annuler</button>
@@ -219,9 +224,9 @@
 
   <div id="sr" class="sr-only" aria-live="polite"></div>
 
-  <script src="js/db.js?v=2.0.2"></script>
-  <script src="js/barcode.js?v=2.0.2"></script>
-  <script src="js/app.js?v=2.0.2"></script>
+  <script src="js/db.js?v=2.0.3"></script>
+  <script src="js/barcode.js?v=2.0.3"></script>
+  <script src="js/app.js?v=2.0.3"></script>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js?v=' + window.APP_VERSION).then(reg=>{
