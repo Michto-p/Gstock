@@ -1,89 +1,82 @@
-// sw.js — update-friendly, no IndexedDB touches
-const CACHE_VERSION = 'v2.0.0';
-const RUNTIME = `stock-cfa-${CACHE_VERSION}`;
+/* Gstock - sw.js */
+const APP_VERSION = (new URL(self.location)).searchParams.get('v') || '2.0.1';
+const CACHE_PREFIX = 'gstock-cache-';
+const STATIC_CACHE = `${CACHE_PREFIX}${APP_VERSION}`;
 
-self.addEventListener('install', (event) => {
-  // On n'installe rien de bloquant : laisse le SW se mettre en place vite
-  self.skipWaiting(); // On active au plus tôt, mais on ne prend pas le contrôle tant que la page ne le demande pas
+const DOC_EXT = ['.html','.js','/'];
+const ASSET_EXT = ['.css','.png','.svg','.jpg','.jpeg','.webp','.woff2','.ico','.json'];
+
+self.addEventListener('install', (event)=>{
+  event.waitUntil((async()=>{
+    const cache = await caches.open(STATIC_CACHE);
+    await cache.addAll([
+      './',
+      './index.html',
+      './manifest.json',
+      './js/app.js?v='+APP_VERSION,
+      './js/db.js?v='+APP_VERSION,
+      './js/barcode.js?v='+APP_VERSION,
+      './icons/icon-192.png',
+      './icons/icon-512.png'
+    ].map(u=>new Request(u, {cache:'reload'})));
+    self.skipWaiting();
+  })());
 });
 
-self.addEventListener('activate', (event) => {
-  event.waitUntil((async () => {
-    // Nettoie les vieux caches
+self.addEventListener('activate', (event)=>{
+  event.waitUntil((async()=>{
     const keys = await caches.keys();
-    await Promise.all(keys.map(k => (k.startsWith('stock-cfa-') && k !== RUNTIME) ? caches.delete(k) : null));
+    await Promise.all(keys.map(k => (k.startsWith(CACHE_PREFIX) && k!==STATIC_CACHE) ? caches.delete(k) : null));
     await self.clients.claim();
   })());
 });
 
-// Petites helpers
-const isHTML = (req) => req.destination === 'document' || req.headers.get('accept')?.includes('text/html');
-const isJS = (req) => req.destination === 'script' || /\.js(\?|$)/.test(new URL(req.url).pathname);
-const isManifest = (req) => /manifest\.json$/.test(new URL(req.url).pathname);
-const isStatic = (req) => req.destination === 'style' || req.destination === 'image' || /\.(css|png|jpg|jpeg|svg|webp|ico|woff2?)$/.test(new URL(req.url).pathname);
-
-// Stratégies
-async function networkFirst(event) {
-  try {
-    const fresh = await fetch(event.request);
-    const cache = await caches.open(RUNTIME);
-    cache.put(event.request, fresh.clone());
-    return fresh;
-  } catch {
-    const cache = await caches.open(RUNTIME);
-    const cached = await cache.match(event.request, { ignoreSearch: true });
-    if (cached) return cached;
-    // offline fallback minimal
-    return new Response('<h1>Hors-ligne</h1>', { headers: { 'Content-Type': 'text/html;charset=utf-8' }});
-  }
-}
-
-async function staleWhileRevalidate(event) {
-  const cache = await caches.open(RUNTIME);
-  const cached = await cache.match(event.request, { ignoreSearch: false });
-  const fetchPromise = fetch(event.request).then((resp) => {
-    if (resp && resp.status === 200) cache.put(event.request, resp.clone());
-    return resp;
-  }).catch(() => null);
-  return cached || fetchPromise || fetch(event.request);
-}
-
-async function cacheFirst(event) {
-  const cache = await caches.open(RUNTIME);
-  const cached = await cache.match(event.request, { ignoreSearch: true });
-  if (cached) return cached;
-  const resp = await fetch(event.request);
-  if (resp && resp.status === 200) cache.put(event.request, resp.clone());
-  return resp;
-}
-
-self.addEventListener('fetch', (event) => {
+self.addEventListener('fetch', (event)=>{
   const req = event.request;
+  const url = new URL(req.url);
 
-  // On ne gère que GET
-  if (req.method !== 'GET') return;
+  // Bypass cross-origin except GET
+  if (url.origin !== location.origin) return;
 
-  if (isHTML(req)) {
-    // Toujours essayer le réseau d'abord pour index.html (évite l'appli coincée)
-    return event.respondWith(networkFirst(event));
+  // Strategy selection
+  if (isDocOrJs(url.pathname)) {
+    return event.respondWith(networkFirst(req));
   }
-
-  if (isJS(req) || isManifest(req)) {
-    // Scripts/manifest : rapide puis rafraîchit en fond
-    return event.respondWith(staleWhileRevalidate(event));
+  if (isAsset(url.pathname)) {
+    return event.respondWith(staleWhileRevalidate(req));
   }
-
-  if (isStatic(req)) {
-    // Assets statiques : cache d'abord
-    return event.respondWith(cacheFirst(event));
-  }
-
-  // Par défaut
-  return event.respondWith(staleWhileRevalidate(event));
+  // default: passthrough
 });
 
-// Canal de communication page <-> SW pour SKIP_WAITING contrôlé
-self.addEventListener('message', (event) => {
-  const { type } = event.data || {};
-  if (type === 'SKIP_WAITING') self.skipWaiting();
+self.addEventListener('message', (event)=>{
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
+
+function isDocOrJs(path){
+  return DOC_EXT.some(ext => path.endsWith(ext)) || path === '/' || path.startsWith('/?');
+}
+function isAsset(path){
+  return ASSET_EXT.some(ext => path.endsWith(ext));
+}
+
+async function networkFirst(req){
+  const cache = await caches.open(STATIC_CACHE);
+  try{
+    const fresh = await fetch(req, {cache:'no-store'});
+    cache.put(req, fresh.clone());
+    return fresh;
+  }catch(e){
+    const cached = await cache.match(req);
+    if (cached) return cached;
+    throw e;
+  }
+}
+async function staleWhileRevalidate(req){
+  const cache = await caches.open(STATIC_CACHE);
+  const cached = await cache.match(req);
+  const fetchPromise = fetch(req).then(res=>{
+    cache.put(req, res.clone());
+    return res;
+  }).catch(()=>cached);
+  return cached || fetchPromise;
+}
