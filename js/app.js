@@ -1,13 +1,20 @@
-// js/app.js — v1.7.1 : réassort + indicateur + section "Matériel" rétablie
+// js/app.js — v2.0.0 : Version améliorée avec dashboard et nouvelles fonctionnalités
 (function(){
   const errbar = document.getElementById('errbar');
-  function showError(msg){ if (!errbar) return; errbar.textContent = msg; errbar.style.display = 'block'; }
-  window.addEventListener('error', e=> showError('Erreur JS: ' + (e.message||e.error)));
-  window.addEventListener('unhandledrejection', e=> showError('Promesse rejetée: ' + (e.reason && e.reason.message ? e.reason.message : e.reason)));
+  function showError(msg){ 
+    if (!errbar) return; 
+    errbar.textContent = msg; 
+    errbar.style.display = 'block'; 
+    setTimeout(() => errbar.style.display = 'none', 5000);
+  }
+  
+  window.addEventListener('error', e=> showError('❌ Erreur JS: ' + (e.message||e.error)));
+  window.addEventListener('unhandledrejection', e=> showError('❌ Promesse rejetée: ' + (e.reason && e.reason.message ? e.reason.message : e.reason)));
 
-  // Onglets
+  // ========== GESTION DES ONGLETS ==========
   const tabs = Array.from(document.querySelectorAll('nav button'));
   const sections = {
+    dashboard: document.getElementById('tab-dashboard'),
     scan: document.getElementById('tab-scan'),
     items: document.getElementById('tab-items'),
     gear: document.getElementById('tab-gear'),
@@ -16,25 +23,98 @@
     journal: document.getElementById('tab-journal'),
     settings: document.getElementById('tab-settings')
   };
+  
   tabs.forEach(btn=>btn.addEventListener('click', ()=>showTab(btn.dataset.tab)));
+  
   function showTab(name){
     tabs.forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
     Object.entries(sections).forEach(([k,el])=>el && el.classList.toggle('hide', k!==name));
-    if (name==='items'){ refreshTable(); }
-    if (name==='labels'){ refreshLabelItems(); }
-    if (name==='journal'){ refreshJournal(); }
-    if (name==='gear'){ refreshLoansTable(); }
-    if (name==='settings'){ initSettingsPanel(); }
+    
+    // Actualiser les données selon l'onglet
+    switch(name) {
+      case 'dashboard': refreshDashboard(); break;
+      case 'items': refreshTable(); break;
+      case 'labels': refreshLabelItems(); break;
+      case 'journal': refreshJournal(); break;
+      case 'gear': refreshLoansTable(); break;
+      case 'settings': initSettingsPanel(); break;
+    }
   }
 
   // Badge réseau
   const badge = document.getElementById('badge');
-  function updateBadge(){ if (badge) badge.textContent = navigator.onLine ? 'en ligne' : 'hors ligne'; }
+  function updateBadge(){ 
+    if (badge) {
+      badge.textContent = navigator.onLine ? '🟢 en ligne' : '🔴 hors ligne';
+      badge.style.color = navigator.onLine ? '#10b981' : '#ef4444';
+    }
+  }
   window.addEventListener('online', updateBadge);
   window.addEventListener('offline', updateBadge);
   updateBadge();
 
-  // ===== Scanner (stock)
+  // ========== DASHBOARD ==========
+  async function refreshDashboard() {
+    const items = await dbList('');
+    const moves = await dbListMoves();
+    const loans = await dbListLoans(true);
+    
+    // Statistiques
+    const totalItems = document.getElementById('totalItems');
+    const lowStock = document.getElementById('lowStock');
+    const totalValue = document.getElementById('totalValue');
+    const activeLoans = document.getElementById('activeLoans');
+    
+    if (totalItems) totalItems.textContent = items.length;
+    if (activeLoans) activeLoans.textContent = loans.length;
+    
+    let lowStockCount = 0;
+    let totalVal = 0;
+    
+    items.forEach(item => {
+      const status = getStatus(item);
+      if (status.level !== 'ok') lowStockCount++;
+      totalVal += (item.qty || 0) * (item.price || 0);
+    });
+    
+    if (lowStock) lowStock.textContent = lowStockCount;
+    if (totalValue) totalValue.textContent = totalVal.toFixed(2) + '€';
+    
+    // Articles en rupture
+    const outOfStock = document.getElementById('outOfStock');
+    const criticalItems = items.filter(item => (item.qty || 0) <= (item.min || 0));
+    if (outOfStock) {
+      if (criticalItems.length === 0) {
+        outOfStock.innerHTML = '<span style="color: var(--ok);">✅ Aucun article en rupture</span>';
+      } else {
+        outOfStock.innerHTML = criticalItems.slice(0, 5).map(item => 
+          `<div style="margin: 4px 0; padding: 8px; background: #fee2e2; border-radius: 8px; color: #991b1b;">
+            <strong>${esc(item.name)}</strong> - Stock: ${item.qty || 0}/${item.min || 0}
+          </div>`
+        ).join('');
+      }
+    }
+    
+    // Activité récente
+    const recentActivity = document.getElementById('recentActivity');
+    if (recentActivity) {
+      const recentMoves = moves.slice(0, 5);
+      if (recentMoves.length === 0) {
+        recentActivity.innerHTML = '<span style="color: var(--muted);">📭 Aucune activité récente</span>';
+      } else {
+        recentActivity.innerHTML = recentMoves.map(move => {
+          const icon = move.mode === 'in' ? '📥' : move.mode === 'out' ? '📤' : '🔄';
+          const date = new Date(move.time).toLocaleString();
+          return `<div style="margin: 4px 0; padding: 8px; background: rgba(14, 165, 233, 0.1); border-radius: 8px;">
+            ${icon} <strong>${esc(move.name || 'Article')}</strong> (${move.delta > 0 ? '+' : ''}${move.delta})
+            <br><small style="color: var(--muted);">${date}</small>
+          </div>`;
+        }).join('');
+      }
+    }
+  }
+
+  // ========== SCANNER STOCK ==========
   const video = document.getElementById('video');
   const scanStatus = document.getElementById('scanStatus');
   const qtyInput = document.getElementById('qty');
@@ -46,12 +126,39 @@
   const btnTestDetect = document.getElementById('btnTestDetect');
   const lastOp = document.getElementById('lastOp');
 
-  let mode = 'out'; if (modeOutBtn) modeOutBtn.classList.add('active');
-  if (modeInBtn) modeInBtn.addEventListener('click', ()=>{ mode='in'; if (scanStatus) scanStatus.textContent='Mode: Entrée'; modeInBtn.classList.add('active'); modeOutBtn && modeOutBtn.classList.remove('active'); });
-  if (modeOutBtn) modeOutBtn.addEventListener('click', ()=>{ mode='out'; if (scanStatus) scanStatus.textContent='Mode: Sortie'; modeOutBtn.classList.add('active'); modeInBtn && modeInBtn.classList.remove('active'); });
+  let mode = 'out'; 
+  if (modeOutBtn) modeOutBtn.classList.add('active');
+  
+  if (modeInBtn) modeInBtn.addEventListener('click', ()=>{ 
+    mode='in'; 
+    if (scanStatus) scanStatus.textContent='Mode: 📥 Entrée'; 
+    modeInBtn.classList.add('active'); 
+    modeOutBtn && modeOutBtn.classList.remove('active'); 
+  });
+  
+  if (modeOutBtn) modeOutBtn.addEventListener('click', ()=>{ 
+    mode='out'; 
+    if (scanStatus) scanStatus.textContent='Mode: 📤 Sortie'; 
+    modeOutBtn.classList.add('active'); 
+    modeInBtn && modeInBtn.classList.remove('active'); 
+  });
 
   let scanning = false, lastDetected = '', lastBeepAt = 0;
-  function tone(freq, vol, dur){ try{ const ctx=new (window.AudioContext||window.webkitAudioContext)(); const o=ctx.createOscillator(), g=ctx.createGain(); o.type='sine'; o.frequency.value=freq; g.gain.value=vol; o.connect(g); g.connect(ctx.destination); o.start(); setTimeout(()=>{o.stop();ctx.close();},dur||120);}catch(e){} }
+  
+  function tone(freq, vol, dur){ 
+    try{ 
+      const ctx=new (window.AudioContext||window.webkitAudioContext)(); 
+      const o=ctx.createOscillator(), g=ctx.createGain(); 
+      o.type='sine'; 
+      o.frequency.value=freq; 
+      g.gain.value=vol; 
+      o.connect(g); 
+      g.connect(ctx.destination); 
+      o.start(); 
+      setTimeout(()=>{o.stop();ctx.close();},dur||120);
+    }catch(e){} 
+  }
+  
   const beepOK = ()=>tone(880,0.06,120);
   const beepErr = ()=>tone(240,0.07,220);
 
@@ -59,20 +166,44 @@
     try{
       scanning = true;
       await Barcode.startCamera(video);
-      if (lastOp) lastOp.innerHTML = '🎥 Caméra active — pointez un code.';
+      if (lastOp) lastOp.innerHTML = '🎥 Caméra active — pointez un code-barres.';
       loopScan();
-    }catch(e){ showError('Caméra indisponible : ' + (e && e.message ? e.message : e)); }
+    }catch(e){ 
+      showError('📷 Caméra indisponible : ' + (e && e.message ? e.message : e)); 
+    }
   }
+  
   if (btnStartScan) btnStartScan.addEventListener('click', startScan);
   if (btnStopScan) btnStopScan.addEventListener('click', stopVideo);
+  
   function stopVideo(){
     scanning=false;
-    try{ if (video && video.srcObject){ video.srcObject.getTracks().forEach(t=>t.stop()); video.pause(); video.srcObject=null; } }catch(e){}
+    try{ 
+      if (video && video.srcObject){ 
+        video.srcObject.getTracks().forEach(t=>t.stop()); 
+        video.pause(); 
+        video.srcObject=null; 
+      } 
+    }catch(e){}
     Barcode.stopCamera();
     if (lastOp) lastOp.innerHTML = '⏹️ Caméra arrêtée.';
   }
-  if (btnTorch) btnTorch.addEventListener('click', async ()=>{ const on = await Barcode.toggleTorch(); if (lastOp) lastOp.innerHTML = on ? '💡 Lampe ON' : '💡 Lampe OFF'; });
-  if (btnTestDetect) btnTestDetect.addEventListener('click', async ()=>{ const v = await Barcode.scanOnce(video); if (v){ if (v!==lastDetected){ lastDetected=v; beepOK(); } if (lastOp) lastOp.innerHTML = '🔎 Détecté : <b>'+v+'</b>'; } else if (lastOp) lastOp.innerHTML='Aucune détection.'; });
+  
+  if (btnTorch) btnTorch.addEventListener('click', async ()=>{ 
+    const on = await Barcode.toggleTorch(); 
+    if (lastOp) lastOp.innerHTML = on ? '💡 Lampe activée' : '💡 Lampe désactivée'; 
+  });
+  
+  if (btnTestDetect) btnTestDetect.addEventListener('click', async ()=>{ 
+    const v = await Barcode.scanOnce(video); 
+    if (v){ 
+      if (v!==lastDetected){ 
+        lastDetected=v; 
+        beepOK(); 
+      } 
+      if (lastOp) lastOp.innerHTML = '🔍 Détecté : <strong>'+esc(v)+'</strong>'; 
+    } else if (lastOp) lastOp.innerHTML='❌ Aucune détection.'; 
+  });
 
   async function loopScan(){
     while(scanning){
@@ -82,7 +213,10 @@
         const val = await Barcode.scanOnce(video);
         if (val){
           const now = Date.now();
-          if (val !== lastDetected || now - lastBeepAt > 1500){ beepOK(); lastBeepAt = now; }
+          if (val !== lastDetected || now - lastBeepAt > 1500){ 
+            beepOK(); 
+            lastBeepAt = now; 
+          }
           lastDetected = val;
           await processScan(val, 'scan');
           await delay(1000);
@@ -90,25 +224,44 @@
       }catch(e){}
     }
   }
+  
   async function processScan(code, source){
     const q = parseInt((qtyInput && qtyInput.value) ? qtyInput.value : '1',10);
     let item = await dbGet(code);
+    
     if (!item){
-      item = { barcode: code, name: 'Article ' + code, qty: 0, min: 0, tags: [], createdAt: Date.now(), updatedAt: Date.now() };
+      item = { 
+        barcode: code, 
+        name: 'Article ' + code, 
+        qty: 0, 
+        min: 0, 
+        price: 0,
+        location: '',
+        tags: [], 
+        createdAt: Date.now(), 
+        updatedAt: Date.now() 
+      };
       await dbPut(item);
       scheduleFileSave();
     }
+    
     const delta = mode==='in' ? q : -q;
     item = await dbAdjustQty(code, delta, { mode, source: source||'scan' });
     scheduleFileSave();
-    const warn = getStatus(item).level!=='ok';
-    if (lastOp) lastOp.innerHTML = (mode==='in'?'✅ Entrée':'📤 Sortie') + ' <b>'+q+
-      '</b> × <b>'+ (item.name||'') + '</b> (<code>'+ item.barcode +
-      '</code>) — stock: <span class="'+(warn?'warntext':'oktext')+'">'+ item.qty +'</span>';
-    refreshTable(); refreshJournal();
+    
+    const status = getStatus(item);
+    const statusIcon = status.level === 'ok' ? '✅' : status.level === 'warn' ? '⚠️' : '🔴';
+    const modeIcon = mode==='in' ? '📥' : '📤';
+    
+    if (lastOp) lastOp.innerHTML = `${modeIcon} <strong>${q}</strong> × <strong>${esc(item.name||'')}</strong> 
+      (<code>${esc(item.barcode)}</code>) — Stock: ${statusIcon} <strong>${item.qty}</strong>`;
+    
+    refreshTable(); 
+    refreshJournal();
+    refreshDashboard();
   }
 
-  // ===== Tableau Articles : filtre/tri TAGS + code couleur + réassort
+  // ========== TABLEAU ARTICLES ==========
   const search = document.getElementById('search');
   const itemsTable = document.getElementById('itemsTable');
   const itemsTbody = itemsTable ? itemsTable.querySelector('tbody') : null;
@@ -125,7 +278,8 @@
   function populatePresetFilter(){
     if (!presetFilter) return;
     const cur = presetFilter.value || '';
-    presetFilter.innerHTML = '<option value="">(Tous)</option>' + TAG_PRESETS.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
+    presetFilter.innerHTML = '<option value="">(Tous)</option>' + 
+      TAG_PRESETS.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
     presetFilter.value = cur || '';
   }
   populatePresetFilter();
@@ -137,10 +291,16 @@
       refreshTable();
     });
   }
+  
   if (search) search.addEventListener('input', refreshTable);
   if (presetFilter) presetFilter.addEventListener('change', refreshTable);
   if (presetSort) presetSort.addEventListener('change', refreshTable);
-  if (addDummyBtn) addDummyBtn.addEventListener('click', async ()=>{ await dbEnsureDemo(); scheduleFileSave(); refreshTable(); });
+  if (addDummyBtn) addDummyBtn.addEventListener('click', async ()=>{ 
+    await dbEnsureDemo(); 
+    scheduleFileSave(); 
+    refreshTable(); 
+    refreshDashboard();
+  });
 
   if (btnExportReassort) btnExportReassort.addEventListener('click', exportReassortCsv);
 
@@ -149,7 +309,8 @@
     itemsTable.querySelectorAll('th[data-sort]').forEach(th=>{
       th.addEventListener('click', ()=>{
         const k = th.getAttribute('data-sort');
-        if (sortKey===k) sortAsc = !sortAsc; else { sortKey=k; sortAsc = true; }
+        if (sortKey===k) sortAsc = !sortAsc; 
+        else { sortKey=k; sortAsc = true; }
         refreshTable();
       });
     });
@@ -166,17 +327,19 @@
     const q = (search && search.value ? search.value : '').trim().toLowerCase();
     const tagFilter = (presetFilter && presetFilter.value) ? presetFilter.value : '';
     let items = await dbList('');
+    
     if (q){
       items = items.filter(it=>{
         const s = ((it.name||'')+' '+(it.barcode||'')+' '+(it.tags||[]).join(' ')+' '+(it.location||'')).toLowerCase();
         return s.includes(q);
       });
     }
+    
     if (tagFilter){
       items = items.filter(it => (it.tags||[]).map(t=>String(t).toLowerCase()).includes(tagFilter.toLowerCase()));
     }
 
-    // tri (sélecteur)
+    // Tri
     if (presetSort && presetSort.value){
       const v = presetSort.value;
       if (v==='qtyAsc') items.sort((a,b)=>(a.qty||0)-(b.qty||0));
@@ -185,7 +348,6 @@
       else if (v==='tag') items.sort((a,b)=> (String((a.tags||[])[0]||'').localeCompare(String((b.tags||[])[0]||'')) || String(a.name||'').localeCompare(String(b.name||''))));
       else items.sort((a,b)=> String(a.name||'').localeCompare(String(b.name||'')));
     } else {
-      // tri legacy via header
       items.sort((a,b)=>{
         const va = (a[sortKey] ?? '').toString().toLowerCase();
         const vb = (b[sortKey] ?? '').toString().toLowerCase();
@@ -199,13 +361,14 @@
     const showCodes = !!(chkShowBarcodes && chkShowBarcodes.checked);
 
     let cntAlert=0, cntWarn=0;
+    
     for (const it of items){
       const st = getStatus(it);
-      if (st.level==='alert') cntAlert++; else if (st.level==='warn') cntWarn++;
+      if (st.level==='alert') cntAlert++; 
+      else if (st.level==='warn') cntWarn++;
 
       const tr = document.createElement('tr');
-      tr.classList.add(st.level==='ok'?'lvl-ok':st.level==='warn'?'lvl-warn':'lvl-alert');
-
+      
       let svgHtml = '';
       if (showCodes){
         const isNum = /^[0-9]+$/.test(it.barcode||'');
@@ -217,95 +380,191 @@
         }catch(e){ svgHtml = ''; }
       }
 
+      const statusBadge = st.level === 'ok' ? 
+        '<span class="status-badge status-ok">✅ OK</span>' :
+        st.level === 'warn' ? 
+        '<span class="status-badge status-warn">⚠️ Faible</span>' :
+        '<span class="status-badge status-alert">🔴 Critique</span>';
+
       tr.innerHTML = `
-        <td><b>${esc(it.name||'(sans nom)')}</b></td>
+        <td><strong>${esc(it.name||'(sans nom)')}</strong>
+          ${it.location ? `<br><small style="color: var(--muted);">📍 ${esc(it.location)}</small>` : ''}
+        </td>
         <td class="nowrap"><code>${esc(it.barcode||'')}</code></td>
-        <td class="nowrap">${it.qty||0}${st.level!=='ok'? ' <span class="'+(st.level==='alert'?'overdue':'dueSoon')+'">'+(st.level==='alert'?'Sous seuil':'Approche')+'</span>':''}</td>
+        <td class="nowrap">
+          <strong>${it.qty||0}</strong>
+          ${statusBadge}
+        </td>
         <td class="nowrap">${it.min||0}</td>
         <td><div class="tags">${(it.tags||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join(' ')}</div></td>
         <td>${svgHtml || '<span class="muted">—</span>'}</td>
         <td class="nowrap">
-          <button class="btn secondary" data-act="minus">−</button>
-          <button class="btn secondary" data-act="plus">+</button>
-          <button class="btn warn" data-act="del">Suppr.</button>
+          <button class="btn secondary" data-act="minus" style="padding: 6px 10px;">➖</button>
+          <button class="btn secondary" data-act="plus" style="padding: 6px 10px;">➕</button>
+          <button class="btn danger" data-act="del" style="padding: 6px 10px;">🗑️</button>
         </td>
       `;
+      
       tr.querySelector('[data-act="minus"]').addEventListener('click', async ()=>{
-        await dbAdjustQty(it.barcode, -1, {mode:'out', source:'ui'}); scheduleFileSave(); refreshTable(); refreshJournal();
+        await dbAdjustQty(it.barcode, -1, {mode:'out', source:'ui'}); 
+        scheduleFileSave(); 
+        refreshTable(); 
+        refreshJournal();
+        refreshDashboard();
       });
+      
       tr.querySelector('[data-act="plus"]').addEventListener('click', async ()=>{
-        await dbAdjustQty(it.barcode, +1, {mode:'in', source:'ui'}); scheduleFileSave(); refreshTable(); refreshJournal();
+        await dbAdjustQty(it.barcode, +1, {mode:'in', source:'ui'}); 
+        scheduleFileSave(); 
+        refreshTable(); 
+        refreshJournal();
+        refreshDashboard();
       });
+      
       tr.querySelector('[data-act="del"]').addEventListener('click', async ()=>{
-        if (confirm("Supprimer cet article ?")){ await dbDelete(it.barcode); scheduleFileSave(); refreshTable(); }
+        if (confirm("🗑️ Supprimer cet article définitivement ?")){ 
+          await dbDelete(it.barcode); 
+          scheduleFileSave(); 
+          refreshTable();
+          refreshDashboard();
+        }
       });
 
       itemsTbody.appendChild(tr);
     }
-    // indicateur haut de page
+    
+    // Indicateur de stock
     if (stockBadges){
       const parts = [];
-      if (cntAlert>0) parts.push(`🔴 <b>${cntAlert}</b> sous seuil`);
-      if (cntWarn>0) parts.push(`🟠 <b>${cntWarn}</b> en approche`);
-      stockBadges.innerHTML = parts.length? parts.join(' · ') : 'OK';
+      if (cntAlert>0) parts.push(`🔴 <strong>${cntAlert}</strong> critique${cntAlert > 1 ? 's' : ''}`);
+      if (cntWarn>0) parts.push(`⚠️ <strong>${cntWarn}</strong> faible${cntWarn > 1 ? 's' : ''}`);
+      stockBadges.innerHTML = parts.length ? parts.join(' • ') : '✅ Tous les stocks OK';
     }
   }
 
-  // Export réassort CSV
   async function exportReassortCsv(){
     const items = await dbList('');
-    const rows = [['barcode','name','qty','min','buffer','status','tags'].join(';')];
+    const rows = [['barcode','name','qty','min','buffer','status','tags','location','price'].join(';')];
+    
     for (const it of items){
       const st = getStatus(it);
       if (st.level==='ok') continue;
       rows.push([
-        it.barcode, (it.name||'').replace(/;/g,','), it.qty||0, it.min||0, WARN_BUFFER,
-        (st.level==='alert'?'UNDER':'NEAR'),
-        (it.tags||[]).join(',').replace(/;/g, ',')
+        it.barcode, 
+        (it.name||'').replace(/;/g,','), 
+        it.qty||0, 
+        it.min||0, 
+        WARN_BUFFER,
+        (st.level==='alert'?'CRITIQUE':'FAIBLE'),
+        (it.tags||[]).join(',').replace(/;/g, ','),
+        (it.location||'').replace(/;/g, ','),
+        it.price||0
       ].join(';'));
     }
+    
     downloadText('reassort.csv', rows.join('\n'));
   }
 
-  // ===== Nouveau
+  // ========== NOUVEAU ARTICLE ==========
   const newName = document.getElementById('newName');
   const newQty = document.getElementById('newQty');
   const newMin = document.getElementById('newMin');
   const newCode = document.getElementById('newCode');
   const newTags = document.getElementById('newTags');
+  const newPrice = document.getElementById('newPrice');
+  const newLocation = document.getElementById('newLocation');
   const createItemBtn = document.getElementById('createItem');
+  const btnGenerateQR = document.getElementById('btnGenerateQR');
+  const qrPreview = document.getElementById('qrPreview');
+  
   if (createItemBtn) createItemBtn.addEventListener('click', async ()=>{
     const name = (newName && newName.value ? newName.value : '').trim();
-    if (!name) return alert("Nom requis");
+    if (!name) return alert("📝 Nom requis");
+    
     const code = (newCode && newCode.value ? newCode.value.trim() : '') || genSku();
     const tags = (newTags && newTags.value ? newTags.value : '').split(',').map(s=>s.trim()).filter(Boolean);
+    
     const item = {
-      barcode: code, name, qty: parseInt((newQty && newQty.value) ? newQty.value : '0',10),
+      barcode: code, 
+      name, 
+      qty: parseInt((newQty && newQty.value) ? newQty.value : '0',10),
       min: parseInt((newMin && newMin.value) ? newMin.value : '0',10),
+      price: parseFloat((newPrice && newPrice.value) ? newPrice.value : '0') || 0,
+      location: (newLocation && newLocation.value ? newLocation.value.trim() : ''),
       tags,
-      createdAt: Date.now(), updatedAt: Date.now()
+      createdAt: Date.now(), 
+      updatedAt: Date.now()
     };
+    
     await dbPut(item);
-    if (item.qty) await dbAddMove({ time: Date.now(), barcode: item.barcode, name: item.name, delta: item.qty, qtyAfter: item.qty, mode:'init', source:'create' });
+    if (item.qty) await dbAddMove({ 
+      time: Date.now(), 
+      barcode: item.barcode, 
+      name: item.name, 
+      delta: item.qty, 
+      qtyAfter: item.qty, 
+      mode:'init', 
+      source:'create' 
+    });
+    
     scheduleFileSave();
-    if (newName) newName.value=''; if (newQty) newQty.value='0'; if (newMin) newMin.value='5'; if (newCode) newCode.value=''; if (newTags) newTags.value='';
-    alert("Article créé"); showTab('items'); refreshTable(); refreshJournal();
+    
+    // Reset form
+    if (newName) newName.value=''; 
+    if (newQty) newQty.value='0'; 
+    if (newMin) newMin.value='5'; 
+    if (newCode) newCode.value=''; 
+    if (newTags) newTags.value='';
+    if (newPrice) newPrice.value='0';
+    if (newLocation) newLocation.value='';
+    
+    alert("✅ Article créé avec succès !"); 
+    showTab('items'); 
+    refreshTable(); 
+    refreshJournal();
+    refreshDashboard();
   });
-  function genSku(){ const n = Math.floor(Math.random()*99999).toString().padStart(5,'0'); return "CFA-"+n; }
+  
+  if (btnGenerateQR) btnGenerateQR.addEventListener('click', ()=>{
+    const code = (newCode && newCode.value ? newCode.value.trim() : '') || genSku();
+    if (newCode) newCode.value = code;
+    
+    // Générer un QR code simple (placeholder)
+    if (qrPreview) {
+      qrPreview.innerHTML = `
+        <div style="margin-top: 16px; padding: 16px; background: white; border-radius: 12px; text-align: center;">
+          <h4>📱 QR Code généré</h4>
+          <div style="width: 150px; height: 150px; background: #f0f0f0; margin: 0 auto; display: flex; align-items: center; justify-content: center; border-radius: 8px;">
+            <span style="font-size: 12px; color: #666;">QR: ${esc(code)}</span>
+          </div>
+          <p style="margin-top: 8px; font-size: 14px; color: #666;">Code: <strong>${esc(code)}</strong></p>
+        </div>
+      `;
+    }
+  });
+  
+  function genSku(){ 
+    const n = Math.floor(Math.random()*99999).toString().padStart(5,'0'); 
+    return "CFA-"+n; 
+  }
 
-  // ===== Étiquettes
+  // ========== ÉTIQUETTES ==========
   const labelItem = document.getElementById('labelItem');
   const labelCount = document.getElementById('labelCount');
   const labelPreview = document.getElementById('labelPreview');
   const btnRenderLabel = document.getElementById('btnRenderLabel');
   const btnRenderAllLabels = document.getElementById('btnRenderAllLabels');
   const btnPrintLabels = document.getElementById('btnPrintLabels');
+  
   async function refreshLabelItems(){
     const items = await dbList('');
     if (!labelItem) return;
-    labelItem.innerHTML = items.map(i=>`<option value="${i.barcode}">${esc(i.name)} — ${esc(i.barcode)}</option>`).join('');
+    labelItem.innerHTML = items.map(i=>
+      `<option value="${i.barcode}">${esc(i.name)} — ${esc(i.barcode)}</option>`
+    ).join('');
   }
-  function labelCard(name, code){
+  
+  function labelCard(name, code, location){
     const isNumeric = /^[0-9]+$/.test(code);
     const isEANish = isNumeric && (code.length===12 || code.length===13);
     let svgOne;
@@ -316,83 +575,137 @@
     }catch(e){
       svgOne = Barcode.renderCode128Svg(String(code), { moduleWidth: 3, height: 90, margin: 12, fontSize: 13 });
     }
-    return `<div class="lbl">${svgOne}<div class="ln" style="font-weight:700;margin-top:4px">${esc(name)}</div></div>`;
+    return `<div class="lbl">
+      ${svgOne}
+      <div class="ln" style="font-weight:700;margin-top:4px">${esc(name)}</div>
+      ${location ? `<div class="ln" style="font-size:10px;color:#666;margin-top:2px">📍 ${esc(location)}</div>` : ''}
+    </div>`;
   }
+  
   function renderSheet(html){
     if (labelPreview) {
       labelPreview.innerHTML = `<style>
-        .sheet{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;padding:12px}
+        .sheet{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;padding:12px;background:white;border-radius:12px;margin-top:16px;}
         @media print{body{background:#fff} .sheet{gap:6px;padding:6px} nav,header,footer,#errbar{display:none !important} .card{border:none !important}}
-        .lbl{border:1px dashed var(--bd);border-radius:8px;padding:6px;background:#fff;color:#000}
-        .ln{font-size:12px}
+        .lbl{border:2px dashed #e2e8f0;border-radius:12px;padding:8px;background:#fff;color:#000}
+        .ln{font-size:12px;text-align:center;}
       </style><div class="sheet">` + html + `</div>`;
     }
   }
+  
   if (btnRenderLabel) btnRenderLabel.addEventListener('click', async ()=>{
     const code = labelItem && labelItem.value ? labelItem.value : '';
     const item = code ? await dbGet(code) : null;
     if (!item) return;
     const count = Math.max(1, parseInt((labelCount && labelCount.value) ? labelCount.value : '1',10));
-    const grid = Array.from({length:count}).map(()=>labelCard(item.name, item.barcode)).join('');
+    const grid = Array.from({length:count}).map(()=>labelCard(item.name, item.barcode, item.location)).join('');
     renderSheet(grid);
   });
+  
   if (btnRenderAllLabels) btnRenderAllLabels.addEventListener('click', async ()=>{
     const items = await dbList('');
-    const grid = items.map(it=>labelCard(it.name, it.barcode)).join('');
+    const grid = items.map(it=>labelCard(it.name, it.barcode, it.location)).join('');
     renderSheet(grid);
   });
+  
   if (btnPrintLabels) btnPrintLabels.addEventListener('click', ()=>{
-    if (!labelPreview || !labelPreview.innerHTML) return alert("Générez les étiquettes d'abord.");
+    if (!labelPreview || !labelPreview.innerHTML) return alert("🏷️ Générez les étiquettes d'abord.");
     window.print();
   });
 
-  // ===== Journal
-  const journalTableBody = (document.getElementById('journalTable')||{}).querySelector ? document.getElementById('journalTable').querySelector('tbody') : null;
+  // ========== JOURNAL ==========
+  const journalTableBody = (document.getElementById('journalTable')||{}).querySelector ? 
+    document.getElementById('journalTable').querySelector('tbody') : null;
   const journalSearch = document.getElementById('journalSearch');
   const btnExportMovesCsv = document.getElementById('btnExportMovesCsv');
   const btnExportMovesJson = document.getElementById('btnExportMovesJson');
   const btnClearMoves = document.getElementById('btnClearMoves');
   const fileImportMovesCsv = document.getElementById('fileImportMovesCsv');
   const btnImportMovesCsv = document.getElementById('btnImportMovesCsv');
+  
   if (journalSearch) journalSearch.addEventListener('input', refreshJournal);
-  if (btnExportMovesCsv) btnExportMovesCsv.addEventListener('click', async ()=>{ const csv = await exportMovesCsv(); downloadText('journal.csv', csv); });
-  if (btnExportMovesJson) btnExportMovesJson.addEventListener('click', async ()=>{ const json = await exportMovesJson(); downloadText('journal.json', json); });
-  if (btnClearMoves) btnClearMoves.addEventListener('click', async ()=>{ if (confirm('Vider tout le journal ?')){ await dbClearMoves(); scheduleFileSave(); refreshJournal(); } });
+  if (btnExportMovesCsv) btnExportMovesCsv.addEventListener('click', async ()=>{ 
+    const csv = await exportMovesCsv(); 
+    downloadText('journal.csv', csv); 
+  });
+  if (btnExportMovesJson) btnExportMovesJson.addEventListener('click', async ()=>{ 
+    const json = await exportMovesJson(); 
+    downloadText('journal.json', json); 
+  });
+  if (btnClearMoves) btnClearMoves.addEventListener('click', async ()=>{ 
+    if (confirm('🗑️ Vider tout le journal des mouvements ?')){ 
+      await dbClearMoves(); 
+      scheduleFileSave(); 
+      refreshJournal(); 
+      refreshDashboard();
+    } 
+  });
   if (btnImportMovesCsv) btnImportMovesCsv.addEventListener('click', ()=> fileImportMovesCsv && fileImportMovesCsv.click());
   if (fileImportMovesCsv) fileImportMovesCsv.addEventListener('change', async (e)=>{
-    const f = e.target.files[0]; if (!f) return;
-    const text = await f.text(); await importMovesCsv(text); scheduleFileSave(); refreshJournal(); e.target.value='';
+    const f = e.target.files[0]; 
+    if (!f) return;
+    const text = await f.text(); 
+    await importMovesCsv(text); 
+    scheduleFileSave(); 
+    refreshJournal(); 
+    refreshDashboard();
+    e.target.value='';
   });
+  
   async function refreshJournal(){
     const q = (journalSearch && journalSearch.value ? journalSearch.value : '').trim().toLowerCase();
     const moves = await dbListMoves();
     if (!journalTableBody) return;
     journalTableBody.innerHTML = '';
+    
     for (const m of moves){
       const s = (new Date(m.time).toLocaleString() + '\t' + m.barcode + '\t' + (m.name||'') + '\t' + m.delta + '\t' + m.qtyAfter + '\t' + m.mode + '\t' + m.source).toLowerCase();
       if (q && !s.includes(q)) continue;
+      
+      const modeIcon = {
+        'in': '📥',
+        'out': '📤',
+        'init': '🆕',
+        'loan': '📤',
+        'return': '📥',
+        'adj': '🔄'
+      }[m.mode] || '🔄';
+      
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td class="nowrap">${new Date(m.time).toLocaleString()}</td>
-        <td class="nowrap"><code>${m.barcode}</code></td>
+        <td class="nowrap"><code>${esc(m.barcode)}</code></td>
         <td>${esc(m.name||'')}</td>
-        <td class="nowrap">${m.delta>0?'+':''}${m.delta}</td>
-        <td class="nowrap">${m.qtyAfter}</td>
-        <td>${m.mode}</td>
+        <td class="nowrap" style="color: ${m.delta > 0 ? 'var(--ok)' : 'var(--err)'}">
+          <strong>${m.delta>0?'+':''}${m.delta}</strong>
+        </td>
+        <td class="nowrap"><strong>${m.qtyAfter}</strong></td>
+        <td>${modeIcon} ${m.mode}</td>
         <td>${m.source}</td>
       `;
       journalTableBody.appendChild(tr);
     }
   }
 
-  // ===== Matériel (emprunts/retours) — avec refreshLoansTable
+  // ========== MATÉRIEL (emprunts/retours) ==========
   const gearModeBorrow = document.getElementById('gearModeBorrow');
   const gearModeReturn = document.getElementById('gearModeReturn');
   const gearModeText = document.getElementById('gearModeText');
   let gearMode = 'borrow';
+  
   if (gearModeBorrow) gearModeBorrow.classList.add('active');
-  if (gearModeBorrow) gearModeBorrow.addEventListener('click', ()=>{ gearMode='borrow'; gearModeBorrow.classList.add('active'); gearModeReturn && gearModeReturn.classList.remove('active'); if (gearModeText) gearModeText.textContent='Mode: Emprunter'; });
-  if (gearModeReturn) gearModeReturn.addEventListener('click', ()=>{ gearMode='return'; gearModeReturn.classList.add('active'); gearModeBorrow && gearModeBorrow.classList.remove('active'); if (gearModeText) gearModeText.textContent='Mode: Retour'; });
+  if (gearModeBorrow) gearModeBorrow.addEventListener('click', ()=>{ 
+    gearMode='borrow'; 
+    gearModeBorrow.classList.add('active'); 
+    gearModeReturn && gearModeReturn.classList.remove('active'); 
+    if (gearModeText) gearModeText.textContent='Mode: 📤 Emprunter'; 
+  });
+  if (gearModeReturn) gearModeReturn.addEventListener('click', ()=>{ 
+    gearMode='return'; 
+    gearModeReturn.classList.add('active'); 
+    gearModeBorrow && gearModeBorrow.classList.remove('active'); 
+    if (gearModeText) gearModeText.textContent='Mode: 📥 Retour'; 
+  });
 
   const loanWho = document.getElementById('loanWho');
   const loanDue = document.getElementById('loanDue');
@@ -414,23 +727,40 @@
       await Barcode.startCamera(videoGear);
       if (gearLast) gearLast.innerHTML = '🎥 Caméra active — scannez le matériel.';
       loopGear();
-    }catch(e){ showError('Caméra (matériel) indisponible : ' + (e && e.message ? e.message : e)); }
+    }catch(e){ 
+      showError('📷 Caméra (matériel) indisponible : ' + (e && e.message ? e.message : e)); 
+    }
   }
+  
   if (gearStart) gearStart.addEventListener('click', startGear);
   if (gearStop) gearStop.addEventListener('click', ()=>{
     scanningGear=false;
-    try{ if (videoGear && videoGear.srcObject){ videoGear.srcObject.getTracks().forEach(t=>t.stop()); videoGear.pause(); videoGear.srcObject=null; } }catch(e){}
+    try{ 
+      if (videoGear && videoGear.srcObject){ 
+        videoGear.srcObject.getTracks().forEach(t=>t.stop()); 
+        videoGear.pause(); 
+        videoGear.srcObject=null; 
+      } 
+    }catch(e){}
     Barcode.stopCamera();
     if (gearLast) gearLast.innerHTML = '⏹️ Caméra arrêtée.';
   });
+  
   if (gearTorch) gearTorch.addEventListener('click', async ()=>{
     const on = await Barcode.toggleTorch();
-    if (gearLast) gearLast.innerHTML = on ? '💡 Lampe ON' : '💡 Lampe OFF';
+    if (gearLast) gearLast.innerHTML = on ? '💡 Lampe activée' : '💡 Lampe désactivée';
   });
+  
   if (gearTest) gearTest.addEventListener('click', async ()=>{
     const v = await Barcode.scanOnce(videoGear);
-    if (v){ if (v!==lastGearDetected){ lastGearDetected=v; beepOK(); } if (gearLast) gearLast.innerHTML = '🔎 Détecté : <b>'+v+'</b>'; }
-    else if (gearLast) gearLast.innerHTML = 'Aucune détection.';
+    if (v){ 
+      if (v!==lastGearDetected){ 
+        lastGearDetected=v; 
+        beepOK(); 
+      } 
+      if (gearLast) gearLast.innerHTML = '🔍 Détecté : <strong>'+esc(v)+'</strong>'; 
+    }
+    else if (gearLast) gearLast.innerHTML = '❌ Aucune détection.';
   });
 
   async function loopGear(){
@@ -441,7 +771,10 @@
         const val = await Barcode.scanOnce(videoGear);
         if (val){
           const now = Date.now();
-          if (val !== lastGearDetected || now - lastGearBeep > 1500){ beepOK(); lastGearBeep = now; }
+          if (val !== lastGearDetected || now - lastGearBeep > 1500){ 
+            beepOK(); 
+            lastGearBeep = now; 
+          }
           lastGearDetected = val;
           await handleLoanAction(val);
           await delay(1000);
@@ -457,22 +790,56 @@
     const note = (loanNote && loanNote.value ? loanNote.value.trim() : '');
 
     let it = await dbGet(code);
-    if (!it){ beepErr(); if (gearLast) gearLast.innerHTML = '❌ Code inconnu : <code>'+esc(code)+'</code>'; return; }
+    if (!it){ 
+      beepErr(); 
+      if (gearLast) gearLast.innerHTML = '❌ Code inconnu : <code>'+esc(code)+'</code>'; 
+      return; 
+    }
 
     if (gearMode==='borrow'){
-      if (!who){ beepErr(); alert('Nom de la personne requis pour un emprunt.'); return; }
-      if ((it.qty||0) < qty){ beepErr(); if (gearLast) gearLast.innerHTML = '❌ Stock insuffisant ('+(it.qty||0)+') pour '+qty; return; }
+      if (!who){ 
+        beepErr(); 
+        alert('👤 Nom de la personne requis pour un emprunt.'); 
+        return; 
+      }
+      if ((it.qty||0) < qty){ 
+        beepErr(); 
+        if (gearLast) gearLast.innerHTML = '❌ Stock insuffisant ('+(it.qty||0)+') pour '+qty; 
+        return; 
+      }
+      
       it = await dbAdjustQty(code, -qty, { mode:'loan', source:'gear' });
       const dueTs = dueStr ? (new Date(dueStr+'T23:59:59').getTime()) : null;
-      await dbCreateLoan({ barcode: code, name: it.name, borrower: who, qty, start: Date.now(), due: dueTs, note });
-      if (gearLast) gearLast.innerHTML = '✅ Emprunt: '+qty+' × <b>'+esc(it.name)+'</b> par <b>'+esc(who)+'</b>';
-      refreshLoansTable(); refreshTable(); refreshJournal();
+      await dbCreateLoan({ 
+        barcode: code, 
+        name: it.name, 
+        borrower: who, 
+        qty, 
+        start: Date.now(), 
+        due: dueTs, 
+        note 
+      });
+      
+      if (gearLast) gearLast.innerHTML = '✅ Emprunt: <strong>'+qty+'</strong> × <strong>'+esc(it.name)+'</strong> par <strong>'+esc(who)+'</strong>';
+      refreshLoansTable(); 
+      refreshTable(); 
+      refreshJournal();
+      refreshDashboard();
+      
     } else {
       const ok = await dbReturnLoan(code);
-      if (!ok){ beepErr(); if (gearLast) gearLast.innerHTML = '❌ Aucun emprunt actif pour <code>'+esc(code)+'</code>'; return; }
+      if (!ok){ 
+        beepErr(); 
+        if (gearLast) gearLast.innerHTML = '❌ Aucun emprunt actif pour <code>'+esc(code)+'</code>'; 
+        return; 
+      }
+      
       it = await dbAdjustQty(code, +qty, { mode:'return', source:'gear' });
-      if (gearLast) gearLast.innerHTML = '⬅️ Retour: '+qty+' × <b>'+esc(it.name)+'</b>';
-      refreshLoansTable(); refreshTable(); refreshJournal();
+      if (gearLast) gearLast.innerHTML = '📥 Retour: <strong>'+qty+'</strong> × <strong>'+esc(it.name)+'</strong>';
+      refreshLoansTable(); 
+      refreshTable(); 
+      refreshJournal();
+      refreshDashboard();
     }
   }
 
@@ -480,13 +847,24 @@
   const loansTbody = loansTable ? loansTable.querySelector('tbody') : null;
   const loanSearch = document.getElementById('loanSearch');
   const btnExportLoansCsv = document.getElementById('btnExportLoansCsv');
+  
   if (loanSearch) loanSearch.addEventListener('input', refreshLoansTable);
   if (btnExportLoansCsv) btnExportLoansCsv.addEventListener('click', async ()=>{
     const arr = await dbListLoans(false);
     const headers = ['start','due','returned','returnDate','barcode','name','borrower','qty','note'];
     const rows = [headers.join(';')];
     for (const l of arr){
-      rows.push([l.start||'', l.due||'', l.returned?'1':'0', l.returnDate||'', l.barcode, l.name||'', l.borrower||'', l.qty||1, (l.note||'').replace(/;/g,',')].join(';'));
+      rows.push([
+        l.start||'', 
+        l.due||'', 
+        l.returned?'1':'0', 
+        l.returnDate||'', 
+        l.barcode, 
+        l.name||'', 
+        l.borrower||'', 
+        l.qty||1, 
+        (l.note||'').replace(/;/g,',')
+      ].join(';'));
     }
     downloadText('emprunts.csv', rows.join('\n'));
   });
@@ -495,44 +873,54 @@
     if (!loansTbody) return;
     let loans = await dbListLoans(true); // actifs
     const q = (loanSearch && loanSearch.value ? loanSearch.value.trim().toLowerCase() : '');
+    
     if (q){
       loans = loans.filter(l=>{
         const s = ((l.barcode||'')+' '+(l.name||'')+' '+(l.borrower||'')+' '+(l.note||'')).toLowerCase();
         return s.includes(q);
       });
     }
+    
     loansTbody.innerHTML = '';
     const now = Date.now();
+    
     for (const l of loans){
       const dueTxt = l.due ? new Date(l.due).toLocaleDateString() : '—';
       const startTxt = l.start ? new Date(l.start).toLocaleString() : '—';
-      let statusHtml = '<span class="oktext">en cours</span>';
+      
+      let statusHtml = '<span class="status-badge status-ok">✅ En cours</span>';
       if (l.due){
-        if (now > l.due) statusHtml = '<span class="overdue">en retard</span>';
-        else if (l.due - now < 48*3600*1000) statusHtml = '<span class="dueSoon">bientôt dû</span>';
+        if (now > l.due) statusHtml = '<span class="status-badge status-alert">🔴 En retard</span>';
+        else if (l.due - now < 48*3600*1000) statusHtml = '<span class="status-badge status-warn">⚠️ Bientôt dû</span>';
       }
+      
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td class="nowrap">${startTxt}</td>
         <td class="nowrap">${dueTxt}</td>
         <td>${statusHtml}</td>
         <td class="nowrap"><code>${esc(l.barcode)}</code></td>
-        <td>${esc(l.name||'')}</td>
-        <td>${esc(l.borrower||'')}</td>
+        <td><strong>${esc(l.name||'')}</strong></td>
+        <td>👤 ${esc(l.borrower||'')}</td>
         <td>${esc(l.note||'')}</td>
-        <td><button class="btn ok" data-act="return">Marquer rendu</button></td>
+        <td><button class="btn ok" data-act="return" style="padding: 6px 12px;">📥 Retour</button></td>
       `;
+      
       tr.querySelector('[data-act="return"]').addEventListener('click', async ()=>{
         const ok = await dbReturnLoan(l.barcode);
         if (!ok){ beepErr(); return; }
         await dbAdjustQty(l.barcode, + (l.qty||1), { mode:'return', source:'gear' });
-        refreshLoansTable(); refreshTable(); refreshJournal();
+        refreshLoansTable(); 
+        refreshTable(); 
+        refreshJournal();
+        refreshDashboard();
       });
+      
       loansTbody.appendChild(tr);
     }
   }
 
-  // ===== Paramètres : presets + fichier (si tu utilises la sauvegarde via fichier)
+  // ========== PARAMÈTRES ==========
   const presetTags = document.getElementById('presetTags');
   const warnBufferInput = document.getElementById('warnBuffer');
   const btnSavePresets = document.getElementById('btnSavePresets');
@@ -542,13 +930,55 @@
   const fileStatus = document.getElementById('fileStatus');
   const autoSaveChk = document.getElementById('autoSave');
 
+  // Import/Export buttons
+  const btnExportItemsCsv = document.getElementById('btnExportItemsCsv');
+  const btnExportItemsJson = document.getElementById('btnExportItemsJson');
+  const btnImportItemsCsv = document.getElementById('btnImportItemsCsv');
+  const btnImportJson = document.getElementById('btnImportJson');
+  const fileImportItemsCsv = document.getElementById('fileImportItemsCsv');
+  const fileImportJson = document.getElementById('fileImportJson');
+
+  // Wire up import/export handlers
+  if (btnExportItemsCsv) btnExportItemsCsv.addEventListener('click', async ()=>{ 
+    const csv = await exportItemsCsv(); 
+    downloadText('articles.csv', csv); 
+  });
+  if (btnExportItemsJson) btnExportItemsJson.addEventListener('click', async ()=>{ 
+    const json = await exportItemsJson(); 
+    downloadText('articles.json', json); 
+  });
+  if (btnImportItemsCsv) btnImportItemsCsv.addEventListener('click', ()=> fileImportItemsCsv && fileImportItemsCsv.click());
+  if (btnImportJson) btnImportJson.addEventListener('click', ()=> fileImportJson && fileImportJson.click());
+  if (fileImportItemsCsv) fileImportItemsCsv.addEventListener('change', async (e)=>{
+    const f = e.target.files[0]; 
+    if (!f) return;
+    const text = await f.text(); 
+    await importItemsCsv(text); 
+    scheduleFileSave(); 
+    refreshTable();
+    refreshDashboard();
+    e.target.value='';
+  });
+  if (fileImportJson) fileImportJson.addEventListener('change', async (e)=>{
+    const f = e.target.files[0]; 
+    if (!f) return;
+    const text = await f.text(); 
+    await importItemsJson(text); 
+    scheduleFileSave(); 
+    refreshTable();
+    refreshDashboard();
+    e.target.value='';
+  });
+
   let fileHandle = null;
   let saveTimer = null;
 
   function initSettingsPanel(){
-    if (presetTags) presetTags.value = (loadPresets()).join(', ');
-    if (warnBufferInput) warnBufferInput.value = String(loadWarnBuffer());
-    if (fileStatus) fileStatus.textContent = fileHandle ? 'Fichier actif: ' + (fileHandle.name||'stock-data.json') : 'Aucun fichier ouvert';
+    if (presetTags) presetTags.value = TAG_PRESETS.join(', ');
+    if (warnBufferInput) warnBufferInput.value = String(WARN_BUFFER);
+    if (fileStatus) fileStatus.textContent = fileHandle ? 
+      '✅ Fichier actif: ' + (fileHandle.name||'stock-data.json') : 
+      '❌ Aucun fichier ouvert';
     if (autoSaveChk) autoSaveChk.checked = localStorage.getItem('autoSave')==='1';
   }
 
@@ -560,7 +990,8 @@
     localStorage.setItem('warnBuffer', String(WARN_BUFFER));
     populatePresetFilter();
     refreshTable();
-    alert('Paramètres enregistrés.');
+    refreshDashboard();
+    alert('✅ Paramètres enregistrés avec succès !');
   });
 
   if (btnOpenDataFile) btnOpenDataFile.addEventListener('click', openDataFile);
@@ -569,11 +1000,15 @@
 
   async function openDataFile(){
     if (!window.showSaveFilePicker && !window.showOpenFilePicker){
-      alert("Votre navigateur ne supporte pas la sauvegarde de fichiers (File System Access). Utilisez Chrome/Edge sur PC.");
+      alert("❌ Votre navigateur ne supporte pas la sauvegarde de fichiers (File System Access). Utilisez Chrome/Edge sur PC.");
       return;
     }
     try{
-      let choice = await new Promise(res=>{ const ok = confirm("OK = Ouvrir un fichier existant\nAnnuler = Créer un nouveau fichier"); res(ok?'open':'create'); });
+      let choice = await new Promise(res=>{ 
+        const ok = confirm("📁 OK = Ouvrir un fichier existant\n❌ Annuler = Créer un nouveau fichier"); 
+        res(ok?'open':'create'); 
+      });
+      
       if (choice === 'open'){
         const [h] = await window.showOpenFilePicker({
           multiple:false,
@@ -589,60 +1024,113 @@
         });
         await saveAllToFile();
       }
-      if (fileStatus) fileStatus.textContent = 'Fichier actif: ' + (fileHandle.name || 'stock-data.json');
-      alert('Fichier actif prêt.');
+      
+      if (fileStatus) fileStatus.textContent = '✅ Fichier actif: ' + (fileHandle.name || 'stock-data.json');
+      alert('✅ Fichier configuré avec succès !');
     }catch(e){
       if (e && e.name==='AbortError') return;
-      showError('Fichier: ' + (e.message||e));
+      showError('❌ Erreur fichier: ' + (e.message||e));
     }
   }
+  
   async function loadFromFileHandle(h){
     const f = await h.getFile();
     const text = await f.text();
     let data = {};
     try{ data = JSON.parse(text||'{}'); }catch(e){ data={}; }
+    
     if (Array.isArray(data.items)) await importItemsJson(JSON.stringify(data.items));
-    if (Array.isArray(data.moves)){ for (const m of data.moves){ await dbAddMove(m); } }
-    if (Array.isArray(data.loans) && window.dbCreateLoan){ for (const l of data.loans){ if (l && !l.returned) await dbCreateLoan(l); } }
+    if (Array.isArray(data.moves)){ 
+      for (const m of data.moves){ 
+        await dbAddMove(m); 
+      } 
+    }
+    if (Array.isArray(data.loans) && window.dbCreateLoan){ 
+      for (const l of data.loans){ 
+        if (l && !l.returned) await dbCreateLoan(l); 
+      } 
+    }
     if (data.presets){
       TAG_PRESETS = Array.isArray(data.presets.tags)? data.presets.tags : TAG_PRESETS;
       WARN_BUFFER = Number.isFinite(data.presets.warnBuffer)? data.presets.warnBuffer : WARN_BUFFER;
       localStorage.setItem('tagPresets', JSON.stringify(TAG_PRESETS));
       localStorage.setItem('warnBuffer', String(WARN_BUFFER));
     }
-    populatePresetFilter(); initSettingsPanel();
-    refreshTable(); refreshLabelItems(); refreshJournal(); refreshLoansTable();
+    
+    populatePresetFilter(); 
+    initSettingsPanel();
+    refreshTable(); 
+    refreshLabelItems(); 
+    refreshJournal(); 
+    refreshLoansTable();
+    refreshDashboard();
   }
+  
   async function saveAllToFile(){
-    if (!fileHandle){ alert('Aucun fichier actif. Cliquez “Ouvrir / créer un fichier…” d’abord.'); return; }
+    if (!fileHandle){ 
+      alert('❌ Aucun fichier actif. Cliquez "📁 Ouvrir fichier" d\'abord.'); 
+      return; 
+    }
     try{
       const items = JSON.parse(await exportItemsJson());
       const moves = JSON.parse(await exportMovesJson());
       const loans = (window.dbListLoans ? await dbListLoans(false) : []);
-      const blob = new Blob([ JSON.stringify({ items, moves, loans, presets:{ tags: TAG_PRESETS, warnBuffer: WARN_BUFFER } }, null, 2) ], {type:'application/json'});
+      const blob = new Blob([ 
+        JSON.stringify({ 
+          items, 
+          moves, 
+          loans, 
+          presets:{ 
+            tags: TAG_PRESETS, 
+            warnBuffer: WARN_BUFFER 
+          } 
+        }, null, 2) 
+      ], {type:'application/json'});
+      
       const w = await fileHandle.createWritable();
-      await w.write(blob); await w.close();
-      if (fileStatus) fileStatus.textContent = 'Enregistré dans ' + (fileHandle.name||'stock-data.json') + ' à ' + new Date().toLocaleTimeString();
-    }catch(e){ showError('Save: ' + (e.message||e)); }
+      await w.write(blob); 
+      await w.close();
+      
+      if (fileStatus) fileStatus.textContent = '✅ Enregistré dans ' + (fileHandle.name||'stock-data.json') + ' à ' + new Date().toLocaleTimeString();
+    }catch(e){ 
+      showError('❌ Erreur sauvegarde: ' + (e.message||e)); 
+    }
   }
+  
   function scheduleFileSave(){
     if (!autoSaveChk || !autoSaveChk.checked || !fileHandle) return;
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(saveAllToFile, 800);
   }
 
-  // Helpers
+  // ========== HELPERS ==========
   function delay(ms){ return new Promise(r=>setTimeout(r, ms)); }
   function esc(s){ return (s||'').replace(/[&<>"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
   function downloadText(filename, text){
     const blob = new Blob([text], {type:'text/plain;charset=utf-8'});
-    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
+    const url = URL.createObjectURL(blob); 
+    const a = document.createElement('a'); 
+    a.href = url; 
+    a.download = filename; 
+    a.click(); 
+    URL.revokeObjectURL(url);
   }
   function loadPresets(){
-    try{ const v = localStorage.getItem('tagPresets'); if (!v) return []; const arr = JSON.parse(v)||[]; return Array.isArray(arr)?arr:[]; }catch{ return []; }
+    try{ 
+      const v = localStorage.getItem('tagPresets'); 
+      if (!v) return []; 
+      const arr = JSON.parse(v)||[]; 
+      return Array.isArray(arr)?arr:[]; 
+    }catch{ 
+      return []; 
+    }
   }
   function loadWarnBuffer(){
-    const v = parseInt(localStorage.getItem('warnBuffer')||'2',10); return Number.isFinite(v)&&v>=0 ? v : 2;
+    const v = parseInt(localStorage.getItem('warnBuffer')||'2',10); 
+    return Number.isFinite(v)&&v>=0 ? v : 2;
   }
+
+  // Initialisation
+  refreshDashboard();
 
 })();
