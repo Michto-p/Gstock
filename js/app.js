@@ -1,4 +1,4 @@
-/* Gstock - app.js (Scanner UX patch) */
+/* Gstock - app.js */
 (() => {
   'use strict';
 
@@ -32,7 +32,6 @@
     gear: $('#tab-gear'),
     settings: $('#tab-settings')
   };
-
   tabs.forEach(btn => btn.addEventListener('click', () => showTab(btn.dataset.tab)));
 
   async function showTab(name) {
@@ -46,19 +45,17 @@
 
   // Raccourcis
   document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.key.toLowerCase() === 'k') {
-      e.preventDefault();
-      $('#searchItems')?.focus();
-    }
+    if (e.ctrlKey && e.key.toLowerCase() === 'k') { e.preventDefault(); $('#searchItems')?.focus(); }
     if (e.key.toLowerCase() === 'a') openAdjustDialog({type:'add'});
     if (e.key.toLowerCase() === 'r') openAdjustDialog({type:'remove'});
   });
 
-  // ----------- ARTICLES -----------
+  // ----------- Articles
   const itemsTbody = $('#itemsTbody');
   const searchItems = $('#searchItems');
   const filterStatus = $('#filterStatus');
   const filterTag = $('#filterTag');
+
   $('#btnAddItem')?.addEventListener('click', async () => {
     const name = prompt('Nom de l’article ?');
     if (!name) return;
@@ -70,7 +67,6 @@
     announce('Article créé');
     await refreshTable();
   });
-
   searchItems?.addEventListener('input', refreshTable);
   filterStatus?.addEventListener('change', refreshTable);
   filterTag?.addEventListener('change', refreshTable);
@@ -132,7 +128,7 @@
     alert(`Historique "${item?.name||code}"\n\nMouvements: ${moves.length}\nEmprunts (actifs+clos): ${loans.length}`);
   }
 
-  // ----------- DIALOG AJOUT/RETRAIT -----------
+  // ----------- Dialog Ajustement
   const dlg = $('#adjustDialog');
   const dlgType = $('#dlgType');
   const dlgQty = $('#dlgQty');
@@ -169,7 +165,7 @@
     await refreshTable();
   }
 
-  // ----------- ETIQUETTES -----------
+  // ----------- Étiquettes
   const labelsPreview = $('#labelsPreview');
   $('#btnLabelsAll')?.addEventListener('click', ()=> renderSheet('all'));
   $('#btnLabelsSelected')?.addEventListener('click', async ()=>{
@@ -217,7 +213,7 @@
 
   async function refreshLabelItems(){}
 
-  // ----------- JOURNAL -----------
+  // ----------- Journal
   const journalTbody = $('#journalTbody');
   $('#btnFilterJournal')?.addEventListener('click', refreshJournal);
   $('#btnExportCSV')?.addEventListener('click', async ()=>{
@@ -241,7 +237,7 @@
     </tr>`).join('') || `<tr><td colspan="6" class="muted">Aucun mouvement</td></tr>`;
   }
 
-  // ----------- PRÊTS -----------
+  // ----------- Prêts
   const loansTbody = $('#loansTbody');
   $('#btnNewLoan')?.addEventListener('click', async ()=>{
     const code = prompt('Code article ?'); if (!code) return;
@@ -282,73 +278,31 @@
     });
   }
 
-  // ----------- PARAMETRES / SAUVEGARDE -----------
-  $('#btnExportFull')?.addEventListener('click', async ()=>{
-    const blob = await dbExportFull();
-    const text = JSON.stringify(blob, null, 2);
-    downloadFile('gstock-export.json', text, 'application/json');
-  });
-
-  $('#btnImportJSON')?.addEventListener('click', async ()=>{
-    try{
-      const [fileHandle] = await window.showOpenFilePicker({types:[{description:'JSON',accept:{'application/json':['.json']}}]});
-      const file = await fileHandle.getFile();
-      const text = await file.text();
-      const data = JSON.parse(text);
-      await dbImportFull(data);
-      announce('Import terminé');
-      await refreshTable(); await refreshJournal(); await refreshLoansTable();
-    }catch(e){ console.warn(e); alert('Import annulé / invalide'); }
-  });
-
-  const sharedFileStatus = $('#sharedFileStatus');
-  $('#btnLinkSharedFile')?.addEventListener('click', async ()=>{
-    if (!('showSaveFilePicker' in window)) return alert('File System Access API non supportée sur ce navigateur.');
-    const handle = await showSaveFilePicker({suggestedName:'gstock-shared.json', types:[{description:'JSON',accept:{'application/json':['.json']}}]});
-    await dbLinkSharedFile(handle);
-    sharedFileStatus && (sharedFileStatus.textContent = 'Fichier partagé lié (autosave activé)');
-  });
-
-  function initSettingsPanel(){
-    (async ()=>{
-      const set = await dbGetSettings();
-      const inputBuffer = $('#inputBuffer'); const inputDefaultTags = $('#inputDefaultTags');
-      if (inputBuffer) inputBuffer.value = set.buffer|0;
-      if (inputDefaultTags) inputDefaultTags.value = (set.defaultTags||[]).join(', ');
-    })();
-  }
-  $('#btnSaveSettings')?.addEventListener('click', async ()=>{
-    const buffer = Math.max(0, parseInt($('#inputBuffer')?.value||'0',10));
-    const defaultTags = ($('#inputDefaultTags')?.value||'').split(',').map(t=>t.trim()).filter(Boolean);
-    await dbSetSettings({buffer, defaultTags});
-    announce('Paramètres enregistrés');
-    await refreshTable();
-  });
-
-  // ----------- SCAN EN 1 CLIC -----------
+  // ----------- Scan amélioré
   const scanBtn = $('#btnScanOnce');
   const scanDialog = $('#scanDialog');
   const scanVideo = $('#scanVideo');
+  const scanHint = $('#scanHint');
+  const scanTorchBtn = $('#scanTorch');
+
   $('#scanClose')?.addEventListener('click', onScanCancel);
   $('#scanCancel')?.addEventListener('click', onScanCancel);
+  scanTorchBtn?.addEventListener('click', ()=> window.toggleTorch && window.toggleTorch());
+
+  // Affiche les codes inconnus détectés (sans fermer)
+  window.addEventListener('gstock:scan-unknown', (ev)=>{
+    const code = ev.detail.code;
+    if (scanHint) scanHint.textContent = `Code ${code} inconnu — continuez à viser un article enregistré.`;
+  });
 
   scanBtn?.addEventListener('click', async ()=>{
     try{
+      if (scanHint) scanHint.textContent = 'Visez le code-barres. Les codes inconnus ne ferment pas la caméra.';
       scanDialog.showModal();
-      const code = await window.scanOnce(scanVideo); // fourni par barcode.js
-      // cam déjà stoppée par scanOnce
-      scanDialog.close();
+      const code = await window.scanUntilKnown(scanVideo); // fournie par barcode.js
+      scanDialog.close(); // la cam est déjà stoppée par scanUntilKnown
       if (!code) return; // annulé
-      // Si l’article n’existe pas, proposer la création
-      const item = await dbGet(code);
-      if (!item) {
-        if (!confirm(`Article inconnu (${code}). Voulez-vous le créer ?`)) return;
-        const name = prompt('Nom de l’article ?')||`Article ${code}`;
-        const threshold = parseInt(prompt('Seuil d’alerte ?', '0')||'0',10);
-        await dbPut({id:code, code, name, qty:0, threshold, tags:[], updated:Date.now()});
-        await refreshTable();
-      }
-      // Ouvre la modale quantité + Ajout/Retrait
+      // connu → on passe à l’ajustement
       openAdjustDialog({code});
     }catch(e){
       console.warn(e);
@@ -359,10 +313,10 @@
 
   function onScanCancel(){
     try{ scanDialog.close(); }catch(_){}
-    window.stopScan && window.stopScan(); // au cas où
+    window.stopScan && window.stopScan();
   }
 
-  // ----------- Helpers -----------
+  // Helpers
   function escapeHTML(s){ return String(s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
   function downloadFile(name, data, type){
     const blob = new Blob([data], {type}); const url = URL.createObjectURL(blob);
@@ -371,7 +325,7 @@
   }
   function announce(msg){ sr.textContent=''; setTimeout(()=>{ sr.textContent = msg; }, 10); }
 
-  // Démarrage
+  // Init
   (async function init(){
     $('#appVersion') && ($('#appVersion').textContent = window.APP_VERSION);
     await dbInit();
