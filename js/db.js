@@ -1,306 +1,179 @@
-// js/db.js — v1.5.0 : items + moves + loans (emprunts)
-(function(){
-  const DB_NAME = 'stock-cfa';
-  const DB_VER  = 5; // ↑ incrémente si tu modifies le schéma
+/* Gstock - db.js */
+'use strict';
 
-  function openDB(){
-    return new Promise((resolve,reject)=>{
-      const req = indexedDB.open(DB_NAME, DB_VER);
-      req.onupgradeneeded = (e)=>{
-        const db = req.result;
-        // items
-        if (!db.objectStoreNames.contains('items')){
-          const s = db.createObjectStore('items', { keyPath: 'barcode' });
-          s.createIndex('by_name','name',{ unique:false });
-        }
-        // moves (journal)
-        if (!db.objectStoreNames.contains('moves')){
-          const s = db.createObjectStore('moves', { keyPath: 'id', autoIncrement: true });
-          s.createIndex('by_time','time',{ unique:false });
-          s.createIndex('by_barcode','barcode',{ unique:false });
-        }
-        // loans (emprunts)
-        if (!db.objectStoreNames.contains('loans')){
-          const s = db.createObjectStore('loans', { keyPath: 'id', autoIncrement: true });
-          s.createIndex('by_barcode','barcode',{ unique:false });
-          s.createIndex('by_returned','returned',{ unique:false });
-          s.createIndex('by_start','start',{ unique:false });
-          s.createIndex('by_due','due',{ unique:false });
-        }
-      };
-      req.onsuccess = ()=> resolve(req.result);
-      req.onerror = ()=> reject(req.error);
-    });
-  }
+let db, sharedHandle=null, sharedAutosaveTimer=null;
+const DB_NAME = 'gstock-db';
+const DB_VER  = 1;
 
-  function tx(storeNames, mode, fn){
-    return openDB().then(db=>{
-      return new Promise((resolve,reject)=>{
-        const t = db.transaction(storeNames, mode);
-        t.oncomplete = ()=> resolve(result);
-        t.onerror = ()=> reject(t.error);
-        let result;
-        fn(t, (v)=>{ result=v; });
-      });
-    });
-  }
+async function dbInit(){
+  db = await openDB(DB_NAME, DB_VER, upgrade);
+  const set = await dbGetSettings();
+  if (!set.defaultTags) await dbSetSettings({defaultTags:[], buffer:0});
+  startSharedAutosave();
+}
 
-  // ===== Items
-  async function dbPut(item){
-    item.updatedAt = Date.now();
-    // Assurer la compatibilité avec les nouveaux champs
-    if (!item.price) item.price = 0;
-    if (!item.location) item.location = '';
-    return tx(['items'],'readwrite',(t,done)=>{
-      t.objectStore('items').put(item);
-      done(true);
-    });
+function upgrade(dbx, oldVersion, newVersion){
+  if (!dbx.objectStoreNames.contains('items')){
+    const s = dbx.createObjectStore('items', {keyPath: 'id'});
+    s.createIndex('code','code',{unique:true});
+    s.createIndex('name','name');
   }
-  async function dbGet(code){
-    return tx(['items'],'readonly',(t,done)=>{
-      const r = t.objectStore('items').get(code);
-      r.onsuccess = ()=> done(r.result || null);
-    });
+  if (!dbx.objectStoreNames.contains('moves')){
+    const s = dbx.createObjectStore('moves', {keyPath: 'id', autoIncrement: true});
+    s.createIndex('ts','ts');
+    s.createIndex('code','code');
   }
-  async function dbDelete(code){
-    return tx(['items'],'readwrite',(t,done)=>{
-      t.objectStore('items').delete(code);
-      done(true);
-    });
+  if (!dbx.objectStoreNames.contains('loans')){
+    const s = dbx.createObjectStore('loans', {keyPath: 'id', autoIncrement: true});
+    s.createIndex('code','code');
+    s.createIndex('returnedAt','returnedAt');
   }
-  async function dbList(query){
-    query = (query||'').toLowerCase();
-    return tx(['items'],'readonly',(t,done)=>{
-      const s = t.objectStore('items').openCursor();
-      const out = [];
-      s.onsuccess = ()=>{
-        const cur = s.result;
-        if (!cur){ done(out); return; }
-        const it = cur.value;
-        const str = ((it.name||'')+' '+(it.barcode||'')+' '+(it.tags||[]).join(' ')+' '+(it.location||'')).toLowerCase();
-        if (!query || str.includes(query)) out.push(it);
-        cur.continue();
-      };
-    });
+  if (!dbx.objectStoreNames.contains('settings')){
+    dbx.createObjectStore('settings', {keyPath:'id'});
   }
+}
 
-  // Ajuste quantité + log move
-  async function dbAdjustQty(code, delta, info){
-    const item = await dbGet(code);
-    if (!item) throw new Error('Article introuvable: ' + code);
-    let q = parseInt(item.qty||0,10) + parseInt(delta||0,10);
-    if (q < 0) q = 0; // clamp
-    const updated = { ...item, qty: q, updatedAt: Date.now() };
-    await dbPut(updated);
-    await dbAddMove({
-      time: Date.now(),
-      barcode: item.barcode,
-      name: item.name,
-      delta: parseInt(delta||0,10),
-      qtyAfter: q,
-      mode: (info && info.mode) || 'adj',
-      source: (info && info.source) || 'ui'
-    });
-    return updated;
-  }
+// --- IndexedDB Promise helpers
+function openDB(name, version, onup){
+  return new Promise((res,rej)=>{
+    const req = indexedDB.open(name, version);
+    req.onupgradeneeded = ()=> onup(req.result, req.oldVersion, req.newVersion);
+    req.onsuccess = ()=> res(req.result);
+    req.onerror = ()=> rej(req.error);
+  });
+}
+function tx(store, mode='readonly'){
+  return db.transaction(store, mode).objectStore(store);
+}
+function idbReq(r){ return new Promise((res,rej)=>{ r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
 
-  // ===== Moves (journal)
-  async function dbAddMove(m){
-    return tx(['moves'],'readwrite',(t,done)=>{
-      t.objectStore('moves').add(m);
-      done(true);
-    });
-  }
-  async function dbListMoves(){
-    return tx(['moves'],'readonly',(t,done)=>{
-      const s = t.objectStore('moves').index('by_time').openCursor(null,'prev');
-      const out = [];
-      s.onsuccess = ()=>{
-        const cur = s.result;
-        if (!cur){ done(out); return; }
-        out.push(cur.value); cur.continue();
-      };
-    });
-  }
-  async function dbClearMoves(){
-    return tx(['moves'],'readwrite',(t,done)=>{
-      t.objectStore('moves').clear(); done(true);
-    });
-  }
+// --- Items
+async function dbPut(item){
+  item.id = item.id || item.code;
+  item.updated = Date.now();
+  await idbReq(tx('items','readwrite').put(item));
+  scheduleSharedAutosave();
+}
+async function dbGet(code){ return await idbReq(tx('items').get(code)); }
+async function dbDelete(code){ await idbReq(tx('items','readwrite').delete(code)); scheduleSharedAutosave(); }
+async function dbList(){
+  const r = await idbReq(tx('items').getAll());
+  return r.sort((a,b)=> (a.name||'').localeCompare(b.name||''));
+}
+async function dbAdjustQty(code, delta){
+  const it = await dbGet(code); if (!it) return;
+  it.qty = Math.max(0, (it.qty|0) + (delta|0));
+  it.updated = Date.now();
+  await dbPut(it);
+}
 
-  // ===== Loans (emprunts)
-  async function dbCreateLoan({ barcode, name, borrower, qty, start, due, note }){
-    // qty: nombre de pièces empruntées (par défaut 1)
-    return tx(['loans'],'readwrite',(t,done)=>{
-      t.objectStore('loans').add({
-        barcode, name,
-        borrower: borrower||'',
-        qty: parseInt(qty||1,10),
-        start: start||Date.now(),
-        due: due||null,
-        note: note||'',
-        returned: false,
-        returnDate: null
-      });
-      done(true);
-    });
-  }
-  async function dbReturnLoan(barcode){
-    // Retourne le prêt actif le plus récent pour ce code
-    return tx(['loans'],'readwrite',(t,done)=>{
-      const s = t.objectStore('loans').index('by_barcode').openCursor(IDBKeyRange.only(barcode), 'prev');
-      let found = null;
-      s.onsuccess = ()=>{
-        const cur = s.result;
-        if (!cur) {
-          done(found !== null);
-          return;
-        }
-        
-        const v = cur.value;
-        if (!v.returned && !found) {
-          found = { cursor: cur, value: v };
-          v.returned = true;
-          v.returnDate = Date.now();
-          cur.update(v);
-          done(true);
-          return;
-        }
-        cur.continue();
-      };
-    });
-  }
-  async function dbListLoans(activeOnly){
-    return tx(['loans'],'readonly',(t,done)=>{
-      const s = t.objectStore('loans').index('by_start').openCursor(null,'prev');
-      const out=[];
-      s.onsuccess = ()=>{
-        const cur = s.result;
-        if (!cur){ done(out); return; }
-        const v = cur.value;
-        if (!activeOnly || (activeOnly && !v.returned)) out.push(v);
-        cur.continue();
-      };
-    });
-  }
+async function dbGenerateCode(){
+  // Simple code unique basé sur timestamp
+  let code = 'A' + Date.now().toString(36).toUpperCase();
+  while (await dbGet(code)) code = 'A' + Date.now().toString(36).toUpperCase();
+  return code;
+}
 
-  // ===== Imports/Exports utilitaires (identiques)
-  async function exportItemsCsv(){
-    const items = await dbList('');
-    const headers = ['barcode','name','qty','min','price','location','tags','createdAt','updatedAt'];
-    const rows = [headers.join(';')];
-    for (const it of items){
-      rows.push([
-        it.barcode, 
-        it.name, 
-        it.qty||0, 
-        it.min||0, 
-        it.price||0,
-        it.location||'',
-        (it.tags||[]).join(','), 
-        it.createdAt||'', 
-        it.updatedAt||''
-      ].map(v=>String(v).replace(/;/g,',')).join(';'));
-    }
-    return rows.join('\n');
-  }
-  async function exportItemsJson(){
-    const items = await dbList('');
-    return JSON.stringify(items, null, 2);
-  }
-  async function importItemsCsv(text){
-    const lines = text.split(/\r?\n/).filter(Boolean); if (!lines.length) return;
-    const hdr = lines.shift().split(/;|,/).map(h=>h.trim().toLowerCase());
-    const idx = (k)=> hdr.indexOf(k);
-    for (const line of lines){
-      const cols = line.split(/;|,/);
-      const item = {
-        barcode: cols[idx('barcode')] || cols[0],
-        name: cols[idx('name')] || '',
-        qty: parseInt(cols[idx('qty')]||'0',10),
-        min: parseInt(cols[idx('min')]||'0',10),
-        price: parseFloat(cols[idx('price')]||'0') || 0,
-        location: cols[idx('location')] || '',
-        tags: (cols[idx('tags')]||'').split(',').map(s=>s.trim()).filter(Boolean),
-        createdAt: Date.now(), updatedAt: Date.now()
-      };
-      if (item.barcode) await dbPut(item);
-    }
-  }
-  async function importItemsJson(text){
-    const arr = JSON.parse(text||'[]');
-    for (const it of arr){ if (it && it.barcode) await dbPut(it); }
-  }
+// --- Moves (journal)
+async function dbAddMove(m){
+  await idbReq(tx('moves','readwrite').add(m));
+  scheduleSharedAutosave();
+}
+async function dbListMoves({code=null, from=0, to=Infinity, limit=1000}={}){
+  const all = await idbReq(tx('moves').getAll());
+  return all.filter(m=>(m.ts>=from && m.ts<=to && (!code || m.code===code)))
+            .sort((a,b)=>b.ts-a.ts).slice(0,limit);
+}
+async function dbExport(kind='csv'){
+  const list = await dbListMoves({limit:100000});
+  if (kind==='json') return JSON.stringify(list);
+  // CSV ; FR
+  const head = 'ts;type;code;name;qty;note\n';
+  const rows = list.map(m=>[m.ts,m.type,m.code,(m.name||''),m.qty,(m.note||'')].map(csvEscape).join(';')).join('\n');
+  return head+rows;
+}
+function csvEscape(v){
+  const s = String(v??''); return /[;"\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
+}
 
-  async function exportMovesCsv(){
-    const moves = await dbListMoves();
-    const headers = ['time','barcode','name','delta','qtyAfter','mode','source'];
-    const rows = [headers.join(';')];
-    for (const m of moves){
-      rows.push([m.time, m.barcode, m.name||'', m.delta, m.qtyAfter, m.mode||'', m.source||''].map(v=>String(v).replace(/;/g,',')).join(';'));
-    }
-    return rows.join('\n');
+// --- Loans
+async function dbCreateLoan({code,name,person,due,note=''}) {
+  const rec = {code,name,person,due, note, createdAt:Date.now(), returnedAt:null};
+  await idbReq(tx('loans','readwrite').add(rec));
+  scheduleSharedAutosave();
+  return rec;
+}
+async function dbReturnLoan(id){
+  const store = tx('loans','readwrite');
+  const rec = await idbReq(store.get(+id));
+  if (!rec) return;
+  rec.returnedAt = Date.now();
+  await idbReq(store.put(rec));
+  scheduleSharedAutosave();
+}
+async function dbListLoans(activeOnly=false){
+  const all = await idbReq(tx('loans').getAll());
+  return all.filter(l=> activeOnly ? !l.returnedAt : true)
+            .sort((a,b)=> (a.returnedAt?1:0) - (b.returnedAt?1:0) || String(a.due).localeCompare(String(b.due)));
+}
+async function dbListLoansByCode(code){
+  const all = await idbReq(tx('loans').getAll());
+  return all.filter(l=> l.code===code).sort((a,b)=> (b.createdAt-a.createdAt));
+}
+
+// --- Settings & shared file
+async function dbGetSettings(){
+  const v = await idbReq(tx('settings').get('main'));
+  return v || {id:'main', buffer:0, defaultTags:[]};
+}
+async function dbSetSettings(patch){
+  const cur = await dbGetSettings();
+  const val = Object.assign({}, cur, patch);
+  await idbReq(tx('settings','readwrite').put(val));
+  scheduleSharedAutosave();
+}
+
+async function dbExportFull(){
+  const [items, moves, loans, settings] = await Promise.all([
+    idbReq(tx('items').getAll()),
+    idbReq(tx('moves').getAll()),
+    idbReq(tx('loans').getAll()),
+    dbGetSettings()
+  ]);
+  return {version:1, exportedAt:Date.now(), items, moves, loans, settings};
+}
+async function dbImportFull(data){
+  if (!data || typeof data!=='object') throw new Error('invalid data');
+  const t1 = db.transaction(['items','moves','loans','settings'],'readwrite');
+  await Promise.all([
+    clearStore(t1.objectStore('items')).then(()=> putAll(t1.objectStore('items'), data.items||[])),
+    clearStore(t1.objectStore('moves')).then(()=> putAll(t1.objectStore('moves'), data.moves||[])),
+    clearStore(t1.objectStore('loans')).then(()=> putAll(t1.objectStore('loans'), data.loans||[])),
+    (async()=>{ await idbReq(t1.objectStore('settings').put(data.settings||{id:'main'})); })()
+  ]);
+  return true;
+}
+function clearStore(store){ return idbReq(store.clear()); }
+async function putAll(store, arr){ for (const x of arr) await idbReq(store.put(x)); }
+
+// --- File System Access (partagé)
+async function dbLinkSharedFile(handle){ sharedHandle = handle; await writeShared(); }
+function startSharedAutosave(){ /* no-op, timer à la demande */ }
+function scheduleSharedAutosave(){
+  if (!sharedHandle) return;
+  clearTimeout(sharedAutosaveTimer);
+  sharedAutosaveTimer = setTimeout(writeShared, 1500);
+}
+async function writeShared(){
+  if (!sharedHandle) return;
+  try{
+    const blob = await dbExportFull();
+    const text = JSON.stringify(blob);
+    const w = await sharedHandle.createWritable();
+    await w.write(text);
+    await w.close();
+  }catch(e){
+    console.warn('Erreur écriture fichier partagé', e);
+    alert('Écriture du fichier partagé échouée (lecture seule ?).');
   }
-  async function exportMovesJson(){
-    const moves = await dbListMoves();
-    return JSON.stringify(moves, null, 2);
-  }
-  async function importMovesCsv(text){
-    const lines = text.split(/\r?\n/).filter(Boolean); if (!lines.length) return;
-    const hdr = lines.shift().split(/;|,/).map(h=>h.trim().toLowerCase());
-    const idx = (k)=> hdr.indexOf(k);
-    for (const line of lines){
-      const cols = line.split(/;|,/);
-      await dbAddMove({
-        time: parseInt(cols[idx('time')]||Date.now(),10),
-        barcode: cols[idx('barcode')]||'',
-        name: cols[idx('name')]||'',
-        delta: parseInt(cols[idx('delta')]||'0',10),
-        qtyAfter: parseInt(cols[idx('qtyafter')]||'0',10),
-        mode: cols[idx('mode')]||'',
-        source: cols[idx('source')]||''
-      });
-    }
-  }
-
-  // Démo
-  async function dbEnsureDemo(){
-    const have = await dbList('');
-    if (have.length) return;
-    const demo = [
-      { barcode:'VM-0001', name:'Voltmètre numérique', qty:2, min:1, price:45.99, location:'Armoire A', tags:['atelier','mesure'] },
-      { barcode:'MULTI-0002', name:'Multimètre', qty:3, min:1, price:89.50, location:'Armoire A', tags:['atelier','mesure'] },
-      { barcode:'PINCE-AMP', name:'Pince ampèremétrique', qty:1, min:0, price:125.00, location:'Armoire B', tags:['mesure'] },
-      { barcode:'PERCEUSE-01', name:'Perceuse', qty:2, min:0, price:199.99, location:'Atelier', tags:['atelier','outillage'] }
-    ];
-    for (const it of demo){
-      await dbPut({ ...it, createdAt: Date.now(), updatedAt: Date.now() });
-    }
-  }
-
-  // Expose
-  window.dbPut = dbPut;
-  window.dbGet = dbGet;
-  window.dbDelete = dbDelete;
-  window.dbList = dbList;
-  window.dbAdjustQty = dbAdjustQty;
-
-  window.dbAddMove = dbAddMove;
-  window.dbListMoves = dbListMoves;
-  window.dbClearMoves = dbClearMoves;
-
-  window.dbCreateLoan = dbCreateLoan;
-  window.dbReturnLoan = dbReturnLoan;
-  window.dbListLoans = dbListLoans;
-
-  window.exportItemsCsv = exportItemsCsv;
-  window.exportItemsJson = exportItemsJson;
-  window.importItemsCsv = importItemsCsv;
-  window.importItemsJson = importItemsJson;
-
-  window.exportMovesCsv = exportMovesCsv;
-  window.exportMovesJson = exportMovesJson;
-  window.importMovesCsv = importMovesCsv;
-
-  window.dbEnsureDemo = dbEnsureDemo;
-})();
+}
