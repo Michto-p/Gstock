@@ -15,10 +15,18 @@ const Barcode = (()=> {
 
   async function startCamera(video){
     stopCamera();
-    _stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} },
-      audio:false
-    });
+    try {
+      _stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} },
+        audio:false
+      });
+    } catch(e) {
+      // Fallback sans contraintes spécifiques
+      _stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: false
+      });
+    }
     video.srcObject = _stream;
     await video.play();
     _track = _stream.getVideoTracks()[0];

@@ -146,19 +146,24 @@
     // Retourne le prêt actif le plus récent pour ce code
     return tx(['loans'],'readwrite',(t,done)=>{
       const s = t.objectStore('loans').index('by_barcode').openCursor(IDBKeyRange.only(barcode), 'prev');
+      let found = null;
       s.onsuccess = ()=>{
-        let cur = s.result, found=null;
-        while(cur){
-          const v = cur.value;
-          if (!v.returned){ found = { cursor: cur, value: v }; break; }
-          cur.continue();
-          return; // important: on attend le prochain onsuccess
+        const cur = s.result;
+        if (!cur) {
+          done(found !== null);
+          return;
         }
-        if (!found){ done(false); return; }
-        found.value.returned = true;
-        found.value.returnDate = Date.now();
-        found.cursor.update(found.value);
-        done(true);
+        
+        const v = cur.value;
+        if (!v.returned && !found) {
+          found = { cursor: cur, value: v };
+          v.returned = true;
+          v.returnDate = Date.now();
+          cur.update(v);
+          done(true);
+          return;
+        }
+        cur.continue();
       };
     });
   }

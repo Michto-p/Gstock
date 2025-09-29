@@ -82,10 +82,34 @@
 
   <main>
     <!-- Scanner (inchangé) -->
-    <section id="tab-scan" class="card"> … </section>
+    <section id="tab-scan" class="card">
+      <div class="row">
+        <button id="modeOut" class="btn">Sortie</button>
+        <button id="modeIn" class="btn secondary">Entrée</button>
+        <div>
+          <label>Quantité</label>
+          <input id="qty" type="number" value="1" min="1" style="max-width:80px" />
+        </div>
+        <span id="scanStatus" class="muted">Mode: Sortie</span>
+      </div>
+
+      <div class="scanbox">
+        <video id="video" muted playsinline></video>
+        <div class="overlay"></div>
+      </div>
+
+      <div class="row">
+        <button id="btnStartScan" class="btn">Démarrer le scan</button>
+        <button id="btnStopScan" class="btn secondary">Arrêter</button>
+        <button id="btnTorch" class="btn secondary">💡 Lampe</button>
+        <button id="btnTestDetect" class="btn secondary">Test détection</button>
+      </div>
+
+      <div id="lastOp" class="muted">Prêt à scanner.</div>
+    </section>
 
     <!-- Articles -->
-<section id="tab-items" class="card hide">
+    <section id="tab-items" class="card hide">
   <div class="row">
     <input id="search" placeholder="Rechercher nom / code / tags" />
     <label class="row" style="align-items:center;gap:6px">
@@ -113,7 +137,6 @@
 
     <button id="btnExportReassort" class="btn">Export réassort CSV</button>
   </div>
-</section>
 
       <div style="overflow:auto">
         <table id="itemsTable">
@@ -134,16 +157,152 @@
     </section>
 
     <!-- Matériel (emprunts/retours) -->
-    <section id="tab-gear" class="card hide"> … </section>
+    <section id="tab-gear" class="card hide">
+      <div class="row">
+        <button id="gearModeBorrow" class="btn">Emprunter</button>
+        <button id="gearModeReturn" class="btn secondary">Retour</button>
+        <span id="gearModeText" class="muted">Mode: Emprunter</span>
+      </div>
+      
+      <div class="grid two">
+        <div>
+          <label>Nom de la personne</label>
+          <input id="loanWho" placeholder="Nom complet" />
+        </div>
+        <div>
+          <label>Quantité</label>
+          <input id="loanQty" type="number" value="1" min="1" />
+        </div>
+        <div>
+          <label>Date limite (optionnel)</label>
+          <input id="loanDue" type="date" />
+        </div>
+        <div>
+          <label>Note (optionnel)</label>
+          <input id="loanNote" placeholder="Remarques..." />
+        </div>
+      </div>
+
+      <div class="scanbox">
+        <video id="videoGear" muted playsinline></video>
+        <div class="overlay"></div>
+      </div>
+
+      <div class="row">
+        <button id="gearStart" class="btn">Démarrer le scan</button>
+        <button id="gearStop" class="btn secondary">Arrêter</button>
+        <button id="gearTorch" class="btn secondary">💡 Lampe</button>
+        <button id="gearTest" class="btn secondary">Test détection</button>
+      </div>
+
+      <div id="gearLast" class="muted">Prêt à scanner.</div>
+
+      <h4>Emprunts en cours</h4>
+      <div class="row">
+        <input id="loanSearch" placeholder="Rechercher emprunts..." />
+        <button id="btnExportLoansCsv" class="btn secondary">Export CSV</button>
+      </div>
+      
+      <div style="overflow:auto">
+        <table id="loansTable">
+          <thead>
+            <tr>
+              <th>Début</th>
+              <th>Échéance</th>
+              <th>Statut</th>
+              <th>Code</th>
+              <th>Nom</th>
+              <th>Emprunteur</th>
+              <th>Note</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
 
     <!-- Nouveau (inchangé) -->
-    <section id="tab-new" class="card hide"> … </section>
+    <section id="tab-new" class="card hide">
+      <h3>Créer un nouvel article</h3>
+      <div class="grid two">
+        <div>
+          <label>Nom de l'article *</label>
+          <input id="newName" placeholder="Ex: Multimètre" />
+        </div>
+        <div>
+          <label>Code-barres (auto si vide)</label>
+          <input id="newCode" placeholder="Ex: CFA-12345" />
+        </div>
+        <div>
+          <label>Quantité initiale</label>
+          <input id="newQty" type="number" value="0" min="0" />
+        </div>
+        <div>
+          <label>Seuil minimum</label>
+          <input id="newMin" type="number" value="5" min="0" />
+        </div>
+      </div>
+      
+      <div>
+        <label>Tags (séparés par des virgules)</label>
+        <input id="newTags" placeholder="Ex: atelier, mesure, outillage" />
+      </div>
+      
+      <div class="row">
+        <button id="createItem" class="btn">Créer l'article</button>
+      </div>
+    </section>
 
     <!-- Étiquettes (déjà avec libellé sous le code-barres) -->
-    <section id="tab-labels" class="card hide"> … </section>
+    <section id="tab-labels" class="card hide">
+      <h3>Génération d'étiquettes</h3>
+      <div class="row">
+        <div>
+          <label>Article</label>
+          <select id="labelItem"></select>
+        </div>
+        <div>
+          <label>Nombre d'étiquettes</label>
+          <input id="labelCount" type="number" value="1" min="1" max="50" />
+        </div>
+        <button id="btnRenderLabel" class="btn">Générer</button>
+        <button id="btnRenderAllLabels" class="btn secondary">Tous les articles</button>
+        <button id="btnPrintLabels" class="btn ok">Imprimer</button>
+      </div>
+      
+      <div id="labelPreview"></div>
+    </section>
 
     <!-- Journal (inchangé) -->
-    <section id="tab-journal" class="card hide"> … </section>
+    <section id="tab-journal" class="card hide">
+      <h3>Journal des mouvements</h3>
+      <div class="row">
+        <input id="journalSearch" placeholder="Rechercher dans le journal..." />
+        <button id="btnExportMovesCsv" class="btn secondary">Export CSV</button>
+        <button id="btnExportMovesJson" class="btn secondary">Export JSON</button>
+        <input type="file" id="fileImportMovesCsv" accept=".csv" class="hide"/>
+        <button id="btnImportMovesCsv" class="btn secondary">Import CSV</button>
+        <button id="btnClearMoves" class="btn warn">Vider le journal</button>
+      </div>
+      
+      <div style="overflow:auto">
+        <table id="journalTable">
+          <thead>
+            <tr>
+              <th>Date/Heure</th>
+              <th>Code</th>
+              <th>Nom</th>
+              <th>Δ</th>
+              <th>Stock après</th>
+              <th>Mode</th>
+              <th>Source</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
 
     <!-- Paramètres -->
     <section id="tab-settings" class="card hide">

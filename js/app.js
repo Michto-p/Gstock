@@ -542,6 +542,28 @@
   const fileStatus = document.getElementById('fileStatus');
   const autoSaveChk = document.getElementById('autoSave');
 
+  // Import/Export buttons
+  const btnExportItemsCsv = document.getElementById('btnExportItemsCsv');
+  const btnExportItemsJson = document.getElementById('btnExportItemsJson');
+  const btnImportItemsCsv = document.getElementById('btnImportItemsCsv');
+  const btnImportJson = document.getElementById('btnImportJson');
+  const fileImportItemsCsv = document.getElementById('fileImportItemsCsv');
+  const fileImportJson = document.getElementById('fileImportJson');
+
+  // Wire up import/export handlers
+  if (btnExportItemsCsv) btnExportItemsCsv.addEventListener('click', async ()=>{ const csv = await exportItemsCsv(); downloadText('articles.csv', csv); });
+  if (btnExportItemsJson) btnExportItemsJson.addEventListener('click', async ()=>{ const json = await exportItemsJson(); downloadText('articles.json', json); });
+  if (btnImportItemsCsv) btnImportItemsCsv.addEventListener('click', ()=> fileImportItemsCsv && fileImportItemsCsv.click());
+  if (btnImportJson) btnImportJson.addEventListener('click', ()=> fileImportJson && fileImportJson.click());
+  if (fileImportItemsCsv) fileImportItemsCsv.addEventListener('change', async (e)=>{
+    const f = e.target.files[0]; if (!f) return;
+    const text = await f.text(); await importItemsCsv(text); scheduleFileSave(); refreshTable(); e.target.value='';
+  });
+  if (fileImportJson) fileImportJson.addEventListener('change', async (e)=>{
+    const f = e.target.files[0]; if (!f) return;
+    const text = await f.text(); await importItemsJson(text); scheduleFileSave(); refreshTable(); e.target.value='';
+  });
+
   let fileHandle = null;
   let saveTimer = null;
 
