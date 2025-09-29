@@ -85,28 +85,36 @@
     <section id="tab-scan" class="card"> … </section>
 
     <!-- Articles -->
-    <section id="tab-items" class="card hide">
-      <div class="row">
-        <input id="search" placeholder="Rechercher nom / code / tags" />
-        <label class="row" style="align-items:center;gap:6px">
-          <input type="checkbox" id="chkShowBarcodes"/>
-          <span>Afficher les codes-barres</span>
-        </label>
-        <button id="addDummy" class="btn secondary">+ Démo</button>
-      </div>
-      <!-- ▶ filtre & tri par tags prédéfinis -->
-      <div class="row">
-        <label style="min-width:160px">Tag prédéfini</label>
-        <select id="presetFilter" style="min-width:220px"><option value="">(Tous)</option></select>
-        <label style="min-width:160px">Tri</label>
-        <select id="presetSort" style="min-width:220px">
-          <option value="name">Nom A→Z</option>
-          <option value="qtyAsc">Qté (croissant)</option>
-          <option value="qtyDesc">Qté (décroissant)</option>
-          <option value="status">Statut stock (critique d’abord)</option>
-          <option value="tag">Tag (A→Z)</option>
-        </select>
-      </div>
+<section id="tab-items" class="card hide">
+  <div class="row">
+    <input id="search" placeholder="Rechercher nom / code / tags" />
+    <label class="row" style="align-items:center;gap:6px">
+      <input type="checkbox" id="chkShowBarcodes"/>
+      <span>Afficher les codes-barres</span>
+    </label>
+    <button id="addDummy" class="btn secondary">+ Démo</button>
+
+    <!-- ▶ Indicateur réassort -->
+    <span id="stockBadges" class="muted" style="margin-left:auto"></span>
+  </div>
+
+  <!-- ▶ filtre & tri par tags prédéfinis + export réassort -->
+  <div class="row">
+    <label style="min-width:160px">Tag prédéfini</label>
+    <select id="presetFilter" style="min-width:220px"><option value="">(Tous)</option></select>
+    <label style="min-width:160px">Tri</label>
+    <select id="presetSort" style="min-width:220px">
+      <option value="name">Nom A→Z</option>
+      <option value="qtyAsc">Qté (croissant)</option>
+      <option value="qtyDesc">Qté (décroissant)</option>
+      <option value="status">Statut stock (critique d’abord)</option>
+      <option value="tag">Tag (A→Z)</option>
+    </select>
+
+    <button id="btnExportReassort" class="btn">Export réassort CSV</button>
+  </div>
+</section>
+
       <div style="overflow:auto">
         <table id="itemsTable">
           <thead>
