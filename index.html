@@ -1,342 +1,245 @@
-<!DOCTYPE html>
-<html lang="fr">
+<!doctype html>
+<html lang="fr" data-theme="auto">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Stock CFA — Scanner</title>
-  <meta name="theme-color" content="#0ea5e9">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0a84ff">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <title>Gstock</title>
   <style>
-    :root{
-      --bg:#f6f8fa; --fg:#0b1220; --muted:#5b6b7a; --pri:#0ea5e9;
-      --ok:#16a34a; --warn:#f59e0b; --err:#dc2626;
-      --card:#ffffff; --bd:#e2e8f0;
-      --header-h: 56px; --nav-h: 44px;
-    }
-    *{box-sizing:border-box}
-    html,body{margin:0;height:100%}
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial,sans-serif;background:var(--bg);color:var(--fg)}
-    header{position:sticky;top:0;z-index:10;height:var(--header-h);display:flex;align-items:center;gap:10px;background:linear-gradient(180deg,#ffffff,#f6f8fa);border-bottom:1px solid var(--bd);padding:0 12px}
-    header h1{font-size:16px;margin:0;font-weight:700}
-    header .badge{margin-left:auto;padding:2px 8px;border:1px solid var(--bd);border-radius:999px;color:var(--muted);font-size:12px;background:#fff}
-    #errbar{display:none;position:sticky;top:var(--header-h);z-index:11;background:var(--err);color:#fff;padding:8px 12px;font-weight:700}
-    nav{position:sticky;top:calc(var(--header-h));z-index:9;display:flex;gap:6px;padding:6px 8px;background:#fff;border-bottom:1px solid var(--bd);flex-wrap:wrap;height:var(--nav-h)}
-    nav button{flex:0 0 auto;padding:6px 10px;border-radius:10px;border:1px solid var(--bd);background:#ffffff;color:var(--fg);font-weight:600;min-width:96px;font-size:13px;height:32px}
-    nav button.active{outline:2px solid var(--pri);outline-offset:0}
-    main{padding:12px;display:grid;gap:12px}
-    .card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
-    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-    input,select,textarea{background:#fff;color:var(--fg);border:1px solid var(--bd);border-radius:10px;padding:9px 11px;width:100%}
-    input[type=number]{max-width:140px}
-    label{font-size:12px;color:var(--muted)}
-    .btn{background:var(--pri);color:#fff;border:none;border-radius:10px;padding:9px 12px;font-weight:700}
-    .btn.secondary{background:#fff;color:var(--fg);border:1px solid var(--bd)}
-    .btn.warn{background:#f59e0b;color:#201100}
-    .btn.ok{background:#16a34a;color:#fff}
+    :root{--bg:#ffffff;--fg:#0b0b0b;--muted:#6b7280;--acc:#0a84ff;--warn:#f59e0b;--danger:#ef4444;--ok:#10b981}
+    [data-theme="dark"]{--bg:#0b0b0b;--fg:#f5f5f5;--muted:#a1a1aa;--acc:#0a84ff}
+    html,body{height:100%} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial,sans-serif;background:var(--bg);color:var(--fg)}
+    header{display:flex;gap:.5rem;align-items:center;justify-content:space-between;padding:.75rem 1rem;border-bottom:1px solid #e5e7eb}
+    nav{display:flex;gap:.5rem;flex-wrap:wrap}
+    nav button{padding:.5rem .75rem;border:1px solid #e5e7eb;background:#fff;cursor:pointer;border-radius:.5rem}
+    [data-theme="dark"] nav button{background:#111827;border-color:#374151}
+    main{padding:1rem;max-width:1100px;margin:0 auto}
+    section[hidden]{display:none}
+    table{border-collapse:collapse;width:100%}
+    th,td{padding:.5rem;border-bottom:1px solid #e5e7eb}
+    .badge{display:inline-block;padding:.15rem .4rem;border-radius:.4rem;font-size:.75rem}
+    .ok{background:rgba(16,185,129,.15);color:#047857}
+    .low{background:rgba(245,158,11,.15);color:#92400e}
+    .under{background:rgba(239,68,68,.15);color:#991b1b}
+    .toolbar{display:flex;gap:.5rem;align-items:center;margin:.5rem 0}
     .muted{color:var(--muted)}
-    .scanbox{position:relative;border-radius:12px;overflow:hidden;border:1px dashed var(--bd);background:#000}
-    video{width:100%;height:auto;display:block;background:#000}
-    .overlay{position:absolute;inset:0;outline:2px dashed rgba(14,165,233,.35);pointer-events:none}
-    .grid{display:grid;gap:8px}
-    .two{grid-template-columns:1fr 1fr}
-    .hide{display:none}
-    footer{padding:20px 10px;color:var(--muted);text-align:center}
-    table{width:100%;border-collapse:collapse;background:#fff}
-    th,td{border-bottom:1px solid var(--bd);padding:8px;text-align:left;font-size:14px;vertical-align:top}
-    th{cursor:pointer;user-select:none;background:#fafbfc}
-    .nowrap{white-space:nowrap}
-    .tags{display:flex;gap:6px;flex-wrap:wrap}
-    .tag{background:#f1f5f9;border:1px solid var(--bd);padding:2px 6px;border-radius:999px;font-size:12px;color:#0b1220}
-    .barcode-svg{max-width:220px;background:#fff;padding:4px;border-radius:6px;border:1px solid var(--bd)}
-    .overdue{color:#fff;background:#ef4444;padding:2px 8px;border-radius:999px;font-size:12px}
-    .dueSoon{color:#201100;background:#f59e0b;padding:2px 8px;border-radius:999px;font-size:12px}
-    .lvl-ok{background:#ecfdf5}
-    .lvl-warn{background:#fff7ed}
-    .lvl-alert{background:#fef2f2}
-    @media(min-width:900px){main{max-width:1100px;margin:0 auto}}
-
-    /* === Modale quantité après scan === */
-    .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:50}
-    .modal{background:#fff;border:1px solid var(--bd);border-radius:14px;max-width:480px;width:calc(100% - 24px);padding:14px;box-shadow:0 10px 30px rgba(0,0,0,.2)}
-    .modal h3{margin:0 0 6px 0}
-    .modal .row{margin-top:6px}
+    .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+    .update-banner{display:none;padding:.5rem 1rem;background:#fff3cd;border:1px solid #ffe69c;border-left:4px solid #f59e0b;border-radius:.5rem;margin:0 1rem 1rem}
+    .update-banner.show{display:flex;justify-content:space-between;gap:.75rem;align-items:center}
+    .toggle{display:flex;align-items:center;gap:.35rem}
+    dialog{border:none;border-radius:.75rem;box-shadow:0 10px 30px rgba(0,0,0,.25);max-width:520px;padding:0}
+    dialog header{border-bottom:1px solid #e5e7eb}
+    dialog .content{padding:1rem}
+    dialog .actions{display:flex;gap:.5rem;justify-content:flex-end;padding:0 1rem 1rem}
+    .btn{padding:.5rem .8rem;border:1px solid #e5e7eb;background:#fff;border-radius:.5rem;cursor:pointer}
+    .btn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+    .btn.danger{background:#ef4444;border-color:#ef4444;color:#fff}
+    .pill{padding:.2rem .5rem;border-radius:999px;background:#e5e7eb;font-size:.75rem}
+    .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;padding:.1rem .35rem;border:1px solid #d1d5db;border-bottom-width:2px;border-radius:.35rem}
   </style>
-
   <script>
-    if (location.protocol.startsWith('http')) {
-      const l = document.createElement('link'); l.rel='manifest'; l.href='manifest.json'; document.head.appendChild(l);
-      if ('serviceWorker' in navigator) { window.addEventListener('load', ()=>navigator.serviceWorker.register('./sw.js').catch(()=>{})); }
-    }
+    window.APP_VERSION = '2.0.2'; // <- bump
+    (function(){
+      const saved = localStorage.getItem('gstock.theme');
+      const prefersDark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.setAttribute('data-theme', saved || (prefersDark ? 'dark' : 'light'));
+    })();
   </script>
 </head>
 <body>
   <header>
-    <h1>📦 Stock CFA — Scanner</h1>
-    <span class="badge" id="badge">hors ligne</span>
+    <div style="display:flex;align-items:center;gap:.6rem">
+      <img src="icons/icon-192.png" alt="" width="28" height="28" style="border-radius:6px">
+      <strong>Gstock</strong><span class="muted">— Gestion de stock</span>
+      <span class="pill muted">v<span id="appVersion">2.0.2</span></span>
+    </div>
+    <div class="toggle">
+      <label for="themeToggle" class="muted">Thème</label>
+      <select id="themeToggle" class="btn">
+        <option value="auto">Auto</option>
+        <option value="light">Clair</option>
+        <option value="dark">Sombre</option>
+      </select>
+    </div>
   </header>
-  <div id="errbar"></div>
 
-  <nav>
-    <button data-tab="scan" class="active">Scanner</button>
-    <button data-tab="items">Articles</button>
-    <button data-tab="gear">Matériel</button>
-    <button data-tab="new">Nouveau</button>
-    <button data-tab="labels">Étiquettes</button>
-    <button data-tab="journal">Journal</button>
-    <button data-tab="settings">Paramètres</button>
-  </nav>
+  <div id="updateBanner" class="update-banner" role="status" aria-live="polite">
+    <span>Nouvelle version disponible.</span>
+    <div>
+      <button id="btnUpdate" class="btn primary">Recharger</button>
+      <button id="btnDismissUpdate" class="btn">Plus tard</button>
+    </div>
+  </div>
+
+  <header>
+    <nav aria-label="Onglets">
+      <button data-tab="items">Articles</button>
+      <button data-tab="scanner">Scanner</button>
+      <button data-tab="labels">Étiquettes</button>
+      <button data-tab="journal">Journal</button>
+      <button data-tab="gear">Prêts</button>
+      <button data-tab="settings">Paramètres</button>
+    </nav>
+    <div class="muted" title="Raccourcis clavier">
+      <span class="kbd">a</span> ajout,
+      <span class="kbd">r</span> retrait,
+      <span class="kbd">Ctrl</span>+<span class="kbd">K</span> recherche
+    </div>
+  </header>
 
   <main>
-    <!-- Scanner -->
-    <section id="tab-scan" class="card">
-      <div class="grid">
-        <div class="row">
-          <button class="pill" id="modeOut">− Sortie</button>
-          <button class="pill" id="modeIn">+ Entrée</button>
-          <span class="pill" id="scanStatus">Mode: Sortie</span>
-          <span class="muted">(BarcodeDetector)</span>
-        </div>
-        <div class="row">
-          <button id="btnStartScan" class="btn secondary">Démarrer caméra</button>
-          <button id="btnStopScan" class="btn secondary">Arrêter</button>
-          <button id="btnTorch" class="btn secondary">Lampe</button>
-          <button id="btnTestDetect" class="btn secondary">Tester une détection</button>
-        </div>
-        <div class="scanbox">
-          <video id="video" playsinline muted></video>
-          <div class="overlay"></div>
-        </div>
-        <div class="row">
-          <label>Quantité par défaut</label>
-          <input type="number" id="qty" value="1" min="1" step="1"/>
-        </div>
-        <div id="lastOp" class="muted"></div>
-      </div>
-    </section>
-
     <!-- Articles -->
-    <section id="tab-items" class="card hide">
-      <div class="row">
-        <input id="search" placeholder="Rechercher nom / code / tags" />
-        <label class="row" style="align-items:center;gap:6px">
-          <input type="checkbox" id="chkShowBarcodes"/>
-          <span>Afficher les codes-barres</span>
-        </label>
-        <button id="addDummy" class="btn secondary">+ Démo</button>
-        <span id="stockBadges" class="muted" style="margin-left:auto"></span>
-      </div>
-      <div class="row">
-        <label style="min-width:160px">Tag prédéfini</label>
-        <select id="presetFilter" style="min-width:220px"><option value="">(Tous)</option></select>
-        <label style="min-width:160px">Tri</label>
-        <select id="presetSort" style="min-width:220px">
-          <option value="name">Nom A→Z</option>
-          <option value="qtyAsc">Qté (croissant)</option>
-          <option value="qtyDesc">Qté (décroissant)</option>
-          <option value="status">Statut stock (critique d’abord)</option>
-          <option value="tag">Tag (A→Z)</option>
+    <section id="tab-items">
+      <div class="toolbar">
+        <button id="btnAddItem" class="btn primary">Nouvel article</button>
+        <input id="searchItems" type="search" placeholder="Rechercher (nom, code, tag)…" class="btn" style="min-width:280px">
+        <select id="filterStatus" class="btn">
+          <option value="">Tous statuts</option>
+          <option value="ok">OK</option>
+          <option value="low">Approche</option>
+          <option value="under">Sous seuil</option>
         </select>
-        <button id="btnExportReassort" class="btn">Export réassort CSV</button>
+        <select id="filterTag" class="btn">
+          <option value="">Tous tags</option>
+        </select>
       </div>
-      <div style="overflow:auto">
-        <table id="itemsTable">
-          <thead>
-            <tr>
-              <th data-sort="name">Nom</th>
-              <th data-sort="barcode">Code</th>
-              <th data-sort="qty" class="nowrap">Qté</th>
-              <th data-sort="min" class="nowrap">Seuil</th>
-              <th>Tags</th>
-              <th>Code-barres</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
+      <table aria-label="Table des articles">
+        <thead><tr>
+          <th>Nom</th><th>Code</th><th>Qté</th><th>Seuil</th><th>Tags</th><th>État</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="itemsTbody"></tbody>
+      </table>
     </section>
 
-    <!-- Matériel -->
-    <section id="tab-gear" class="card hide">
-      <h3>Emprunt & Retour de matériel</h3>
-      <div class="row">
-        <button class="pill" id="gearModeBorrow">Emprunter</button>
-        <button class="pill" id="gearModeReturn">Retour</button>
-        <span id="gearModeText" class="pill">Mode: Emprunter</span>
-      </div>
-      <div class="grid two">
-        <div class="card">
-          <div class="row"><label>Nom de la personne</label><input id="loanWho" placeholder="Nom & prénom"/></div>
-          <div class="row"><label>Date retour prévue</label><input id="loanDue" type="date"/></div>
-          <div class="row"><label>Commentaire</label><input id="loanNote" placeholder="pile HS, accessoire manquant, etc."/></div>
-          <div class="row"><label>Quantité</label><input id="loanQty" type="number" min="1" value="1"/></div>
-          <div class="row">
-            <button id="gearStart" class="btn secondary">Démarrer caméra</button>
-            <button id="gearStop" class="btn secondary">Arrêter</button>
-            <button id="gearTorch" class="btn secondary">Lampe</button>
-            <button id="gearTest" class="btn secondary">Tester une détection</button>
-          </div>
-          <div class="scanbox"><video id="videoGear" playsinline muted></video><div class="overlay"></div></div>
-          <div id="gearLast" class="muted"></div>
-        </div>
-        <div class="card">
-          <h4>Emprunts en cours</h4>
-          <div class="row">
-            <input id="loanSearch" placeholder="Filtrer (code, nom matériel, personne)"/>
-            <button id="btnExportLoansCsv" class="btn secondary">Export CSV</button>
-          </div>
-          <div style="overflow:auto; max-height:60vh">
-            <table id="loansTable">
-              <thead><tr><th>Début</th><th>Prévu</th><th>Statut</th><th>Code</th><th>Matériel</th><th>Personne</th><th>Note</th><th>Action</th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Nouveau -->
-    <section id="tab-new" class="card hide">
-      <div class="grid">
-        <div class="row two">
-          <div style="flex:1"><label>Nom</label><input id="newName" placeholder="Ex. Voltmètre, Perceuse, etc."/></div>
-          <div><label>Quantité initiale</label><input id="newQty" type="number" value="0" min="0"/></div>
-        </div>
-        <div class="row two">
-          <div><label>Seuil d'alerte</label><input id="newMin" type="number" value="5" min="0"/></div>
-          <div><label>Code (barcode)</label><input id="newCode" placeholder="Laisser vide pour auto"/></div>
-        </div>
-        <div><label>Tags (virgules)</label><input id="newTags" placeholder="consommable, atelier, TP"/></div>
-        <div class="row"><button id="createItem" class="btn ok">Créer</button></div>
+    <!-- Scanner (nouveau : 1 bouton = 1 scan) -->
+    <section id="tab-scanner" hidden>
+      <div class="toolbar">
+        <button id="btnScanOnce" class="btn primary">Scanner un article</button>
+        <span class="muted">La caméra s’ouvre, *bip* à la détection, puis la saisie quantité s’affiche.</span>
       </div>
     </section>
 
     <!-- Étiquettes -->
-    <section id="tab-labels" class="card hide">
-      <div class="row">
-        <select id="labelItem"></select>
-        <input id="labelCount" type="number" min="1" value="10" />
-        <button id="btnRenderLabel" class="btn">Générer l'étiquette</button>
-        <button id="btnRenderAllLabels" class="btn secondary">Toutes les étiquettes</button>
+    <section id="tab-labels" hidden>
+      <div class="toolbar">
+        <button id="btnLabelsAll" class="btn">Planche pour tous</button>
+        <button id="btnLabelsSelected" class="btn">Planche sélection</button>
+        <span class="muted">Imprimable (A4)</span>
       </div>
-      <div id="labelPreview" class="card"></div>
-      <div class="row"><button id="btnPrintLabels" class="btn secondary">Imprimer / PDF</button></div>
+      <div id="labelsPreview"></div>
     </section>
 
     <!-- Journal -->
-    <section id="tab-journal" class="card hide">
-      <div class="row">
-        <input id="journalSearch" placeholder="Filtrer (nom / code / mode / source)" />
-        <button id="btnExportMovesCsv" class="btn secondary">Export CSV</button>
-        <button id="btnExportMovesJson" class="btn secondary">Export JSON</button>
-        <input type="file" id="fileImportMovesCsv" accept=".csv,text/csv" class="hide"/>
-        <button id="btnImportMovesCsv" class="btn secondary">Importer CSV</button>
-        <button id="btnClearMoves" class="btn warn">Vider le journal</button>
+    <section id="tab-journal" hidden>
+      <div class="toolbar">
+        <input id="dateFrom" type="date" class="btn">
+        <input id="dateTo" type="date" class="btn">
+        <button id="btnFilterJournal" class="btn">Filtrer</button>
+        <button id="btnExportCSV" class="btn">Export CSV</button>
+        <button id="btnExportJSON" class="btn">Export JSON</button>
       </div>
-      <div style="overflow:auto">
-        <table id="journalTable">
-          <thead><tr>
-            <th class="nowrap">Date/Heure</th><th>Code</th><th>Nom</th>
-            <th class="nowrap">Δ Qté</th><th class="nowrap">Qté après</th><th>Mode</th><th>Source</th>
-          </tr></thead>
-          <tbody></tbody>
-        </table>
+      <table aria-label="Journal des mouvements">
+        <thead><tr><th>Date/heure</th><th>Type</th><th>Code</th><th>Nom</th><th>Qté</th><th>Note</th></tr></thead>
+        <tbody id="journalTbody"></tbody>
+      </table>
+    </section>
+
+    <!-- Prêts -->
+    <section id="tab-gear" hidden>
+      <div class="toolbar">
+        <button id="btnNewLoan" class="btn primary">Nouvel emprunt</button>
+        <input id="searchLoans" type="search" placeholder="Rechercher emprunts…" class="btn">
       </div>
+      <table aria-label="Table des emprunts">
+        <thead><tr><th>Article</th><th>Code</th><th>À</th><th>Prévu retour</th><th>État</th><th>Actions</th></tr></thead>
+        <tbody id="loansTbody"></tbody>
+      </table>
     </section>
 
     <!-- Paramètres -->
-    <section id="tab-settings" class="card hide">
-      <h3>Paramètres & Import/Export</h3>
-      <div class="row">
-        <button id="btnExportItemsCsv" class="btn secondary">Export Articles CSV</button>
-        <button id="btnExportItemsJson" class="btn secondary">Export Articles JSON</button>
-        <input type="file" id="fileImportItemsCsv" accept=".csv,text/csv" class="hide"/>
-        <button id="btnImportItemsCsv" class="btn secondary">Importer Articles CSV</button>
-        <input type="file" id="fileImportJson" accept="application/json,text/json" class="hide"/>
-        <button id="btnImportJson" class="btn secondary">Importer Articles JSON</button>
+    <section id="tab-settings" hidden>
+      <h3>Sauvegarde et paramètres</h3>
+      <div class="toolbar">
+        <button id="btnImportJSON" class="btn">Importer JSON</button>
+        <button id="btnExportFull" class="btn">Exporter JSON</button>
+        <button id="btnLinkSharedFile" class="btn">Activer fichier partagé</button>
+        <span id="sharedFileStatus" class="muted">Aucun fichier lié</span>
       </div>
-
-      <hr style="border:none;border-top:1px solid var(--bd);margin:10px 0">
-
-      <h4>Tags prédéfinis</h4>
-      <p class="muted">Liste séparée par des virgules. Sert au filtre & tri.</p>
-      <textarea id="presetTags" rows="3" placeholder="atelier, mesure, outillage, consommable"></textarea>
-      <div class="row">
-        <label>Marges d’alerte (approche du seuil)</label>
-        <input id="warnBuffer" type="number" min="0" value="2" style="max-width:120px"/>
-        <button id="btnSavePresets" class="btn ok">Enregistrer</button>
+      <div class="toolbar">
+        <label>Buffer d’alerte (avant seuil) :
+          <input id="inputBuffer" type="number" min="0" value="0" class="btn" style="width:6rem">
+        </label>
+        <label>Tags prédéfinis :
+          <input id="inputDefaultTags" class="btn" placeholder="ex: TP, Atelier, Éclairage">
+        </label>
+        <button id="btnSaveSettings" class="btn primary">Enregistrer</button>
       </div>
-
-      <hr style="border:none;border-top:1px solid var(--bd);margin:10px 0">
-
-      <h4>Données via fichier (multi-utilisateurs)</h4>
-      <div class="row">
-        <button id="btnOpenDataFile" class="btn secondary">Ouvrir / créer un fichier…</button>
-        <button id="btnSaveNow" class="btn secondary">Enregistrer maintenant</button>
-        <label class="row" style="align-items:center;gap:6px"><input type="checkbox" id="autoSave"/> Auto-sauvegarde</label>
-        <span id="fileStatus" class="muted">Aucun fichier ouvert</span>
-      </div>
-      <p class="muted">Format: un seul fichier <code>stock-data.json</code> (articles, journal, prêts, presets).</p>
-
-      <hr style="border:none;border-top:1px solid var(--bd);margin:10px 0">
-
-      <h4>Mises à jour</h4>
-      <div id="updateBox" class="row" style="align-items:center">
-        <button id="btnCheckUpdate" class="btn secondary">Vérifier les mises à jour</button>
-        <span id="updateStatus" class="muted">Version actuelle chargée.</span>
-        <button id="btnApplyUpdate" class="btn ok hide">Mettre à jour maintenant</button>
-      </div>
-
-      <p class="muted">Caméra : HTTPS ou <code>http://localhost</code>. Version <b>BarcodeDetector only</b>.</p>
     </section>
   </main>
 
-  <!-- === Modale Quantité après scan === -->
-  <div id="qtyModalBackdrop" class="modal-backdrop">
-    <div class="modal">
-      <h3>Mouvement de stock</h3>
-      <div class="muted" id="qtyModalInfo">Code: —</div>
-      <div class="row">
-        <label style="min-width:90px">Article</label>
-        <input id="qtyModalName" placeholder="Nom de l'article"/>
-      </div>
-      <div class="row">
-        <label style="min-width:90px">Quantité</label>
-        <input id="qtyModalQty" type="number" min="1" value="1" />
-      </div>
-      <div class="row">
-        <label class="row" style="gap:8px"><input type="radio" name="qtyModalMode" value="in"> Ajout</label>
-        <label class="row" style="gap:8px"><input type="radio" name="qtyModalMode" value="out" checked> Retrait</label>
-      </div>
-      <div class="row" style="justify-content:flex-end">
-        <button id="qtyModalCancel" class="btn secondary">Annuler</button>
-        <button id="qtyModalOk" class="btn ok">Valider</button>
+  <!-- Modale AJUSTEMENT (existe déjà) -->
+  <dialog id="adjustDialog">
+    <header style="display:flex;justify-content:space-between;align-items:center;padding:.75rem 1rem">
+      <strong>Ajuster le stock</strong>
+      <button id="dlgClose" class="btn">Fermer</button>
+    </header>
+    <div class="content">
+      <div id="dlgItem" class="muted"></div>
+      <div style="display:flex;gap:.5rem;margin-top:.75rem">
+        <select id="dlgType" class="btn">
+          <option value="add">Ajout</option>
+          <option value="remove">Retrait</option>
+        </select>
+        <input id="dlgQty" type="number" min="1" value="1" class="btn" style="width:7rem">
+        <input id="dlgNote" class="btn" placeholder="Commentaire (optionnel)" style="flex:1">
       </div>
     </div>
-  </div>
+    <div class="actions">
+      <button id="dlgValidate" class="btn primary">Valider</button>
+    </div>
+  </dialog>
 
-  <footer>Made for CFA — PWA hors-ligne. © <span id="year"></span></footer>
-  <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
+  <!-- Nouvelle modale SCAN -->
+  <dialog id="scanDialog">
+    <header style="display:flex;justify-content:space-between;align-items:center;padding:.75rem 1rem">
+      <strong>Scanner un article</strong>
+      <button id="scanClose" class="btn">Fermer</button>
+    </header>
+    <div class="content">
+      <video id="scanVideo" playsinline style="width:100%;max-height:55vh;background:#000;border-radius:8px"></video>
+      <p class="muted" style="margin:.5rem 0 0">Visez le code-barres. À la détection : *bip* puis la saisie quantité s’ouvre.</p>
+    </div>
+    <div class="actions">
+      <button id="scanCancel" class="btn">Annuler</button>
+    </div>
+  </dialog>
 
-  <script src="js/db.js?v=1.7.0"></script>
-  <script src="js/barcode.js?v=1.7.0"></script>
-  <script src="js/app.js?v=1.8.0"></script>
+  <div id="sr" class="sr-only" aria-live="polite"></div>
 
-  <!-- Panneau de mise à jour (si tu utilises sw.js) -->
+  <script src="js/db.js?v=2.0.2"></script>
+  <script src="js/barcode.js?v=2.0.2"></script>
+  <script src="js/app.js?v=2.0.2"></script>
   <script>
-    (function(){
-      if (!('serviceWorker' in navigator) || !location.protocol.startsWith('http')) return;
-      let reg = null; const $=(id)=>document.getElementById(id);
-      const status=$('updateStatus'), btnCheck=$('btnCheckUpdate'), btnApply=$('btnApplyUpdate');
-      navigator.serviceWorker.getRegistration('./sw.js').then(r=>{reg=r;wire();}).catch(()=>wire());
-      function showApply(){ if(status) status.textContent='Nouvelle version disponible.'; if(btnApply) btnApply.classList.remove('hide');}
-      function wire(){
-        if(!reg){ if(status) status.textContent="Service Worker non actif."; return; }
-        if(reg.waiting) showApply();
-        reg.addEventListener('updatefound', ()=>{ const i=reg.installing; if(!i)return; i.addEventListener('statechange', ()=>{ if(i.state==='installed'&&navigator.serviceWorker.controller){ showApply(); } }); });
-        if(btnCheck) btnCheck.addEventListener('click', async()=>{ if(status) status.textContent='Recherche…'; try{ await reg.update(); if(!reg.waiting&&status) status.textContent='Version actuelle chargée.'; }catch(e){ if(status) status.textContent='Erreur de vérification.'; } });
-        if(btnApply) btnApply.addEventListener('click', ()=>{ const w=reg.waiting; if(w){ w.postMessage({type:'SKIP_WAITING'}); navigator.serviceWorker.addEventListener('controllerchange', ()=>location.reload()); } else { location.reload(); } });
-      }
-    })();
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js?v=' + window.APP_VERSION).then(reg=>{
+        const $ = s=>document.querySelector(s);
+        function showUpdateBanner(){
+          $('#updateBanner').classList.add('show');
+          $('#btnUpdate').onclick = ()=> reg.waiting && reg.waiting.postMessage({type:'SKIP_WAITING'});
+          $('#btnDismissUpdate').onclick = ()=> $('#updateBanner').classList.remove('show');
+        }
+        reg.addEventListener('updatefound', ()=>{
+          const nw = reg.installing;
+          nw && nw.addEventListener('statechange', ()=>{
+            if (nw.state === 'installed' && navigator.serviceWorker.controller) showUpdateBanner();
+          });
+        });
+        navigator.serviceWorker.addEventListener('controllerchange', ()=>location.reload());
+      }).catch(console.error);
+    }
   </script>
 </body>
 </html>
