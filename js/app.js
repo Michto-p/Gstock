@@ -1,4 +1,4 @@
-// js/app.js — v1.7.1 : réassort + indicateur + réintégration "Matériel" (refreshLoansTable)
+// js/app.js — v1.7.1 : réassort + indicateur + section "Matériel" rétablie
 (function(){
   const errbar = document.getElementById('errbar');
   function showError(msg){ if (!errbar) return; errbar.textContent = msg; errbar.style.display = 'block'; }
@@ -34,7 +34,7 @@
   window.addEventListener('offline', updateBadge);
   updateBadge();
 
-  // ========== SCANNER STOCK ==========
+  // ===== Scanner (stock)
   const video = document.getElementById('video');
   const scanStatus = document.getElementById('scanStatus');
   const qtyInput = document.getElementById('qty');
@@ -108,7 +108,7 @@
     refreshTable(); refreshJournal();
   }
 
-  // ========== TABLEAU ARTICLES : filtre/tri TAGS + code couleur + réassort ==========
+  // ===== Tableau Articles : filtre/tri TAGS + code couleur + réassort
   const search = document.getElementById('search');
   const itemsTable = document.getElementById('itemsTable');
   const itemsTbody = itemsTable ? itemsTable.querySelector('tbody') : null;
@@ -119,8 +119,8 @@
   const stockBadges = document.getElementById('stockBadges');
   const btnExportReassort = document.getElementById('btnExportReassort');
 
-  let TAG_PRESETS = loadPresets();        // Array<string>
-  let WARN_BUFFER = loadWarnBuffer();     // number
+  let TAG_PRESETS = loadPresets();
+  let WARN_BUFFER = loadWarnBuffer();
 
   function populatePresetFilter(){
     if (!presetFilter) return;
@@ -251,7 +251,7 @@
     }
   }
 
-  // ▶ Export réassort CSV (articles avec qty ≤ min + buffer)
+  // Export réassort CSV
   async function exportReassortCsv(){
     const items = await dbList('');
     const rows = [['barcode','name','qty','min','buffer','status','tags'].join(';')];
@@ -267,7 +267,7 @@
     downloadText('reassort.csv', rows.join('\n'));
   }
 
-  // ========== NOUVEAU ==========
+  // ===== Nouveau
   const newName = document.getElementById('newName');
   const newQty = document.getElementById('newQty');
   const newMin = document.getElementById('newMin');
@@ -293,7 +293,7 @@
   });
   function genSku(){ const n = Math.floor(Math.random()*99999).toString().padStart(5,'0'); return "CFA-"+n; }
 
-  // ========== ÉTIQUETTES ==========
+  // ===== Étiquettes
   const labelItem = document.getElementById('labelItem');
   const labelCount = document.getElementById('labelCount');
   const labelPreview = document.getElementById('labelPreview');
@@ -346,7 +346,7 @@
     window.print();
   });
 
-  // ========== JOURNAL ==========
+  // ===== Journal
   const journalTableBody = (document.getElementById('journalTable')||{}).querySelector ? document.getElementById('journalTable').querySelector('tbody') : null;
   const journalSearch = document.getElementById('journalSearch');
   const btnExportMovesCsv = document.getElementById('btnExportMovesCsv');
@@ -385,7 +385,7 @@
     }
   }
 
-  // ========== MATERIEL (emprunts/retours) — rétabli ==========
+  // ===== Matériel (emprunts/retours) — avec refreshLoansTable
   const gearModeBorrow = document.getElementById('gearModeBorrow');
   const gearModeReturn = document.getElementById('gearModeReturn');
   const gearModeText = document.getElementById('gearModeText');
@@ -532,7 +532,7 @@
     }
   }
 
-  // ========== PARAMÈTRES : presets + fichier ==========
+  // ===== Paramètres : presets + fichier (si tu utilises la sauvegarde via fichier)
   const presetTags = document.getElementById('presetTags');
   const warnBufferInput = document.getElementById('warnBuffer');
   const btnSavePresets = document.getElementById('btnSavePresets');
@@ -542,34 +542,12 @@
   const fileStatus = document.getElementById('fileStatus');
   const autoSaveChk = document.getElementById('autoSave');
 
-  // Import/Export buttons
-  const btnExportItemsCsv = document.getElementById('btnExportItemsCsv');
-  const btnExportItemsJson = document.getElementById('btnExportItemsJson');
-  const btnImportItemsCsv = document.getElementById('btnImportItemsCsv');
-  const btnImportJson = document.getElementById('btnImportJson');
-  const fileImportItemsCsv = document.getElementById('fileImportItemsCsv');
-  const fileImportJson = document.getElementById('fileImportJson');
-
-  // Wire up import/export handlers
-  if (btnExportItemsCsv) btnExportItemsCsv.addEventListener('click', async ()=>{ const csv = await exportItemsCsv(); downloadText('articles.csv', csv); });
-  if (btnExportItemsJson) btnExportItemsJson.addEventListener('click', async ()=>{ const json = await exportItemsJson(); downloadText('articles.json', json); });
-  if (btnImportItemsCsv) btnImportItemsCsv.addEventListener('click', ()=> fileImportItemsCsv && fileImportItemsCsv.click());
-  if (btnImportJson) btnImportJson.addEventListener('click', ()=> fileImportJson && fileImportJson.click());
-  if (fileImportItemsCsv) fileImportItemsCsv.addEventListener('change', async (e)=>{
-    const f = e.target.files[0]; if (!f) return;
-    const text = await f.text(); await importItemsCsv(text); scheduleFileSave(); refreshTable(); e.target.value='';
-  });
-  if (fileImportJson) fileImportJson.addEventListener('change', async (e)=>{
-    const f = e.target.files[0]; if (!f) return;
-    const text = await f.text(); await importItemsJson(text); scheduleFileSave(); refreshTable(); e.target.value='';
-  });
-
   let fileHandle = null;
   let saveTimer = null;
 
   function initSettingsPanel(){
-    if (presetTags) presetTags.value = TAG_PRESETS.join(', ');
-    if (warnBufferInput) warnBufferInput.value = String(WARN_BUFFER);
+    if (presetTags) presetTags.value = (loadPresets()).join(', ');
+    if (warnBufferInput) warnBufferInput.value = String(loadWarnBuffer());
     if (fileStatus) fileStatus.textContent = fileHandle ? 'Fichier actif: ' + (fileHandle.name||'stock-data.json') : 'Aucun fichier ouvert';
     if (autoSaveChk) autoSaveChk.checked = localStorage.getItem('autoSave')==='1';
   }
