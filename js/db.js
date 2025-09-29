@@ -48,6 +48,9 @@
   // ===== Items
   async function dbPut(item){
     item.updatedAt = Date.now();
+    // Assurer la compatibilité avec les nouveaux champs
+    if (!item.price) item.price = 0;
+    if (!item.location) item.location = '';
     return tx(['items'],'readwrite',(t,done)=>{
       t.objectStore('items').put(item);
       done(true);
@@ -184,10 +187,20 @@
   // ===== Imports/Exports utilitaires (identiques)
   async function exportItemsCsv(){
     const items = await dbList('');
-    const headers = ['barcode','name','qty','min','tags','createdAt','updatedAt'];
+    const headers = ['barcode','name','qty','min','price','location','tags','createdAt','updatedAt'];
     const rows = [headers.join(';')];
     for (const it of items){
-      rows.push([it.barcode, it.name, it.qty||0, it.min||0, (it.tags||[]).join(','), it.createdAt||'', it.updatedAt||''].map(v=>String(v).replace(/;/g,',')).join(';'));
+      rows.push([
+        it.barcode, 
+        it.name, 
+        it.qty||0, 
+        it.min||0, 
+        it.price||0,
+        it.location||'',
+        (it.tags||[]).join(','), 
+        it.createdAt||'', 
+        it.updatedAt||''
+      ].map(v=>String(v).replace(/;/g,',')).join(';'));
     }
     return rows.join('\n');
   }
@@ -206,6 +219,8 @@
         name: cols[idx('name')] || '',
         qty: parseInt(cols[idx('qty')]||'0',10),
         min: parseInt(cols[idx('min')]||'0',10),
+        price: parseFloat(cols[idx('price')]||'0') || 0,
+        location: cols[idx('location')] || '',
         tags: (cols[idx('tags')]||'').split(',').map(s=>s.trim()).filter(Boolean),
         createdAt: Date.now(), updatedAt: Date.now()
       };
@@ -253,10 +268,10 @@
     const have = await dbList('');
     if (have.length) return;
     const demo = [
-      { barcode:'VM-0001', name:'Voltmètre numérique', qty:2, min:1, tags:['atelier','mesure'] },
-      { barcode:'MULTI-0002', name:'Multimètre', qty:3, min:1, tags:['atelier','mesure'] },
-      { barcode:'PINCE-AMP', name:'Pince ampèremétrique', qty:1, min:0, tags:['mesure'] },
-      { barcode:'PERCEUSE-01', name:'Perceuse', qty:2, min:0, tags:['atelier','outillage'] }
+      { barcode:'VM-0001', name:'Voltmètre numérique', qty:2, min:1, price:45.99, location:'Armoire A', tags:['atelier','mesure'] },
+      { barcode:'MULTI-0002', name:'Multimètre', qty:3, min:1, price:89.50, location:'Armoire A', tags:['atelier','mesure'] },
+      { barcode:'PINCE-AMP', name:'Pince ampèremétrique', qty:1, min:0, price:125.00, location:'Armoire B', tags:['mesure'] },
+      { barcode:'PERCEUSE-01', name:'Perceuse', qty:2, min:0, price:199.99, location:'Atelier', tags:['atelier','outillage'] }
     ];
     for (const it of demo){
       await dbPut({ ...it, createdAt: Date.now(), updatedAt: Date.now() });

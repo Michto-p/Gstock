@@ -1,5 +1,5 @@
 // sw.js — update-friendly, no IndexedDB touches
-const CACHE_VERSION = 'v1.6.0';
+const CACHE_VERSION = 'v2.0.0';
 const RUNTIME = `stock-cfa-${CACHE_VERSION}`;
 
 self.addEventListener('install', (event) => {
