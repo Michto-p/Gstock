@@ -92,7 +92,7 @@
     [data-theme="dark"] .label-card{ background:#fff; color:#000 } /* pour éviter l’encre inversée */
     .label-card .name{ font-weight:700; font-size:11pt; line-height:1.1; text-align:center; max-width:100% }
     .label-card code{ font-size:8pt }
-    .label-card svg{ width:100%; height:14mm }
+    .label-card .barcode-svg{ width:100%; height:12mm; margin:1mm 0 }
 
     /* Aperçu non-impression (bordures visibles) */
     #labelsPreview{ background:var(--elev); padding:8px; border-radius:8px; }
@@ -320,6 +320,7 @@
 
   <!-- Scripts (ordre important) -->
   <script src="js/db.js?v=2.1.1"></script>
+  <script src="js/barcode128.js?v=2.1.1"></script>
   <script src="js/barcode.js?v=2.1.1"></script>
   <script src="js/sync-github.js?v=2.1.1"></script> <!-- optionnel -->
   <script src="js/app.js?v=2.1.1"></script>

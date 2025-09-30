@@ -193,84 +193,27 @@
       <div class="label-card">
         <div class="name">${escapeHTML(it.name)}</div>
         <code>${escapeHTML(it.code)}</code>
-        <svg data-barcode="${escapeHTML(it.code)}"></svg>
+        <svg class="barcode-svg" data-barcode="${escapeHTML(it.code)}"></svg>
       </div>`).join('');
     if (labelsPreview){
       labelsPreview.classList.add('labels-sheet');
       labelsPreview.innerHTML = html || `<div class="muted">Aucun article</div>`;
       // Dessine les codes-barres après insertion
-      labelsPreview.querySelectorAll('svg[data-barcode]').forEach(svg=>{
-        // largeur/hauteur sont gérées par CSS print (100% et 14mm)
-        svg.setAttribute('width','240'); svg.setAttribute('height','140'); // pour écran
-        drawFakeCode128(svg, svg.getAttribute('data-barcode'));
+      labelsPreview.querySelectorAll('svg.barcode-svg[data-barcode]').forEach(svg=>{
+        const code = svg.getAttribute('data-barcode');
+        if (window.renderBarcodeSVG) {
+          window.renderBarcodeSVG(svg, code, {
+            width: 240,
+            height: 50,
+            showText: true,
+            fontSize: 8
+          });
+        }
       });
     }
     announce('Planche étiquettes générée (A4 prête à imprimer)');
   }
 
-  function drawFakeCode128(svg, value){
-    // Génération d'un code-barres Code 128 simplifié mais lisible
-    const w = +svg.getAttribute('width') || 240;
-    const h = +svg.getAttribute('height') || 140;
-    
-    // Pattern Code 128 simplifié basé sur la valeur
-    const patterns = {
-      'C': [2,1,2,2,2,2], 'F': [2,2,2,1,2,2], 'A': [2,1,2,1,2,3],
-      '0': [2,1,2,2,2,2], '1': [2,2,2,1,2,2], '2': [2,2,2,2,2,1],
-      '3': [1,2,1,2,2,3], '4': [1,2,1,3,2,2], '5': [1,3,1,2,2,2],
-      '6': [1,2,2,2,1,3], '7': [1,2,2,3,1,2], '8': [1,3,2,2,1,2],
-      '9': [2,2,1,2,1,3]
-    };
-    
-    let allBars = [2,1,2,2,2,2]; // Start pattern
-    
-    // Ajouter les patterns pour chaque caractère
-    for (let char of value) {
-      if (patterns[char]) {
-        allBars = allBars.concat(patterns[char]);
-      } else {
-        allBars = allBars.concat([2,1,2,2,2,2]); // Pattern par défaut
-      }
-    }
-    
-    allBars = allBars.concat([2,3,3,1,1,1,2]); // Stop pattern
-    
-    // Dessiner les barres
-    const totalWidth = allBars.reduce((sum, width) => sum + width, 0);
-    const barWidth = w / totalWidth;
-    
-    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    let x = 0;
-    let isBlack = true;
-    
-    for (let width of allBars) {
-      if (isBlack) {
-        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        rect.setAttribute('x', x.toString());
-        rect.setAttribute('y', '0');
-        rect.setAttribute('width', (width * barWidth).toString());
-        rect.setAttribute('height', h.toString());
-        rect.setAttribute('fill', '#000');
-        g.appendChild(rect);
-      }
-      x += width * barWidth;
-      isBlack = !isBlack;
-    }
-    
-    // Ajouter le texte sous le code-barres
-    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    text.setAttribute('x', (w/2).toString());
-    text.setAttribute('y', (h-5).toString());
-    text.setAttribute('text-anchor', 'middle');
-    text.setAttribute('font-family', 'monospace');
-    text.setAttribute('font-size', '10');
-    text.setAttribute('fill', '#000');
-    text.textContent = value;
-    g.appendChild(text);
-    
-    svg.innerHTML = '';
-    svg.appendChild(g);
-  }
 
   // ------------ Journal
   const journalTbody = $('#journalTbody');
