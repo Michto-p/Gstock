@@ -1,4 +1,4 @@
-/* Gstock - app.js (scanner intégré + debug toggle) */
+/* Gstock - app.js v2.1.1 (thème ++, impression A4 étiquettes, scanner intégré) */
 (() => {
   'use strict';
 
@@ -33,7 +33,6 @@
     settings: $('#tab-settings')
   };
   tabs.forEach(btn => btn.addEventListener('click', () => showTab(btn.dataset.tab)));
-
   async function showTab(name) {
     Object.entries(sections).forEach(([k, el]) => el && (el.hidden = k !== name));
     tabs.forEach(b => b.classList.toggle('active', b.dataset.tab === name));
@@ -132,7 +131,7 @@
     alert(`Historique "${item?.name||code}"\n\nMouvements: ${moves.length}\nEmprunts (actifs+clos): ${loans.length}`);
   }
 
-  // Dialog ajustement
+  // ------------ Dialog ajustement
   const dlg     = $('#adjustDialog');
   const dlgType = $('#dlgType');
   const dlgQty  = $('#dlgQty');
@@ -173,7 +172,7 @@
     await refreshTable();
   }
 
-  // Étiquettes
+  // ------------ Étiquettes (A4 print-ready)
   const labelsPreview = $('#labelsPreview');
   $('#btnLabelsAll')?.addEventListener('click', ()=> renderSheet('all'));
   $('#btnLabelsSelected')?.addEventListener('click', async ()=>{
@@ -181,23 +180,35 @@
     if (!code) return;
     await renderSheet('one', code);
   });
+  $('#btnLabelsPrintA4')?.addEventListener('click', async ()=>{
+    // S'il n'y a rien, génère une planche de tous
+    if (!labelsPreview || !labelsPreview.firstElementChild) await renderSheet('all');
+    window.print();
+  });
 
   async function renderSheet(mode='all', code=null){
     const items = (mode==='all') ? await dbList() : [await dbGet(code)].filter(Boolean);
-    const html = items.map(it=>`<div style="display:inline-block;border:1px dashed var(--bd);border-radius:8px;padding:8px;margin:6px;width:220px">
-      <div style="font-weight:600;margin-bottom:6px">${escapeHTML(it.name)}</div>
-      <div style="font-size:12px;color:#6b7280">${escapeHTML(it.code)}</div>
-      <svg width="200" height="60" data-barcode="${escapeHTML(it.code)}"></svg>
-    </div>`).join('');
-    labelsPreview && (labelsPreview.innerHTML = html || `<div class="muted">Aucun article</div>`);
-    labelsPreview?.querySelectorAll('svg[data-barcode]').forEach(svg=>{
-      drawFakeCode128(svg, svg.getAttribute('data-barcode'));
-    });
-    announce('Planche étiquettes générée');
+    const html = items.map(it=>`
+      <div class="label-card">
+        <div class="name">${escapeHTML(it.name)}</div>
+        <code>${escapeHTML(it.code)}</code>
+        <svg data-barcode="${escapeHTML(it.code)}"></svg>
+      </div>`).join('');
+    if (labelsPreview){
+      labelsPreview.classList.add('labels-sheet');
+      labelsPreview.innerHTML = html || `<div class="muted">Aucun article</div>`;
+      // Dessine les codes-barres après insertion
+      labelsPreview.querySelectorAll('svg[data-barcode]').forEach(svg=>{
+        // largeur/hauteur sont gérées par CSS print (100% et 14mm)
+        svg.setAttribute('width','240'); svg.setAttribute('height','140'); // pour écran
+        drawFakeCode128(svg, svg.getAttribute('data-barcode'));
+      });
+    }
+    announce('Planche étiquettes générée (A4 prête à imprimer)');
   }
 
   function drawFakeCode128(svg, value){
-    const w = +svg.getAttribute('width'), h = +svg.getAttribute('height');
+    const w = +svg.getAttribute('width') || 240, h = +svg.getAttribute('height') || 140;
     const rnd = (s)=>{ let x=0; for (let i=0;i<s.length;i++) x=(x*31 + s.charCodeAt(i))>>>0; return x; };
     const seed = rnd(String(value));
     const bars = 95;
@@ -218,10 +229,9 @@
     }
     svg.innerHTML = ''; svg.appendChild(ctx);
   }
-
   async function refreshLabelItems(){}
 
-  // Journal
+  // ------------ Journal
   const journalTbody = $('#journalTbody');
   $('#btnFilterJournal')?.addEventListener('click', refreshJournal);
   $('#btnExportCSV')?.addEventListener('click', async ()=>{
@@ -230,7 +240,6 @@
   $('#btnExportJSON')?.addEventListener('click', async ()=>{
     const data = await dbExport('json'); downloadFile('journal.json', data, 'application/json');
   });
-
   async function refreshJournal(){
     const from = $('#dateFrom')?.value ? new Date($('#dateFrom').value).getTime() : 0;
     const to   = $('#dateTo')?.value   ? new Date($('#dateTo').value).getTime()+24*3600*1000 : Infinity;
@@ -245,7 +254,7 @@
     </tr>`).join('') || `<tr><td colspan="6" class="muted">Aucun mouvement</td></tr>`);
   }
 
-  // Prêts
+  // ------------ Prêts
   const loansTbody = $('#loansTbody');
   $('#btnNewLoan')?.addEventListener('click', async ()=>{
     const code = prompt('Code article ?'); if (!code) return;
@@ -258,7 +267,6 @@
     await refreshLoansTable();
   });
   $('#searchLoans')?.addEventListener('input', refreshLoansTable);
-
   async function refreshLoansTable(){
     if (!loansTbody) return;
     const q = ($('#searchLoans')?.value||'').toLowerCase();
@@ -287,13 +295,12 @@
     });
   }
 
-  // Paramètres / Sauvegarde
+  // ------------ Paramètres / Sauvegarde
   $('#btnExportFull')?.addEventListener('click', async ()=>{
     const blob = await dbExportFull();
     const text = JSON.stringify(blob, null, 2);
     downloadFile('gstock-export.json', text, 'application/json');
   });
-
   $('#btnImportJSON')?.addEventListener('click', async ()=>{
     try{
       const [fileHandle] = await window.showOpenFilePicker({types:[{description:'JSON',accept:{'application/json':['.json']}}]});
@@ -305,7 +312,6 @@
       await refreshTable(); await refreshJournal(); await refreshLoansTable();
     }catch(e){ console.warn(e); alert('Import annulé / invalide'); }
   });
-
   const sharedFileStatus = $('#sharedFileStatus');
   $('#btnLinkSharedFile')?.addEventListener('click', async ()=>{
     if (!('showSaveFilePicker' in window)) return alert('File System Access API non supportée sur ce navigateur.');
@@ -397,7 +403,7 @@
     try{ window.githubSync.stopAuto(); alert('Auto-sync OFF'); }catch(e){ alert(e.message); }
   });
 
-  // Scanner intégré
+  // ------------ Scanner
   const scanVideo    = $('#scanVideo');
   const scanHint     = $('#scanHint');
   const btnScanStart = $('#btnScanStart');
@@ -412,7 +418,10 @@
 
   btnScanStart?.addEventListener('click', async ()=>{
     if (scanning) return;
-    if (typeof window.scanUntilKnown !== 'function') { alert('Module de scan non chargé.'); return; }
+    if (typeof window.scanUntilKnown !== 'function') {
+      alert('Module de scan non chargé.\nVérifiez que js/barcode.js est bien inclus AVANT js/app.js (et videz le cache PWA).');
+      return;
+    }
     scanning = true;
     btnScanStart.disabled = true;
     scanHint && (scanHint.textContent = 'Visez le code-barres. Les codes inconnus ne ferment pas la caméra.');
