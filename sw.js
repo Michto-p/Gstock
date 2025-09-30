@@ -1,82 +1,63 @@
-/* Gstock - sw.js */
-const APP_VERSION = (new URL(self.location)).searchParams.get('v') || '2.0.1';
-const CACHE_PREFIX = 'gstock-cache-';
-const STATIC_CACHE = `${CACHE_PREFIX}${APP_VERSION}`;
+/* Gstock SW v2.1.0 – network-first core, SWR assets */
+const VERSION = (self.location.search.match(/v=([0-9.]+)/)||[])[1] || '2.1.0';
+const CACHE_CORE = `gstock-core-${VERSION}`;
+const CACHE_ASSETS = `gstock-assets-${VERSION}`;
 
-const DOC_EXT = ['.html','.js','/'];
-const ASSET_EXT = ['.css','.png','.svg','.jpg','.jpeg','.webp','.woff2','.ico','.json'];
+const CORE = [
+  './',
+  'index.html',
+  `js/app.js?v=${VERSION}`,
+  `js/db.js?v=${VERSION}`,
+  `js/barcode.js?v=${VERSION}`
+];
 
 self.addEventListener('install', (event)=>{
-  event.waitUntil((async()=>{
-    const cache = await caches.open(STATIC_CACHE);
-    await cache.addAll([
-      './',
-      './index.html',
-      './manifest.json',
-      './js/app.js?v='+APP_VERSION,
-      './js/db.js?v='+APP_VERSION,
-      './js/barcode.js?v='+APP_VERSION,
-      './icons/icon-192.png',
-      './icons/icon-512.png'
-    ].map(u=>new Request(u, {cache:'reload'})));
-    self.skipWaiting();
-  })());
+  event.waitUntil(caches.open(CACHE_CORE).then(c=>c.addAll(CORE)));
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event)=>{
   event.waitUntil((async()=>{
     const keys = await caches.keys();
-    await Promise.all(keys.map(k => (k.startsWith(CACHE_PREFIX) && k!==STATIC_CACHE) ? caches.delete(k) : null));
+    await Promise.all(keys.filter(k => ![CACHE_CORE, CACHE_ASSETS].includes(k)).map(k => caches.delete(k)));
     await self.clients.claim();
   })());
-});
-
-self.addEventListener('fetch', (event)=>{
-  const req = event.request;
-  const url = new URL(req.url);
-
-  // Bypass cross-origin except GET
-  if (url.origin !== location.origin) return;
-
-  // Strategy selection
-  if (isDocOrJs(url.pathname)) {
-    return event.respondWith(networkFirst(req));
-  }
-  if (isAsset(url.pathname)) {
-    return event.respondWith(staleWhileRevalidate(req));
-  }
-  // default: passthrough
 });
 
 self.addEventListener('message', (event)=>{
   if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
-function isDocOrJs(path){
-  return DOC_EXT.some(ext => path.endsWith(ext)) || path === '/' || path.startsWith('/?');
-}
-function isAsset(path){
-  return ASSET_EXT.some(ext => path.endsWith(ext));
-}
+self.addEventListener('fetch', (event)=>{
+  const url = new URL(event.request.url);
+  if (event.request.method !== 'GET') return;
 
-async function networkFirst(req){
-  const cache = await caches.open(STATIC_CACHE);
-  try{
-    const fresh = await fetch(req, {cache:'no-store'});
-    cache.put(req, fresh.clone());
-    return fresh;
-  }catch(e){
-    const cached = await cache.match(req);
-    if (cached) return cached;
-    throw e;
+  // Network-first pour l'app et JS cœur
+  const isCore = CORE.some(path => url.href.endsWith(path) || url.pathname.endsWith(path.split('?')[0]));
+  if (isCore || url.pathname === '/' || url.pathname.endsWith('/index.html')) {
+    event.respondWith((async()=>{
+      try{
+        const fresh = await fetch(event.request, {cache:'no-store'});
+        const cache = await caches.open(CACHE_CORE);
+        cache.put(event.request, fresh.clone());
+        return fresh;
+      }catch(_){
+        const cache = await caches.open(CACHE_CORE);
+        const cached = await cache.match(event.request);
+        return cached || new Response('Offline', {status:503});
+      }
+    })());
+    return;
   }
-}
-async function staleWhileRevalidate(req){
-  const cache = await caches.open(STATIC_CACHE);
-  const cached = await cache.match(req);
-  const fetchPromise = fetch(req).then(res=>{
-    cache.put(req, res.clone());
-    return res;
-  }).catch(()=>cached);
-  return cached || fetchPromise;
-}
+
+  // SWR pour le reste (icônes, data, etc.)
+  event.respondWith((async()=>{
+    const cache = await caches.open(CACHE_ASSETS);
+    const cached = await cache.match(event.request);
+    const fetchPromise = fetch(event.request).then(resp=>{
+      cache.put(event.request, resp.clone());
+      return resp;
+    }).catch(()=>cached);
+    return cached || fetchPromise;
+  })());
+});
