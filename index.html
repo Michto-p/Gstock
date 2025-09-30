@@ -9,39 +9,52 @@
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <title>Gstock</title>
   <style>
-    :root{--bg:#ffffff;--fg:#0b0b0b;--muted:#6b7280;--acc:#0a84ff;--warn:#f59e0b;--danger:#ef4444;--ok:#10b981}
-    [data-theme="dark"]{--bg:#0b0b0b;--fg:#f5f5f5;--muted:#a1a1aa;--acc:#0a84ff}
+    :root{--bg:#ffffff;--fg:#0b0b0b;--muted:#6b7280;--acc:#0a84ff;--warn:#f59e0b;--danger:#ef4444;--ok:#10b981;--bd:#e5e7eb}
+    [data-theme="dark"]{--bg:#0b0b0b;--fg:#f5f5f5;--muted:#a1a1aa;--acc:#0a84ff;--bd:#374151}
     html,body{height:100%} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial,sans-serif;background:var(--bg);color:var(--fg)}
-    header{display:flex;gap:.5rem;align-items:center;justify-content:space-between;padding:.75rem 1rem;border-bottom:1px solid #e5e7eb}
-    nav{display:flex;gap:.5rem;flex-wrap:wrap}
-    nav button{padding:.5rem .75rem;border:1px solid #e5e7eb;background:#fff;cursor:pointer;border-radius:.5rem}
-    [data-theme="dark"] nav button{background:#111827;border-color:#374151}
+    .topbar{position:sticky;top:0;z-index:50;background:var(--bg);backdrop-filter:saturate(1.2) blur(6px);border-bottom:1px solid var(--bd)}
+    .topbar-inner{max-width:1100px;margin:0 auto;padding:.6rem 1rem}
+    .brand{display:flex;gap:.6rem;align-items:center;justify-content:space-between}
+    .brand-left{display:flex;gap:.6rem;align-items:center}
+    .pill{padding:.2rem .5rem;border-radius:999px;background:#e5e7eb;font-size:.75rem}
+    [data-theme="dark"] .pill{background:#1f2937}
+    .muted{color:var(--muted)}
+    .toggle{display:flex;align-items:center;gap:.35rem}
+    nav{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.5rem}
+    nav button{display:inline-flex;align-items:center;gap:.4rem;padding:.45rem .6rem;border:1px solid var(--bd);background:#fff;border-radius:.6rem;cursor:pointer}
+    [data-theme="dark"] nav button{background:#111827}
+    nav button .icon{width:18px;height:18px;display:inline-flex}
+    nav button.active{outline:2px solid var(--acc); outline-offset:1px}
+    .hint{margin-top:.35rem}
+    @media (max-width:640px){
+      nav .label{display:none}
+      .hint{display:none}
+    }
     main{padding:1rem;max-width:1100px;margin:0 auto}
     section[hidden]{display:none}
     table{border-collapse:collapse;width:100%}
-    th,td{padding:.5rem;border-bottom:1px solid #e5e7eb}
+    th,td{padding:.5rem;border-bottom:1px solid var(--bd)}
     .badge{display:inline-block;padding:.15rem .4rem;border-radius:.4rem;font-size:.75rem}
     .ok{background:rgba(16,185,129,.15);color:#047857}
     .low{background:rgba(245,158,11,.15);color:#92400e}
     .under{background:rgba(239,68,68,.15);color:#991b1b}
-    .toolbar{display:flex;gap:.5rem;align-items:center;margin:.5rem 0}
-    .muted{color:var(--muted)}
+    .toolbar{display:flex;gap:.5rem;align-items:center;margin:.5rem 0;flex-wrap:wrap}
     .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
     .update-banner{display:none;padding:.5rem 1rem;background:#fff3cd;border:1px solid #ffe69c;border-left:4px solid #f59e0b;border-radius:.5rem;margin:0 1rem 1rem}
     .update-banner.show{display:flex;justify-content:space-between;gap:.75rem;align-items:center}
-    .toggle{display:flex;align-items:center;gap:.35rem}
     dialog{border:none;border-radius:.75rem;box-shadow:0 10px 30px rgba(0,0,0,.25);max-width:520px;padding:0}
-    dialog header{border-bottom:1px solid #e5e7eb}
+    dialog header{border-bottom:1px solid var(--bd)}
     dialog .content{padding:1rem}
     dialog .actions{display:flex;gap:.5rem;justify-content:flex-end;padding:0 1rem 1rem}
-    .btn{padding:.5rem .8rem;border:1px solid #e5e7eb;background:#fff;border-radius:.5rem;cursor:pointer}
+    .btn{padding:.5rem .8rem;border:1px solid var(--bd);background:#fff;border-radius:.5rem;cursor:pointer}
+    [data-theme="dark"] .btn{background:#111827}
     .btn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
     .btn.danger{background:#ef4444;border-color:#ef4444;color:#fff}
-    .pill{padding:.2rem .5rem;border-radius:999px;background:#e5e7eb;font-size:.75rem}
-    .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;padding:.1rem .35rem;border:1px solid #d1d5db;border-bottom-width:2px;border-radius:.35rem}
+    input.btn,select.btn{appearance:none}
+    code{background:rgba(0,0,0,.06);padding:.1rem .3rem;border-radius:.3rem}
   </style>
   <script>
-    window.APP_VERSION = '2.0.3';
+    window.APP_VERSION = '2.0.5'; // bump
     (function(){
       const saved = localStorage.getItem('gstock.theme');
       const prefersDark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
@@ -50,21 +63,63 @@
   </script>
 </head>
 <body>
-  <header>
-    <div style="display:flex;align-items:center;gap:.6rem">
-      <img src="icons/icon-192.png" alt="" width="28" height="28" style="border-radius:6px">
-      <strong>Gstock</strong><span class="muted">— Gestion de stock</span>
-      <span class="pill muted">v<span id="appVersion">2.0.3</span></span>
+  <!-- Bandeau fixe -->
+  <div class="topbar" role="banner">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="brand-left">
+          <img src="icons/icon-192.png" alt="" width="28" height="28" style="border-radius:6px">
+          <strong>Gstock</strong><span class="muted">— Gestion de stock</span>
+          <span class="pill muted">v<span id="appVersion">2.0.5</span></span>
+        </div>
+        <div class="toggle">
+          <label for="themeToggle" class="muted">Thème</label>
+          <select id="themeToggle" class="btn">
+            <option value="auto">Auto</option>
+            <option value="light">Clair</option>
+            <option value="dark">Sombre</option>
+          </select>
+        </div>
+      </div>
+
+      <nav aria-label="Onglets">
+        <button data-tab="items" aria-label="Articles" title="Articles">
+          <span class="icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          </span><span class="label">Articles</span>
+        </button>
+        <button data-tab="scanner" aria-label="Scanner" title="Scanner">
+          <span class="icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><circle cx="12" cy="11" r="3"/><path d="M8 4h8"/></svg>
+          </span><span class="label">Scanner</span>
+        </button>
+        <button data-tab="labels" aria-label="Étiquettes" title="Étiquettes">
+          <span class="icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h10v10H7z"/><path d="M3 3h4v4H3zM17 17h4v4h-4z"/></svg>
+          </span><span class="label">Étiquettes</span>
+        </button>
+        <button data-tab="journal" aria-label="Journal" title="Journal">
+          <span class="icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h6M8 16h10"/></svg>
+          </span><span class="label">Journal</span>
+        </button>
+        <button data-tab="gear" aria-label="Prêts" title="Prêts">
+          <span class="icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V22a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 8 20.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 3.6 15 1.65 1.65 0 0 0 2 14H2a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 3.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06A2 2 0 1 1 6.04 3.3l.06.06A1.65 1.65 0 0 0 7.92 3a1.65 1.65 0 0 0 1-1.51V1.4a2 2 0 1 1 4 0v.09A1.65 1.65 0 0 0 16 3.6a1.65 1.65 0 0 0 1.82-.33l.06-.06A2 2 0 1 1 20.71 6l-.06.06A1.65 1.65 0 0 0 21 7.92 1.65 1.65 0 0 0 22.6 9H22.7a2 2 0 0 1 0 4h-.09A1.65 1.65 0 0 0 19.4 15z"/></svg>
+          </span><span class="label">Prêts</span>
+        </button>
+        <button data-tab="settings" aria-label="Paramètres" title="Paramètres">
+          <span class="icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82L20 17a2 2 0 1 1-2.83 2.83l-.27-.27a1.65 1.65 0 0 0-1.82.33L14 21a2 2 0 1 1-4 0l-.08-.11a1.65 1.65 0 0 0-1.82-.33l-.27.27A2 2 0 1 1 5 17l.27-.27A1.65 1.65 0 0 0 5 14.9L4.9 14a2 2 0 1 1 0-4l.11-.08A1.65 1.65 0 0 0 5.3 8.1L5 7.83A2 2 0 1 1 7.83 5l.27.27a1.65 1.65 0 0 0 1.82-.33L10 4a2 2 0 1 1 4 0l.08.11a1.65 1.65 0 0 0 1.82.33l.27-.27A2 2 0 1 1 19 7.83l-.27.27a1.65 1.65 0 0 0 .33 1.82L19 10a2 2 0 1 1 0 4l.4 1z"/></svg>
+          </span><span class="label">Paramètres</span>
+        </button>
+      </nav>
+
+      <div class="hint muted" title="Raccourcis clavier">
+        <span style="font-family:ui-monospace">a</span> ajout, <span style="font-family:ui-monospace">r</span> retrait, <span style="font-family:ui-monospace">Ctrl</span>+<span style="font-family:ui-monospace">K</span> recherche
+      </div>
     </div>
-    <div class="toggle">
-      <label for="themeToggle" class="muted">Thème</label>
-      <select id="themeToggle" class="btn">
-        <option value="auto">Auto</option>
-        <option value="light">Clair</option>
-        <option value="dark">Sombre</option>
-      </select>
-    </div>
-  </header>
+  </div>
 
   <div id="updateBanner" class="update-banner" role="status" aria-live="polite">
     <span>Nouvelle version disponible.</span>
@@ -73,22 +128,6 @@
       <button id="btnDismissUpdate" class="btn">Plus tard</button>
     </div>
   </div>
-
-  <header>
-    <nav aria-label="Onglets">
-      <button data-tab="items">Articles</button>
-      <button data-tab="scanner">Scanner</button>
-      <button data-tab="labels">Étiquettes</button>
-      <button data-tab="journal">Journal</button>
-      <button data-tab="gear">Prêts</button>
-      <button data-tab="settings">Paramètres</button>
-    </nav>
-    <div class="muted" title="Raccourcis clavier">
-      <span class="kbd">a</span> ajout,
-      <span class="kbd">r</span> retrait,
-      <span class="kbd">Ctrl</span>+<span class="kbd">K</span> recherche
-    </div>
-  </header>
 
   <main>
     <!-- Articles -->
@@ -114,7 +153,7 @@
       </table>
     </section>
 
-    <!-- Scanner -->
+    <!-- Scanner (1 bouton) -->
     <section id="tab-scanner" hidden>
       <div class="toolbar">
         <button id="btnScanOnce" class="btn primary">Scanner un article</button>
@@ -202,7 +241,7 @@
     </div>
   </dialog>
 
-  <!-- Modale SCAN améliorée -->
+  <!-- Modale SCAN -->
   <dialog id="scanDialog">
     <header style="display:flex;justify-content:space-between;align-items:center;padding:.75rem 1rem">
       <strong>Scanner un article</strong>
@@ -224,9 +263,10 @@
 
   <div id="sr" class="sr-only" aria-live="polite"></div>
 
-  <script src="js/db.js?v=2.0.3"></script>
-  <script src="js/barcode.js?v=2.0.3"></script>
-  <script src="js/app.js?v=2.0.3"></script>
+  <!-- Scripts (ordre important) -->
+  <script src="js/db.js?v=2.0.5"></script>
+  <script src="js/barcode.js?v=2.0.5"></script>
+  <script src="js/app.js?v=2.0.5"></script>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js?v=' + window.APP_VERSION).then(reg=>{
