@@ -118,13 +118,33 @@ async function dbGenerateCode(){
 }
 
 // ---- Moves (journal)
+// ... le reste de db.js inchangé ...
+
 async function dbAddMove(m){
+  // Ajoute un mouvement ; en cas de ConstraintError (clé déjà existante),
+  // on modifie légèrement 'ts' et on ré-essaie (jusqu'à 8 fois).
   return new Promise((resolve,reject)=>{
-    const r = tx('moves','readwrite').add(m);
-    r.onsuccess = ()=>{ scheduleAutosave(); resolve(true); };
-    r.onerror = ()=>reject(r.error);
+    const store = tx('moves','readwrite');
+    const tryAdd = (rec, attempt=0)=>{
+      const req = store.add(rec);
+      req.onsuccess = ()=>{ scheduleAutosave(); resolve(true); };
+      req.onerror = (ev)=>{
+        const err = ev.target.error;
+        if (err && err.name === 'ConstraintError' && attempt < 8) {
+          // collision de clé: décale ts et retente
+          const jitter = 1 + Math.floor(Math.random()*5);
+          rec.ts = (rec.ts|0) + jitter;
+          tryAdd(rec, attempt+1);
+        } else {
+          reject(err || new Error('dbAddMove failed'));
+        }
+      };
+    };
+    // clone pour ne pas muter l'objet d'origine
+    tryAdd({...m});
   });
 }
+
 function dbListMoves({from=0,to=Infinity,code=null,limit=1000}={}){
   return new Promise((resolve,reject)=>{
     const store = tx('moves');
