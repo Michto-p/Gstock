@@ -59,7 +59,8 @@
   $('#btnAddItem')?.addEventListener('click', async () => {
     const name = prompt('Nom de l’article ?');
     if (!name) return;
-    const code = prompt('Code-barres (laisser vide pour générer)') || await dbGenerateCode();
+    const inputCode = prompt('Code-barres (laisser vide pour générer automatiquement)');
+    const code = inputCode ? inputCode.replace(/[^A-Za-z0-9]/g, '') : await dbGenerateCode();
     const qty = parseInt(prompt('Quantité initiale ?', '0')||'0',10);
     const threshold = parseInt(prompt('Seuil d’alerte ?', '0')||'0',10);
     const tags = (prompt('Tags (séparés par des virgules)')||'').split(',').map(t=>t.trim()).filter(Boolean);
@@ -208,26 +209,67 @@
   }
 
   function drawFakeCode128(svg, value){
-    const w = +svg.getAttribute('width') || 240, h = +svg.getAttribute('height') || 140;
-    const rnd = (s)=>{ let x=0; for (let i=0;i<s.length;i++) x=(x*31 + s.charCodeAt(i))>>>0; return x; };
-    const seed = rnd(String(value));
-    const bars = 95;
-    const ctx = document.createElementNS('http://www.w3.org/2000/svg','g');
-    let x = 0; const bw = Math.max(1, Math.floor(w/bars));
-    for (let i=0;i<bars;i++){
-      const on = ((seed >> (i%31)) & 1) ^ (i%3===0?1:0);
-      if (on) {
-        const r = document.createElementNS('http://www.w3.org/2000/svg','rect');
-        r.setAttribute('x', String(x));
-        r.setAttribute('y', '0');
-        r.setAttribute('width', String(bw));
-        r.setAttribute('height', String(h));
-        r.setAttribute('fill', '#111827');
-        ctx.appendChild(r);
+    // Génération d'un code-barres Code 128 simplifié mais lisible
+    const w = +svg.getAttribute('width') || 240;
+    const h = +svg.getAttribute('height') || 140;
+    
+    // Pattern Code 128 simplifié basé sur la valeur
+    const patterns = {
+      'C': [2,1,2,2,2,2], 'F': [2,2,2,1,2,2], 'A': [2,1,2,1,2,3],
+      '0': [2,1,2,2,2,2], '1': [2,2,2,1,2,2], '2': [2,2,2,2,2,1],
+      '3': [1,2,1,2,2,3], '4': [1,2,1,3,2,2], '5': [1,3,1,2,2,2],
+      '6': [1,2,2,2,1,3], '7': [1,2,2,3,1,2], '8': [1,3,2,2,1,2],
+      '9': [2,2,1,2,1,3]
+    };
+    
+    let allBars = [2,1,2,2,2,2]; // Start pattern
+    
+    // Ajouter les patterns pour chaque caractère
+    for (let char of value) {
+      if (patterns[char]) {
+        allBars = allBars.concat(patterns[char]);
+      } else {
+        allBars = allBars.concat([2,1,2,2,2,2]); // Pattern par défaut
       }
-      x += bw;
     }
-    svg.innerHTML = ''; svg.appendChild(ctx);
+    
+    allBars = allBars.concat([2,3,3,1,1,1,2]); // Stop pattern
+    
+    // Dessiner les barres
+    const totalWidth = allBars.reduce((sum, width) => sum + width, 0);
+    const barWidth = w / totalWidth;
+    
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    let x = 0;
+    let isBlack = true;
+    
+    for (let width of allBars) {
+      if (isBlack) {
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', x.toString());
+        rect.setAttribute('y', '0');
+        rect.setAttribute('width', (width * barWidth).toString());
+        rect.setAttribute('height', h.toString());
+        rect.setAttribute('fill', '#000');
+        g.appendChild(rect);
+      }
+      x += width * barWidth;
+      isBlack = !isBlack;
+    }
+    
+    // Ajouter le texte sous le code-barres
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', (w/2).toString());
+    text.setAttribute('y', (h-5).toString());
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('font-family', 'monospace');
+    text.setAttribute('font-size', '10');
+    text.setAttribute('fill', '#000');
+    text.textContent = value;
+    g.appendChild(text);
+    
+    svg.innerHTML = '';
+    svg.appendChild(g);
   }
 
   // ------------ Journal
@@ -412,7 +454,16 @@
 
   window.addEventListener('gstock:scan-unknown', (ev)=>{
     const code = ev.detail.code;
-    scanHint && (scanHint.textContent = `Code ${code} inconnu — continuez à viser un article enregistré.`);
+    scanHint && (scanHint.textContent = `⚠️ Code "${code}" inconnu — continuez à viser un article enregistré ou créez-le d'abord.`);
+    
+    // Proposer de créer l'article après 3 secondes
+    setTimeout(() => {
+      if (scanning && confirm(`Code "${code}" non trouvé.\nVoulez-vous créer un nouvel article avec ce code ?`)) {
+        stopScanProcess().then(() => {
+          createNewItemWithCode(code);
+        });
+      }
+    }, 3000);
   });
 
   btnScanStart?.addEventListener('click', async ()=>{
@@ -463,6 +514,32 @@
   }
 
   btnScanTorch?.addEventListener('click', ()=> window.toggleTorch?.());
+
+  // Fonction pour créer un nouvel article avec un code scanné
+  async function createNewItemWithCode(code) {
+    const name = prompt(`Nom pour l'article avec le code "${code}" ?`);
+    if (!name) return;
+    
+    const qty = parseInt(prompt('Quantité initiale ?', '0') || '0', 10);
+    const threshold = parseInt(prompt('Seuil d\'alerte ?', '5') || '5', 10);
+    const tags = (prompt('Tags (séparés par des virgules)') || '').split(',').map(t => t.trim()).filter(Boolean);
+    
+    await dbPut({
+      id: code,
+      code: code,
+      name: name,
+      qty: qty,
+      threshold: threshold,
+      tags: tags,
+      updated: Date.now()
+    });
+    
+    announce(`Article "${name}" créé avec le code ${code}`);
+    await refreshTable();
+    
+    // Ouvrir directement le dialog d'ajustement
+    openAdjustDialog({code});
+  }
 
   // Helpers
   function escapeHTML(s){ return String(s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }

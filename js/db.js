@@ -111,10 +111,10 @@ async function dbAdjustQty(code, delta){
   return it.qty;
 }
 async function dbGenerateCode(){
-  // simple code EAN-like 12 digits (sans checksum)
-  const timestamp = Date.now().toString();
-  const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-  return 'CFA' + timestamp.slice(-8) + random;
+  // Code simple et lisible : CFA + 8 chiffres
+  const timestamp = Date.now().toString().slice(-8);
+  const random = Math.floor(Math.random() * 100).toString().padStart(2, '0');
+  return 'CFA' + timestamp + random;
 }
 
 // ---- Moves (journal)

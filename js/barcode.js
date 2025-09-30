@@ -135,7 +135,12 @@
     
     try {
       const barcodes = await detector.detect(video);
-      return barcodes.length > 0 ? barcodes[0].rawValue : null;
+      if (barcodes.length > 0) {
+        const code = barcodes[0].rawValue;
+        // Nettoyer le code scanné (supprimer espaces, caractères spéciaux)
+        return code.replace(/[^A-Za-z0-9]/g, '');
+      }
+      return null;
     } catch (error) {
       console.warn('Erreur détection:', error);
       return null;
