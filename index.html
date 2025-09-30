@@ -52,9 +52,14 @@
     .btn.danger{background:#ef4444;border-color:#ef4444;color:#fff}
     input.btn,select.btn{appearance:none}
     code{background:rgba(0,0,0,.06);padding:.1rem .3rem;border-radius:.3rem}
+    /* Scanner debug overlay */
+    #scanViewport{position:relative}
+    #scanOverlay{position:absolute;left:0;top:0;right:0;bottom:0;pointer-events:none;display:none}
+    #scanROI{position:absolute;border:2px dashed #0a84ff;border-radius:8px;box-shadow:0 0 0 2px rgba(10,132,255,.15) inset}
+    #scanInfo{position:absolute;left:8px;top:8px;background:rgba(0,0,0,.65);color:#fff;padding:6px 8px;border-radius:6px;font-size:12px;line-height:1.2;max-width:80%}
   </style>
   <script>
-    window.APP_VERSION = '2.0.8';
+    window.APP_VERSION = '2.0.9';
     (function(){
       const saved = localStorage.getItem('gstock.theme');
       const prefersDark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
@@ -63,14 +68,13 @@
   </script>
 </head>
 <body>
-  <!-- Bandeau fixe -->
   <div class="topbar" role="banner">
     <div class="topbar-inner">
       <div class="brand">
         <div class="brand-left">
           <img src="icons/icon-192.png" alt="" width="28" height="28" style="border-radius:6px">
           <strong>Gstock</strong><span class="muted">— Gestion de stock</span>
-          <span class="pill muted">v<span id="appVersion">2.0.5</span></span>
+          <span class="pill muted">v<span id="appVersion">2.0.9</span></span>
         </div>
         <div class="toggle">
           <label for="themeToggle" class="muted">Thème</label>
@@ -153,7 +157,7 @@
       </table>
     </section>
 
-    <!-- Scanner (1 bouton) -->
+    <!-- Scanner -->
     <section id="tab-scanner" hidden>
       <div class="toolbar">
         <button id="btnScanOnce" class="btn primary">Scanner un article</button>
@@ -215,38 +219,13 @@
         <label>Tags prédéfinis :
           <input id="inputDefaultTags" class="btn" placeholder="ex: TP, Atelier, Éclairage">
         </label>
+        <label style="display:flex;align-items:center;gap:.5rem">
+          <input id="inputDebug" type="checkbox"> Mode développeur (debug scan)
+        </label>
         <button id="btnSaveSettings" class="btn primary">Enregistrer</button>
-      </div>
-
-      <hr style="border:none;border-top:1px solid var(--bd);margin:1rem 0">
-
-      <h3>Données de démo</h3>
-      <div class="toolbar">
-        <button id="btnLoadDemo" class="btn primary">Charger la mini base de démo</button>
-        <span class="muted">Remplit IndexedDB depuis <code>data/demo.json</code>.</span>
-      </div>
-
-      <hr style="border:none;border-top:1px solid var(--bd);margin:1rem 0">
-
-      <h3>Sync GitHub (tests uniquement)</h3>
-      <div class="toolbar" style="gap:.75rem;align-items:flex-end;flex-wrap:wrap">
-        <label>Owner<br><input id="ghOwner" class="btn" placeholder="ex: Michto-p"></label>
-        <label>Repo<br><input id="ghRepo" class="btn" placeholder="ex: Gstock"></label>
-        <label>Chemin fichier<br><input id="ghPath" class="btn" placeholder="ex: gstock-shared.json" value="gstock-shared.json"></label>
-        <label>Token<br><input id="ghToken" class="btn" placeholder="ghp_..." style="min-width:280px"></label>
-        <button id="btnGHEnable" class="btn primary">Activer</button>
-      </div>
-      <div class="toolbar">
-        <button id="btnGHPull" class="btn">Pull (depuis GitHub)</button>
-        <button id="btnGHPush" class="btn">Push (vers GitHub)</button>
-        <button id="btnGHStart" class="btn">Auto-sync ON</button>
-        <button id="btnGHStop" class="btn">Auto-sync OFF</button>
-        <span class="muted">Testez en simultané mobile + PC via le même fichier JSON du repo.</span>
       </div>
     </section>
   </main>
-
-  <div id="sr" class="sr-only" aria-live="polite"></div>
 
   <!-- Modale AJUSTEMENT -->
   <dialog id="adjustDialog">
@@ -270,7 +249,7 @@
     </div>
   </dialog>
 
-  <!-- Modale SCAN -->
+  <!-- Modale SCAN avec overlay debug -->
   <dialog id="scanDialog">
     <header style="display:flex;justify-content:space-between;align-items:center;padding:.75rem 1rem">
       <strong>Scanner un article</strong>
@@ -280,7 +259,13 @@
       </div>
     </header>
     <div class="content">
-      <video id="scanVideo" playsinline style="width:100%;max-height:55vh;background:#000;border-radius:8px"></video>
+      <div id="scanViewport">
+        <video id="scanVideo" playsinline style="width:100%;max-height:55vh;background:#000;border-radius:8px"></video>
+        <div id="scanOverlay" aria-hidden="true">
+          <div id="scanROI"></div>
+          <div id="scanInfo">Debug</div>
+        </div>
+      </div>
       <p id="scanHint" class="muted" style="margin:.5rem 0 0">
         Visez le code-barres. Les codes inconnus ne ferment pas la caméra.
       </p>
@@ -292,11 +277,10 @@
 
   <div id="sr" class="sr-only" aria-live="polite"></div>
 
- <!-- Scripts (ordre) -->
-  <script src="js/db.js?v=2.0.6"></script>
-  <script src="js/barcode.js?v=2.0.6"></script>
-  <script src="js/sync-github.js?v=2.0.6"></script>
-  <script src="js/app.js?v=2.0.6"></script>
+  <!-- Scripts -->
+  <script src="js/db.js?v=2.0.9"></script>
+  <script src="js/barcode.js?v=2.0.9"></script>
+  <script src="js/app.js?v=2.0.9"></script>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js?v=' + window.APP_VERSION).then(reg=>{
