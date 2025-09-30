@@ -1,4 +1,4 @@
-/* Gstock - app.js (sans modale de scan, avec mode debug) */
+/* Gstock - app.js (complet, scanner intégré + debug toggle) */
 (() => {
   'use strict';
 
@@ -131,8 +131,8 @@
 
   async function openHistory(code){
     const item  = await dbGet(code);
-    const moves = await dbListMoves({code, limit: 100}).catch(()=>[]);
-    const loans = await dbListLoansByCode(code).catch(()=>[]);
+    const moves = await dbListMoves({code, limit: 100});
+    const loans = await dbListLoansByCode(code);
     alert(`Historique "${item?.name||code}"\n\nMouvements: ${moves.length}\nEmprunts (actifs+clos): ${loans.length}`);
   }
 
@@ -229,7 +229,7 @@
     svg.innerHTML = ''; svg.appendChild(ctx);
   }
 
-  async function refreshLabelItems(){ /* réservé pour évolutions futures */ }
+  async function refreshLabelItems(){ /* réservé */ }
 
   // ====================================================
   //                       JOURNAL
@@ -247,7 +247,7 @@
   async function refreshJournal(){
     const from = $('#dateFrom')?.value ? new Date($('#dateFrom').value).getTime() : 0;
     const to   = $('#dateTo')?.value   ? new Date($('#dateTo').value).getTime()+24*3600*1000 : Infinity;
-    const list = await dbListMoves({from,to,limit:1000}).catch(()=>[]);
+    const list = await dbListMoves({from,to,limit:1000});
     if (journalTbody) journalTbody.innerHTML = list.map(m=>`<tr>
       <td>${new Date(m.ts).toLocaleString()}</td>
       <td>${m.type}</td>
@@ -278,7 +278,7 @@
   async function refreshLoansTable(){
     if (!loansTbody) return;
     const q = ($('#searchLoans')?.value||'').toLowerCase();
-    const loans = await dbListLoans(false).catch(()=>[]);
+    const loans = await dbListLoans(false);
     const rows = loans.filter(l=>{
       return !q || [l.person,l.code,l.name].join(' ').toLowerCase().includes(q);
     }).map(l=>{
@@ -317,4 +317,185 @@
   // Import JSON
   $('#btnImportJSON')?.addEventListener('click', async ()=>{
     try{
-      const [fileHandle]
+      const [fileHandle] = await window.showOpenFilePicker({types:[{description:'JSON',accept:{'application/json':['.json']}}]});
+      const file = await fileHandle.getFile();
+      const text = await file.text();
+      const data = JSON.parse(text);
+      await dbImportFull(data);
+      announce('Import terminé');
+      await refreshTable(); await refreshJournal(); await refreshLoansTable();
+    }catch(e){ console.warn(e); alert('Import annulé / invalide'); }
+  });
+
+  // Fichier partagé (desktop)
+  const sharedFileStatus = $('#sharedFileStatus');
+  $('#btnLinkSharedFile')?.addEventListener('click', async ()=>{
+    if (!('showSaveFilePicker' in window)) return alert('File System Access API non supportée sur ce navigateur.');
+    const handle = await showSaveFilePicker({suggestedName:'gstock-shared.json', types:[{description:'JSON',accept:{'application/json':['.json']}}]});
+    await dbLinkSharedFile(handle);
+    sharedFileStatus && (sharedFileStatus.textContent = 'Fichier partagé lié (autosave activé)');
+  });
+
+  // Init panneau paramètres
+  function initSettingsPanel(){
+    (async ()=>{
+      const set = await dbGetSettings();
+      $('#inputBuffer')      && ($('#inputBuffer').value = set.buffer|0);
+      $('#inputDefaultTags') && ($('#inputDefaultTags').value = (set.defaultTags||[]).join(', '));
+
+      // ---- init checkbox debug
+      const chkDebug = $('#chkDebug');
+      if (chkDebug) {
+        chkDebug.checked = !!window.GSTOCK_DEBUG;
+        chkDebug.addEventListener('change', (e)=>{
+          window.GSTOCK_DEBUG = !!e.target.checked;
+          localStorage.setItem('gstock.debug', e.target.checked ? '1' : '0');
+        });
+      }
+
+      // Sync GitHub pré-remplissage si module présent
+      if (window.githubSync?.loadSaved) {
+        const saved = window.githubSync.loadSaved();
+        $('#ghOwner') && ($('#ghOwner').value = saved.owner || '');
+        $('#ghRepo')  && ($('#ghRepo').value  = saved.repo  || '');
+        $('#ghPath')  && ($('#ghPath').value  = saved.path  || 'gstock-shared.json');
+        $('#ghToken') && ($('#ghToken').value = saved.token || '');
+      }
+    })();
+  }
+
+  $('#btnSaveSettings')?.addEventListener('click', async ()=>{
+    const buffer = Math.max(0, parseInt($('#inputBuffer')?.value||'0',10));
+    const defaultTags = ($('#inputDefaultTags')?.value||'').split(',').map(t=>t.trim()).filter(Boolean);
+    await dbSetSettings({buffer, defaultTags});
+
+    // debug persist
+    const dbg = !!$('#chkDebug')?.checked;
+    window.GSTOCK_DEBUG = dbg;
+    localStorage.setItem('gstock.debug', dbg ? '1' : '0');
+
+    announce('Paramètres enregistrés');
+    await refreshTable();
+  });
+
+  // ---- Mini base de démo ----
+  $('#btnLoadDemo')?.addEventListener('click', async ()=>{
+    try{
+      const res = await fetch('data/demo.json', {cache:'no-store'});
+      if (!res.ok) throw new Error('demo.json introuvable');
+      const data = await res.json();
+      await dbImportFull(data);
+      announce('Mini base de démo chargée');
+      await refreshTable(); await refreshJournal(); await refreshLoansTable();
+    }catch(e){
+      console.warn(e);
+      alert('Impossible de charger la démo : ' + e.message);
+    }
+  });
+
+  // ---- Sync GitHub (tests uniquement) ----
+  $('#btnGHEnable')?.addEventListener('click', ()=>{
+    if (!window.githubSync) return alert('Module sync-github non chargé');
+    const owner = ($('#ghOwner')?.value||'').trim();
+    const repo  = ($('#ghRepo')?.value||'').trim();
+    const path  = ($('#ghPath')?.value||'gstock-shared.json').trim();
+    const token = ($('#ghToken')?.value||'').trim();
+    if (!owner || !repo || !path || !token) return alert('Renseignez owner, repo, chemin et token.');
+    window.githubSync.init({owner, repo, path, token});
+    alert('Sync GitHub configurée (tests).');
+  });
+
+  $('#btnGHPull')?.addEventListener('click', async ()=>{
+    try{
+      await window.githubSync.pull();
+      announce('Pull GitHub OK');
+      await refreshTable(); await refreshJournal(); await refreshLoansTable();
+    }catch(e){ alert('Pull GitHub échoué : '+ e.message); }
+  });
+
+  $('#btnGHPush')?.addEventListener('click', async ()=>{
+    try{
+      await window.githubSync.push();
+      announce('Push GitHub OK');
+    }catch(e){ alert('Push GitHub échoué : '+ e.message); }
+  });
+
+  $('#btnGHStart')?.addEventListener('click', ()=>{
+    try{ window.githubSync.startAuto(4000); alert('Auto-sync ON (toutes les 4s)'); }catch(e){ alert(e.message); }
+  });
+  $('#btnGHStop')?.addEventListener('click', ()=>{
+    try{ window.githubSync.stopAuto(); alert('Auto-sync OFF'); }catch(e){ alert(e.message); }
+  });
+
+  // ====================================================
+  //                     SCAN INTÉGRÉ
+  // ====================================================
+  const scanVideo    = $('#scanVideo');
+  const scanHint     = $('#scanHint');
+  const btnScanStart = $('#btnScanStart');
+  const btnScanStop  = $('#btnScanStop');
+  const btnScanTorch = $('#btnScanTorch');
+
+  let scanning = false;
+
+  // info codes inconnus (notifié par barcode.js)
+  window.addEventListener('gstock:scan-unknown', (ev)=>{
+    const code = ev.detail.code;
+    if (scanHint) scanHint.textContent = `Code ${code} inconnu — continuez à viser un article enregistré.`;
+  });
+
+  btnScanStart?.addEventListener('click', async ()=>{
+    if (scanning) return;
+    if (typeof window.scanUntilKnown !== 'function') { alert('Module de scan non chargé.'); return; }
+    scanning = true;
+    btnScanStart.disabled = true;
+    if (scanHint) scanHint.textContent = 'Visez le code-barres. Les codes inconnus ne ferment pas la caméra.';
+
+    try{
+      // confirmFrames:1 → plus tolérant mobile / faible lumière
+      const code = await window.scanUntilKnown(scanVideo, { confirmFrames: 1 });
+      // si l’utilisateur a cliqué "Arrêter", on ignore le résultat
+      if (!scanning) return;
+      if (code) openAdjustDialog({code});
+    }catch(e){
+      console.warn(e);
+      alert('Le scan a échoué ou a été annulé.');
+    }finally{
+      scanning = false;
+      btnScanStart.disabled = false;
+    }
+  });
+
+  btnScanStop?.addEventListener('click', async ()=>{
+    scanning = false;
+    try{ await window.stopScan?.(); }catch(_){}
+    if (scanHint) scanHint.textContent = 'Scan arrêté.';
+    btnScanStart.disabled = false;
+  });
+
+  btnScanTorch?.addEventListener('click', ()=>{
+    window.toggleTorch?.();
+  });
+
+  // ====================================================
+  //                       Helpers
+  // ====================================================
+  function escapeHTML(s){ return String(s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+  function downloadFile(name, data, type){
+    const blob = new Blob([data], {type}); const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 5000);
+  }
+  function announce(msg){ sr && (sr.textContent=''); setTimeout(()=>{ sr && (sr.textContent = msg); }, 10); }
+
+  // ====================================================
+  //                        INIT
+  // ====================================================
+  (async function init(){
+    $('#appVersion') && ( $('#appVersion').textContent = window.APP_VERSION || '' );
+    await dbInit();
+    await refreshTable();
+    showTab('items');
+  })();
+
+})();
