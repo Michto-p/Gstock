@@ -1,4 +1,4 @@
-/* Gstock - app.js v2.1.1 (thème ++, impression A4 étiquettes, scanner intégré) */
+/* Gstock - app.js v2.1.2 (thème ++, impression A4 étiquettes, scanner intégré, reset cache) */
 (() => {
   'use strict';
 
@@ -181,7 +181,6 @@
     await renderSheet('one', code);
   });
   $('#btnLabelsPrintA4')?.addEventListener('click', async ()=>{
-    // S'il n'y a rien, génère une planche de tous
     if (!labelsPreview || !labelsPreview.firstElementChild) await renderSheet('all');
     window.print();
   });
@@ -192,15 +191,12 @@
       <div class="label-card">
         <div class="name">${escapeHTML(it.name)}</div>
         <code>${escapeHTML(it.code)}</code>
-        <svg data-barcode="${escapeHTML(it.code)}"></svg>
+        <svg data-barcode="${escapeHTML(it.code)}" width="240" height="140"></svg>
       </div>`).join('');
     if (labelsPreview){
       labelsPreview.classList.add('labels-sheet');
       labelsPreview.innerHTML = html || `<div class="muted">Aucun article</div>`;
-      // Dessine les codes-barres après insertion
       labelsPreview.querySelectorAll('svg[data-barcode]').forEach(svg=>{
-        // largeur/hauteur sont gérées par CSS print (100% et 14mm)
-        svg.setAttribute('width','240'); svg.setAttribute('height','140'); // pour écran
         drawFakeCode128(svg, svg.getAttribute('data-barcode'));
       });
     }
@@ -318,6 +314,20 @@
     const handle = await showSaveFilePicker({suggestedName:'gstock-shared.json', types:[{description:'JSON',accept:{'application/json':['.json']}}]});
     await dbLinkSharedFile(handle);
     sharedFileStatus && (sharedFileStatus.textContent = 'Fichier partagé lié (autosave activé)');
+  });
+
+  // Reset cache PWA (mobile friendly)
+  $('#btnResetCache')?.addEventListener('click', async ()=>{
+    if (!confirm('Réinitialiser le cache PWA et recharger ?')) return;
+    try {
+      const regs = await (navigator.serviceWorker?.getRegistrations?.() || []);
+      await Promise.all(regs.map(r=>r.unregister()));
+    } catch(e){}
+    try {
+      const keys = await (caches?.keys?.() || []);
+      await Promise.all(keys.map(k=>caches.delete(k)));
+    } catch(e){}
+    location.reload();
   });
 
   function initSettingsPanel(){
