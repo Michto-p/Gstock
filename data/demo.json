@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "exportedAt": 1727650000000,
+  "settings": {
+    "id": "main",
+    "buffer": 2,
+    "defaultTags": ["TP", "Atelier", "Éclairage"]
+  },
+  "items": [
+    {"id":"200000000001","code":"200000000001","name":"Tournevis PH2","qty":18,"threshold":5,"tags":["Atelier"],"updated":1727649500000},
+    {"id":"200000000002","code":"200000000002","name":"Clé de 13","qty":6,"threshold":4,"tags":["Atelier"],"updated":1727649501000},
+    {"id":"200000000003","code":"200000000003","name":"Gants nitrile (M)","qty":42,"threshold":20,"tags":["TP","EPI"],"updated":1727649502000},
+    {"id":"200000000004","code":"200000000004","name":"Ruban isolant","qty":3,"threshold":5,"tags":["Électricité"],"updated":1727649503000},
+    {"id":"200000000005","code":"200000000005","name":"Domino 2,5mm²","qty":75,"threshold":25,"tags":["Électricité","Atelier"],"updated":1727649504000},
+    {"id":"200000000006","code":"200000000006","name":"Lampe frontale","qty":2,"threshold":2,"tags":["TP","Éclairage"],"updated":1727649505000},
+    {"id":"200000000007","code":"200000000007","name":"Multimètre","qty":5,"threshold":2,"tags":["Mesure"],"updated":1727649506000},
+    {"id":"200000000008","code":"200000000008","name":"Colliers Rilsan 200mm","qty":120,"threshold":40,"tags":["Atelier"],"updated":1727649507000}
+  ],
+  "moves": [
+    {"id":1,"ts":1727649600000,"type":"ENTRY","code":"200000000001","name":"Tournevis PH2","qty":10,"note":"Réception"},
+    {"id":2,"ts":1727649700000,"type":"EXIT","code":"200000000003","name":"Gants nitrile (M)","qty":5,"note":"TP 1"},
+    {"id":3,"ts":1727649800000,"type":"EXIT","code":"200000000004","name":"Ruban isolant","qty":2,"note":""}
+  ],
+  "loans": [
+    {"id":1,"code":"200000000007","name":"Multimètre","person":"Alice","due":"2025-10-05","note":"TP mesure","createdAt":1727649900000,"returnedAt":null},
+    {"id":2,"code":"200000000006","name":"Lampe frontale","person":"Bob","due":"2025-10-02","note":"","createdAt":1727649950000,"returnedAt":1727736300000}
+  ]
+}
