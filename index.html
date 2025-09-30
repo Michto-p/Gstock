@@ -57,6 +57,17 @@
     input.btn,select.btn{appearance:none}
     code{background:rgba(0,0,0,.06);padding:.1rem .3rem;border-radius:.3rem}
     video.scanner{width:100%;max-height:60vh;background:#000;border-radius:8px}
+    video.scanner:not([src]) {
+      background: #1a1a1a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    video.scanner:not([src])::before {
+      content: "📷 Caméra non démarrée";
+      color: #888;
+      font-size: 1.2rem;
+    }
 
     /* ==== Étiquettes A4 prêtes à imprimer (Avery L7159 : 63.5×38.1 mm, 3×7) ==== */
     .labels-sheet{
@@ -178,11 +189,17 @@
     <section id="tab-scanner" hidden>
       <div class="toolbar">
         <button id="btnScanStart" class="btn primary">Démarrer le scan</button>
-        <button id="btnScanStop" class="btn">Arrêter</button>
+        <button id="btnScanStop" class="btn" disabled>Arrêter</button>
         <button id="btnScanTorch" class="btn">Lampe</button>
       </div>
       <video id="scanVideo" class="scanner" playsinline></video>
-      <p id="scanHint" class="muted" style="margin:.5rem 0 0">Visez le code-barres. Bip uniquement si l’article est reconnu. Les codes inconnus ne ferment pas la caméra.</p>
+      <p id="scanHint" class="muted" style="margin:.5rem 0 0">
+        📱 <strong>Instructions:</strong><br>
+        1. Cliquez sur "Démarrer le scan"<br>
+        2. Autorisez l'accès à la caméra<br>
+        3. Visez le code-barres d'un article enregistré<br>
+        4. Les codes inconnus ne ferment pas la caméra
+      </p>
     </section>
 
     <!-- Étiquettes -->

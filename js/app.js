@@ -417,33 +417,50 @@
 
   btnScanStart?.addEventListener('click', async ()=>{
     if (scanning) return;
+    
+    // Vérifier si BarcodeDetector est supporté
+    if (!('BarcodeDetector' in window)) {
+      alert('Votre navigateur ne supporte pas la détection de codes-barres.\nUtilisez Chrome, Edge ou Safari récent.');
+      return;
+    }
+    
     if (typeof window.scanUntilKnown !== 'function') {
       alert('Module de scan non chargé.\nVérifiez que js/barcode.js est bien inclus AVANT js/app.js (et videz le cache PWA).');
       return;
     }
+    
     scanning = true;
     btnScanStart.disabled = true;
+    btnScanStop.disabled = false;
     scanHint && (scanHint.textContent = 'Visez le code-barres. Les codes inconnus ne ferment pas la caméra.');
 
     try{
       const code = await window.scanUntilKnown(scanVideo, { confirmFrames: 1 });
       if (!scanning) return;
-      if (code) openAdjustDialog({code});
+      if (code) {
+        // Arrêter le scan avant d'ouvrir le dialog
+        await stopScanProcess();
+        openAdjustDialog({code});
+      }
     }catch(e){
       console.warn(e);
-      alert('Le scan a échoué ou a été annulé.');
+      alert('Le scan a échoué: ' + e.message);
     }finally{
-      scanning = false;
-      btnScanStart.disabled = false;
+      await stopScanProcess();
     }
   });
 
   btnScanStop?.addEventListener('click', async ()=>{
+    await stopScanProcess();
+  });
+
+  async function stopScanProcess() {
     scanning = false;
     try{ await window.stopScan?.(); }catch(_){}
     scanHint && (scanHint.textContent = 'Scan arrêté.');
     btnScanStart.disabled = false;
-  });
+    btnScanStop.disabled = true;
+  }
 
   btnScanTorch?.addEventListener('click', ()=> window.toggleTorch?.());
 
