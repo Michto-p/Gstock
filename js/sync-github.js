@@ -2,26 +2,20 @@
 (() => {
   'use strict';
 
-  function b64encode(str){
-    // Base64 UTF-8 safe
-    return btoa(unescape(encodeURIComponent(str)));
-  }
-  function b64decode(b64){
-    return decodeURIComponent(escape(atob(b64)));
-  }
+  function b64encode(str){ return btoa(unescape(encodeURIComponent(str))); }
+  function b64decode(b64){ return decodeURIComponent(escape(atob(b64))); }
 
   const githubSync = (() => {
-    let cfg = null;     // {owner, repo, path, token}
-    let lastSha = null; // sha du fichier
+    let cfg = null;
+    let lastSha = null;
     let autoTimer = null;
 
     function init(conf){
       cfg = Object.assign({}, conf);
       lastSha = null;
-      // on persiste (sans le token si tu préfères)
       localStorage.setItem('gstock.gh.owner', cfg.owner||'');
-      localStorage.setItem('gstock.gh.repo', cfg.repo||'');
-      localStorage.setItem('gstock.gh.path', cfg.path||'');
+      localStorage.setItem('gstock.gh.repo',  cfg.repo||'');
+      localStorage.setItem('gstock.gh.path',  cfg.path||'gstock-shared.json');
       localStorage.setItem('gstock.gh.token', cfg.token||'');
     }
 
@@ -58,7 +52,6 @@
     }
 
     async function pull(){
-      if (!cfg) throw new Error('Sync non initialisée');
       const data = await api('GET', contentsURL());
       lastSha = data.sha || null;
       const jsonText = b64decode(data.content || '');
@@ -68,23 +61,14 @@
     }
 
     async function push(){
-      if (!cfg) throw new Error('Sync non initialisée');
-      // Récupère la dernière sha (évite les conflits)
       try{
         const meta = await api('GET', contentsURL());
         lastSha = meta.sha || null;
-      }catch(e){
-        // si 404, c'est un create (lastSha nul)
-        lastSha = null;
-      }
+      }catch(_){ lastSha = null; }
 
       const snapshot = await dbExportFull();
       const text = JSON.stringify(snapshot, null, 2);
-      const body = {
-        message: 'Gstock sync',
-        content: b64encode(text),
-        sha: lastSha || undefined
-      };
+      const body = { message: 'Gstock sync', content: b64encode(text), sha: lastSha || undefined };
       const res = await api('PUT', contentsURL(), body);
       lastSha = (res.content && res.content.sha) ? res.content.sha : null;
       return true;
@@ -93,25 +77,13 @@
     function startAuto(intervalMs=4000){
       stopAuto();
       autoTimer = setInterval(async ()=>{
-        try{
-          await pull();
-          // Option: on pourrait notifier l’UI
-          // window.dispatchEvent(new CustomEvent('gstock:gh-pulled'));
-        }catch(e){
-          console.warn('Auto-pull GitHub:', e.message);
-        }
+        try{ await pull(); }catch(e){ console.warn('Auto-pull GitHub:', e.message); }
       }, intervalMs);
     }
-
-    function stopAuto(){
-      if (autoTimer) clearInterval(autoTimer);
-      autoTimer = null;
-    }
+    function stopAuto(){ if (autoTimer) clearInterval(autoTimer); autoTimer = null; }
 
     return { init, loadSaved, pull, push, startAuto, stopAuto };
   })();
 
-  // Expose
   window.githubSync = githubSync;
-
 })();
