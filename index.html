@@ -74,7 +74,7 @@
       display:grid;
       grid-template-columns: repeat(3, 63.5mm);
       grid-auto-rows: 38.1mm;
-      gap: 2.5mm 7mm; /* vertical / horizontal */
+      gap: 2.5mm 2.5mm; /* espacement uniforme */
       justify-content:center;
       margin: .5rem auto;
       background: var(--bg);
@@ -90,9 +90,28 @@
       background:#fff; color:#000; /* lisible à l'impression */
     }
     [data-theme="dark"] .label-card{ background:#fff; color:#000 } /* pour éviter l’encre inversée */
-    .label-card .name{ font-weight:700; font-size:11pt; line-height:1.1; text-align:center; max-width:100% }
-    .label-card code{ font-size:8pt }
-    .label-card .barcode-svg{ width:100%; height:12mm; margin:1mm 0 }
+    .label-card .name{ 
+      font-weight:700; 
+      font-size:10pt; 
+      line-height:1.1; 
+      text-align:center; 
+      max-width:100%;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+    .label-card .code-text{ 
+      font-family:monospace; 
+      font-size:8pt; 
+      font-weight:600;
+      color:#333;
+    }
+    .label-card .barcode-svg{ 
+      width:100%; 
+      height:15mm; 
+      margin:1mm 0;
+      border:1px solid #eee;
+    }
 
     /* Aperçu non-impression (bordures visibles) */
     #labelsPreview{ background:var(--elev); padding:8px; border-radius:8px; }

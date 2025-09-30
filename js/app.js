@@ -59,13 +59,34 @@
   $('#btnAddItem')?.addEventListener('click', async () => {
     const name = prompt('Nom de l’article ?');
     if (!name) return;
+    
     const inputCode = prompt('Code-barres (laisser vide pour générer automatiquement)');
-    const code = inputCode ? inputCode.replace(/[^A-Za-z0-9]/g, '') : await dbGenerateCode();
+    let code;
+    
+    if (inputCode) {
+      // Nettoyer le code saisi
+      code = window.cleanBarcodeValue ? window.cleanBarcodeValue(inputCode) : inputCode.replace(/[^A-Za-z0-9\-_.]/g, '');
+      
+      // Vérifier la compatibilité Code 128B
+      if (window.validateCode128B && !window.validateCode128B(code)) {
+        alert('Code-barres non compatible avec la norme Code 128B. Génération automatique...');
+        code = await dbGenerateCode();
+      }
+    } else {
+      code = await dbGenerateCode();
+    }
+    
+    if (!code) {
+      alert('Impossible de générer un code-barres valide');
+      return;
+    }
+    
     const qty = parseInt(prompt('Quantité initiale ?', '0')||'0',10);
     const threshold = parseInt(prompt('Seuil d’alerte ?', '0')||'0',10);
     const tags = (prompt('Tags (séparés par des virgules)')||'').split(',').map(t=>t.trim()).filter(Boolean);
+    
     await dbPut({id: code, code, name, qty, threshold, tags, updated: Date.now()});
-    announce('Article créé');
+    announce(`Article "${name}" créé avec le code ${code}`);
     await refreshTable();
   });
   searchItems?.addEventListener('input', refreshTable);
@@ -189,17 +210,55 @@
 
   async function renderSheet(mode='all', code=null){
     const items = (mode==='all') ? await dbList() : [await dbGet(code)].filter(Boolean);
+    
+    if (!items.length) {
+      if (labelsPreview) {
+        labelsPreview.innerHTML = `<div class="muted">Aucun article à imprimer</div>`;
+      }
+      return;
+    }
+    
     const html = items.map(it=>`
       <div class="label-card">
         <div class="name">${escapeHTML(it.name)}</div>
-        <code>${escapeHTML(it.code)}</code>
+        <div class="code-text">${escapeHTML(it.code)}</div>
         <svg class="barcode-svg" data-barcode="${escapeHTML(it.code)}"></svg>
       </div>`).join('');
+    
     if (labelsPreview){
       labelsPreview.classList.add('labels-sheet');
       labelsPreview.innerHTML = html || `<div class="muted">Aucun article</div>`;
+      
       // Dessine les codes-barres après insertion
-      labelsPreview.querySelectorAll('svg.barcode-svg[data-barcode]').forEach(svg=>{
+      setTimeout(() => {
+        labelsPreview.querySelectorAll('svg.barcode-svg[data-barcode]').forEach(svg => {
+          const code = svg.getAttribute('data-barcode');
+          if (window.renderBarcodeSVG && code) {
+            const success = window.renderBarcodeSVG(svg, code, {
+              width: 240,
+              height: 50,
+              showText: false, // Le texte est déjà affiché séparément
+              fontSize: 8,
+              quietZone: 8,
+              barHeight: 35
+            });
+            if (!success) {
+              console.error('Échec génération code-barres pour:', code);
+              svg.innerHTML = '<text x="120" y="25" text-anchor="middle" fill="red" font-size="10">Erreur</text>';
+            }
+          }
+        });
+      }, 100);
+    }
+    
+    announce(`Planche de ${items.length} étiquette(s) générée`);
+  }
+
+  async function refreshLabelItems() {
+    // Fonction pour rafraîchir la liste des articles dans l'onglet étiquettes
+    const items = await dbList();
+    console.log(`${items.length} articles disponibles pour étiquettes`);
+  }
         const code = svg.getAttribute('data-barcode');
         if (window.renderBarcodeSVG) {
           window.renderBarcodeSVG(svg, code, {
@@ -460,6 +519,13 @@
 
   // Fonction pour créer un nouvel article avec un code scanné
   async function createNewItemWithCode(code) {
+    // Nettoyer le code avant utilisation
+    const cleanCode = window.cleanBarcodeValue ? window.cleanBarcodeValue(code) : code;
+    if (!cleanCode) {
+      alert('Code-barres invalide');
+      return;
+    }
+    
     const name = prompt(`Nom pour l'article avec le code "${code}" ?`);
     if (!name) return;
     
@@ -468,8 +534,8 @@
     const tags = (prompt('Tags (séparés par des virgules)') || '').split(',').map(t => t.trim()).filter(Boolean);
     
     await dbPut({
-      id: code,
-      code: code,
+      id: cleanCode,
+      code: cleanCode,
       name: name,
       qty: qty,
       threshold: threshold,
@@ -477,11 +543,11 @@
       updated: Date.now()
     });
     
-    announce(`Article "${name}" créé avec le code ${code}`);
+    announce(`Article "${name}" créé avec le code ${cleanCode}`);
     await refreshTable();
     
     // Ouvrir directement le dialog d'ajustement
-    openAdjustDialog({code});
+    openAdjustDialog({code: cleanCode});
   }
 
   // Helpers

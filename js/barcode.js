@@ -1,4 +1,4 @@
-/* Gstock - barcode.js (scanner intégré + debug overlay) */
+/* Gstock - barcode.js (Scanner intégré optimisé) */
 (() => {
   'use strict';
 
@@ -8,7 +8,15 @@
   let torchEnabled = false;
   let debugOverlay = null;
 
-  // Debug overlay
+  // Configuration du scanner
+  const SCANNER_CONFIG = {
+    formats: ['code_128', 'code_39', 'ean_13', 'ean_8', 'qr_code'],
+    confirmFrames: 2, // Nombre de frames pour confirmer un code
+    maxAttempts: 2000, // Tentatives max avant timeout
+    debugMode: false
+  };
+
+  // Debug overlay pour développement
   function createDebugOverlay(video) {
     if (!window.GSTOCK_DEBUG) return null;
     
@@ -29,9 +37,10 @@
     info.style.cssText = `
       position: absolute;
       top: 10px; left: 10px;
-      background: rgba(0,0,0,0.7);
-      padding: 5px;
-      border-radius: 3px;
+      background: rgba(0,0,0,0.8);
+      padding: 8px;
+      border-radius: 4px;
+      color: #00ff00;
     `;
     overlay.appendChild(info);
     
@@ -49,18 +58,19 @@
     return { overlay, info, roi };
   }
 
-  function updateDebugOverlay(debug, fps, lastCode, videoRect) {
+  function updateDebugOverlay(debug, fps, lastCode, attempts, videoRect) {
     if (!debug || !window.GSTOCK_DEBUG) return;
     
     debug.info.innerHTML = `
       FPS: ${fps}<br>
+      Tentatives: ${attempts}<br>
       Dernier: ${lastCode || 'aucun'}<br>
       Résolution: ${videoRect.width}x${videoRect.height}
     `;
     
-    // ROI au centre (50% de la largeur/hauteur)
-    const roiW = videoRect.width * 0.5;
-    const roiH = videoRect.height * 0.5;
+    // ROI au centre (60% de la largeur/hauteur)
+    const roiW = videoRect.width * 0.6;
+    const roiH = videoRect.height * 0.6;
     const roiX = (videoRect.width - roiW) / 2;
     const roiY = (videoRect.height - roiH) / 2;
     
@@ -70,54 +80,100 @@
     debug.roi.style.height = roiH + 'px';
   }
 
-  // Scanner principal
+  /**
+   * Nettoie et normalise un code-barres scanné
+   */
+  function cleanBarcodeValue(rawValue) {
+    if (!rawValue) return null;
+    
+    // Supprimer les espaces et caractères de contrôle
+    let cleaned = rawValue.replace(/[\s\r\n\t]/g, '');
+    
+    // Garder seulement les caractères alphanumériques et quelques symboles
+    cleaned = cleaned.replace(/[^A-Za-z0-9\-_.]/g, '');
+    
+    return cleaned || null;
+  }
+
+  /**
+   * Démarre le scanner
+   */
   async function startScan(video, options = {}) {
-    if (scanning) throw new Error('Scan déjà en cours');
+    if (scanning) {
+      throw new Error('Scanner déjà en cours');
+    }
     
     try {
-      // Vérifier support BarcodeDetector
+      // Vérifier le support BarcodeDetector
       if (!('BarcodeDetector' in window)) {
-        throw new Error('BarcodeDetector non supporté sur ce navigateur');
+        throw new Error('BarcodeDetector non supporté. Utilisez Chrome, Edge ou Safari récent.');
       }
       
+      // Créer le détecteur
       detector = new BarcodeDetector({
-        formats: ['code_128', 'code_39', 'ean_13', 'ean_8', 'qr_code']
+        formats: SCANNER_CONFIG.formats
       });
       
-      // Demander accès caméra
+      // Configuration caméra optimisée
       const constraints = {
         video: {
-          facingMode: 'environment',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
+          facingMode: 'environment', // Caméra arrière
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 480 },
+          focusMode: 'continuous',
+          whiteBalanceMode: 'continuous'
         }
       };
       
       try {
         stream = await navigator.mediaDevices.getUserMedia(constraints);
       } catch (e) {
+        console.warn('Contraintes avancées échouées, fallback simple:', e);
         // Fallback sans contraintes spécifiques
-        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: 'environment' } 
+        });
       }
       
       video.srcObject = stream;
       await video.play();
       
+      // Attendre que la vidéo soit prête
+      await new Promise(resolve => {
+        const checkReady = () => {
+          if (video.videoWidth > 0 && video.videoHeight > 0) {
+            resolve();
+          } else {
+            setTimeout(checkReady, 100);
+          }
+        };
+        checkReady();
+      });
+      
       scanning = true;
       debugOverlay = createDebugOverlay(video);
       
+      console.log('Scanner démarré avec succès');
       return true;
+      
     } catch (error) {
-      console.error('Erreur démarrage scan:', error);
+      console.error('Erreur démarrage scanner:', error);
+      await stopScan();
       throw error;
     }
   }
 
+  /**
+   * Arrête le scanner
+   */
   async function stopScan() {
     scanning = false;
     
     if (stream) {
-      stream.getTracks().forEach(track => track.stop());
+      stream.getTracks().forEach(track => {
+        track.stop();
+        console.log('Track arrêté:', track.kind);
+      });
       stream = null;
     }
     
@@ -128,28 +184,48 @@
     
     detector = null;
     torchEnabled = false;
+    
+    console.log('Scanner arrêté');
   }
 
+  /**
+   * Scanne une frame vidéo
+   */
   async function scanFrame(video) {
-    if (!scanning || !detector || !video.videoWidth) return null;
+    if (!scanning || !detector || !video.videoWidth || !video.videoHeight) {
+      return null;
+    }
     
     try {
       const barcodes = await detector.detect(video);
+      
       if (barcodes.length > 0) {
-        const code = barcodes[0].rawValue;
-        // Nettoyer le code scanné (supprimer espaces, caractères spéciaux)
-        return code.replace(/[^A-Za-z0-9]/g, '');
+        // Prendre le premier code-barres détecté
+        const barcode = barcodes[0];
+        const cleaned = cleanBarcodeValue(barcode.rawValue);
+        
+        if (cleaned && cleaned.length >= 3) {
+          console.log('Code détecté:', cleaned, 'Format:', barcode.format);
+          return cleaned;
+        }
       }
+      
       return null;
     } catch (error) {
-      console.warn('Erreur détection:', error);
+      console.warn('Erreur détection frame:', error);
       return null;
     }
   }
 
-  // Scanner jusqu'à code connu
+  /**
+   * Scanne jusqu'à trouver un code connu
+   */
   async function scanUntilKnown(video, options = {}) {
-    const { confirmFrames = 3, maxAttempts = 1000 } = options;
+    const { 
+      confirmFrames = SCANNER_CONFIG.confirmFrames, 
+      maxAttempts = SCANNER_CONFIG.maxAttempts,
+      onUnknownCode = null
+    } = options;
     
     await startScan(video, options);
     
@@ -168,14 +244,14 @@
         }
         
         if (attempts++ > maxAttempts) {
-          reject(new Error('Trop de tentatives'));
+          reject(new Error(`Timeout après ${maxAttempts} tentatives`));
           return;
         }
         
         try {
           const code = await scanFrame(video);
           
-          // Calcul FPS
+          // Calcul FPS pour debug
           frameCount++;
           const now = Date.now();
           if (now - lastTime >= 1000) {
@@ -184,10 +260,9 @@
             lastTime = now;
           }
           
-          // Mise à jour debug
+          // Mise à jour debug overlay
           if (debugOverlay) {
-            const rect = video.getBoundingClientRect();
-            updateDebugOverlay(debugOverlay, fps, code || lastCode, {
+            updateDebugOverlay(debugOverlay, fps, code || lastCode, attempts, {
               width: video.videoWidth,
               height: video.videoHeight
             });
@@ -196,17 +271,34 @@
           if (code) {
             if (code === lastCode) {
               confirmCount++;
+              console.log(`Code confirmé ${confirmCount}/${confirmFrames}:`, code);
+              
               if (confirmCount >= confirmFrames) {
                 // Vérifier si le code existe en base
-                const item = await window.dbGet(code);
-                if (item) {
-                  resolve(code);
-                  return;
-                } else {
-                  // Code inconnu, émettre événement et continuer
-                  window.dispatchEvent(new CustomEvent('gstock:scan-unknown', {
-                    detail: { code }
-                  }));
+                try {
+                  const item = await window.dbGet(code);
+                  if (item) {
+                    console.log('Code trouvé en base:', item.name);
+                    resolve(code);
+                    return;
+                  } else {
+                    console.log('Code inconnu:', code);
+                    // Émettre événement pour code inconnu
+                    window.dispatchEvent(new CustomEvent('gstock:scan-unknown', {
+                      detail: { code }
+                    }));
+                    
+                    // Callback optionnel
+                    if (onUnknownCode) {
+                      onUnknownCode(code);
+                    }
+                    
+                    // Reset pour continuer le scan
+                    lastCode = null;
+                    confirmCount = 0;
+                  }
+                } catch (dbError) {
+                  console.error('Erreur vérification base:', dbError);
                   lastCode = null;
                   confirmCount = 0;
                 }
@@ -214,22 +306,32 @@
             } else {
               lastCode = code;
               confirmCount = 1;
+              console.log('Nouveau code détecté:', code);
             }
           }
           
+          // Continuer le scan
           requestAnimationFrame(scanLoop);
+          
         } catch (error) {
+          console.error('Erreur dans scanLoop:', error);
           reject(error);
         }
       };
       
+      // Démarrer la boucle
       scanLoop();
     });
   }
 
-  // Contrôle torche
+  /**
+   * Contrôle de la torche
+   */
   async function toggleTorch() {
-    if (!stream) return false;
+    if (!stream) {
+      console.warn('Pas de stream actif pour la torche');
+      return false;
+    }
     
     try {
       const track = stream.getVideoTracks()[0];
@@ -240,28 +342,35 @@
         await track.applyConstraints({
           advanced: [{ torch: torchEnabled }]
         });
+        console.log('Torche:', torchEnabled ? 'ON' : 'OFF');
         return torchEnabled;
+      } else {
+        console.warn('Torche non supportée sur cet appareil');
+        return false;
       }
     } catch (error) {
-      console.warn('Torche non supportée:', error);
+      console.warn('Erreur contrôle torche:', error);
+      return false;
     }
-    
-    return false;
   }
 
-  // Gestion du debug toggle
+  // Gestion des événements debug
   window.addEventListener('gstock:debug-changed', (event) => {
+    SCANNER_CONFIG.debugMode = event.detail.enabled;
     if (!event.detail.enabled && debugOverlay) {
       debugOverlay.overlay.remove();
       debugOverlay = null;
     }
   });
 
-  // Export global
+  // Export des fonctions
   window.startScan = startScan;
   window.stopScan = stopScan;
   window.scanFrame = scanFrame;
   window.scanUntilKnown = scanUntilKnown;
   window.toggleTorch = toggleTorch;
+  window.cleanBarcodeValue = cleanBarcodeValue;
+
+  console.log('Module barcode.js chargé avec succès');
 
 })();

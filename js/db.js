@@ -111,10 +111,19 @@ async function dbAdjustQty(code, delta){
   return it.qty;
 }
 async function dbGenerateCode(){
-  // Code simple et lisible : CFA + 8 chiffres
-  const timestamp = Date.now().toString().slice(-8);
-  const random = Math.floor(Math.random() * 100).toString().padStart(2, '0');
-  return 'CFA' + timestamp + random;
+  // Code compatible Code 128B : CFA + 8 chiffres (pas de caractères spéciaux)
+  const timestamp = Date.now().toString().slice(-6); // 6 chiffres du timestamp
+  const random = Math.floor(Math.random() * 100).toString().padStart(2, '0'); // 2 chiffres aléatoires
+  const code = 'CFA' + timestamp + random;
+  
+  // Vérifier que le code est compatible Code 128B
+  if (window.validateCode128B && !window.validateCode128B(code)) {
+    console.warn('Code généré non compatible Code 128B:', code);
+    // Fallback avec seulement des chiffres
+    return 'CFA' + Date.now().toString().slice(-8);
+  }
+  
+  return code;
 }
 
 // ---- Moves (journal)
