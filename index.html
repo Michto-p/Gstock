@@ -54,7 +54,7 @@
     code{background:rgba(0,0,0,.06);padding:.1rem .3rem;border-radius:.3rem}
   </style>
   <script>
-    window.APP_VERSION = '2.0.5'; // bump
+    window.APP_VERSION = '2.0.6';
     (function(){
       const saved = localStorage.getItem('gstock.theme');
       const prefersDark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
@@ -204,11 +204,12 @@
       <div class="toolbar">
         <button id="btnImportJSON" class="btn">Importer JSON</button>
         <button id="btnExportFull" class="btn">Exporter JSON</button>
-        <button id="btnLinkSharedFile" class="btn">Activer fichier partagé</button>
+        <button id="btnLinkSharedFile" class="btn">Activer fichier partagé (Desktop)</button>
         <span id="sharedFileStatus" class="muted">Aucun fichier lié</span>
       </div>
+
       <div class="toolbar">
-        <label>Buffer d’alerte (avant seuil) :
+        <label>Buffer d’alerte :
           <input id="inputBuffer" type="number" min="0" value="0" class="btn" style="width:6rem">
         </label>
         <label>Tags prédéfinis :
@@ -216,8 +217,36 @@
         </label>
         <button id="btnSaveSettings" class="btn primary">Enregistrer</button>
       </div>
+
+      <hr style="border:none;border-top:1px solid var(--bd);margin:1rem 0">
+
+      <h3>Données de démo</h3>
+      <div class="toolbar">
+        <button id="btnLoadDemo" class="btn primary">Charger la mini base de démo</button>
+        <span class="muted">Remplit IndexedDB depuis <code>data/demo.json</code>.</span>
+      </div>
+
+      <hr style="border:none;border-top:1px solid var(--bd);margin:1rem 0">
+
+      <h3>Sync GitHub (tests uniquement)</h3>
+      <div class="toolbar" style="gap:.75rem;align-items:flex-end;flex-wrap:wrap">
+        <label>Owner<br><input id="ghOwner" class="btn" placeholder="ex: Michto-p"></label>
+        <label>Repo<br><input id="ghRepo" class="btn" placeholder="ex: Gstock"></label>
+        <label>Chemin fichier<br><input id="ghPath" class="btn" placeholder="ex: gstock-shared.json" value="gstock-shared.json"></label>
+        <label>Token<br><input id="ghToken" class="btn" placeholder="ghp_..." style="min-width:280px"></label>
+        <button id="btnGHEnable" class="btn primary">Activer</button>
+      </div>
+      <div class="toolbar">
+        <button id="btnGHPull" class="btn">Pull (depuis GitHub)</button>
+        <button id="btnGHPush" class="btn">Push (vers GitHub)</button>
+        <button id="btnGHStart" class="btn">Auto-sync ON</button>
+        <button id="btnGHStop" class="btn">Auto-sync OFF</button>
+        <span class="muted">Testez en simultané mobile + PC via le même fichier JSON du repo.</span>
+      </div>
     </section>
   </main>
+
+  <div id="sr" class="sr-only" aria-live="polite"></div>
 
   <!-- Modale AJUSTEMENT -->
   <dialog id="adjustDialog">
@@ -263,18 +292,19 @@
 
   <div id="sr" class="sr-only" aria-live="polite"></div>
 
-  <!-- Scripts (ordre important) -->
-  <script src="js/db.js?v=2.0.5"></script>
-  <script src="js/barcode.js?v=2.0.5"></script>
-  <script src="js/app.js?v=2.0.5"></script>
+ <!-- Scripts (ordre) -->
+  <script src="js/db.js?v=2.0.6"></script>
+  <script src="js/barcode.js?v=2.0.6"></script>
+  <script src="js/sync-github.js?v=2.0.6"></script>
+  <script src="js/app.js?v=2.0.6"></script>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js?v=' + window.APP_VERSION).then(reg=>{
         const $ = s=>document.querySelector(s);
         function showUpdateBanner(){
-          $('#updateBanner').classList.add('show');
-          $('#btnUpdate').onclick = ()=> reg.waiting && reg.waiting.postMessage({type:'SKIP_WAITING'});
-          $('#btnDismissUpdate').onclick = ()=> $('#updateBanner').classList.remove('show');
+          $('#updateBanner')?.classList.add('show');
+          $('#btnUpdate')?.addEventListener('click', ()=> reg.waiting && reg.waiting.postMessage({type:'SKIP_WAITING'}));
+          $('#btnDismissUpdate')?.addEventListener('click', ()=> $('#updateBanner')?.classList.remove('show'));
         }
         reg.addEventListener('updatefound', ()=>{
           const nw = reg.installing;
