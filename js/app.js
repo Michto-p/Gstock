@@ -229,7 +229,6 @@
     }
     svg.innerHTML = ''; svg.appendChild(ctx);
   }
-  async function refreshLabelItems(){}
 
   // ------------ Journal
   const journalTbody = $('#journalTbody');
