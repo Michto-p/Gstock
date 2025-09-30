@@ -12,8 +12,6 @@
     :root{--bg:#ffffff;--fg:#0b0b0b;--muted:#6b7280;--acc:#0a84ff;--warn:#f59e0b;--danger:#ef4444;--ok:#10b981;--bd:#e5e7eb}
     [data-theme="dark"]{--bg:#0b0b0b;--fg:#f5f5f5;--muted:#a1a1aa;--acc:#0a84ff;--bd:#374151}
     html,body{height:100%} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial,sans-serif;background:var(--bg);color:var(--fg)}
-
-    /* Topbar fixe */
     .topbar{position:sticky;top:0;z-index:50;background:var(--bg);backdrop-filter:saturate(1.2) blur(6px);border-bottom:1px solid var(--bd)}
     .topbar-inner{max-width:1100px;margin:0 auto;padding:.6rem 1rem}
     .brand{display:flex;gap:.6rem;align-items:center;justify-content:space-between}
@@ -28,11 +26,7 @@
     nav button .icon{width:18px;height:18px;display:inline-flex}
     nav button.active{outline:2px solid var(--acc); outline-offset:1px}
     .hint{margin-top:.35rem}
-    @media (max-width:640px){
-      nav .label{display:none}
-      .hint{display:none}
-    }
-
+    @media (max-width:640px){ nav .label{display:none} .hint{display:none} }
     main{padding:1rem;max-width:1100px;margin:0 auto}
     section[hidden]{display:none}
     table{border-collapse:collapse;width:100%}
@@ -45,32 +39,23 @@
     .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
     .update-banner{display:none;padding:.5rem 1rem;background:#fff3cd;border:1px solid #ffe69c;border-left:4px solid #f59e0b;border-radius:.5rem;margin:0 1rem 1rem}
     .update-banner.show{display:flex;justify-content:space-between;gap:.75rem;align-items:center}
-    dialog{border:none;border-radius:.75rem;box-shadow:0 10px 30px rgba(0,0,0,.25);max-width:520px;padding:0}
-    dialog header{border-bottom:1px solid var(--bd)}
-    dialog .content{padding:1rem}
-    dialog .actions{display:flex;gap:.5rem;justify-content:flex-end;padding:0 1rem 1rem}
     .btn{padding:.5rem .8rem;border:1px solid var(--bd);background:#fff;border-radius:.5rem;cursor:pointer}
     [data-theme="dark"] .btn{background:#111827}
     .btn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
     .btn.danger{background:#ef4444;border-color:#ef4444;color:#fff}
     input.btn,select.btn{appearance:none}
     code{background:rgba(0,0,0,.06);padding:.1rem .3rem;border-radius:.3rem}
-
-    /* Scanner */
-    #scanVideo{width:100%;max-height:55vh;background:#000;border-radius:8px}
+    video.scanner{width:100%;max-height:60vh;background:#000;border-radius:8px}
   </style>
-
   <script>
-    // Bump version pour invalider le cache SW
     window.APP_VERSION = '2.0.9';
-    // Prépare thème initial
     (function(){
       const saved = localStorage.getItem('gstock.theme');
       const prefersDark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
       document.documentElement.setAttribute('data-theme', saved || (prefersDark ? 'dark' : 'light'));
+      // Flag debug global (persisté)
+      window.GSTOCK_DEBUG = localStorage.getItem('gstock.debug') === '1';
     })();
-    // Flag debug global (persisté via localStorage)
-    window.GSTOCK_DEBUG = localStorage.getItem('gstock.debug') === '1';
   </script>
 </head>
 <body>
@@ -94,14 +79,14 @@
       </div>
 
       <nav aria-label="Onglets">
-        <button data-tab="items" aria-label="Articles" title="Articles" class="active">
+        <button data-tab="items" aria-label="Articles" title="Articles">
           <span class="icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
           </span><span class="label">Articles</span>
         </button>
         <button data-tab="scanner" aria-label="Scanner" title="Scanner">
           <span class="icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><circle cx="12" cy="11" r="3"/><path d="M8 4h8"/></svg>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="14" rx="2"/><circle cx="12" cy="11" r="3"/><path d="M8 4h8"/></svg>
           </span><span class="label">Scanner</span>
         </button>
         <button data-tab="labels" aria-label="Étiquettes" title="Étiquettes">
@@ -164,14 +149,15 @@
       </table>
     </section>
 
-    <!-- Scanner (sans modale) -->
+    <!-- Scanner intégré -->
     <section id="tab-scanner" hidden>
       <div class="toolbar">
-        <button id="btnScanToggle" class="btn primary">Démarrer le scan</button>
-        <button id="scanTorch" class="btn">Lampe</button>
-        <span id="scanStatus" class="muted">Bip uniquement si l’article est connu. Codes inconnus : on continue.</span>
+        <button id="btnScanStart" class="btn primary">Démarrer le scan</button>
+        <button id="btnScanStop" class="btn">Arrêter</button>
+        <button id="btnScanTorch" class="btn">Lampe</button>
       </div>
-      <video id="scanVideo" playsinline></video>
+      <video id="scanVideo" class="scanner" playsinline></video>
+      <p id="scanHint" class="muted" style="margin:.5rem 0 0">Visez le code-barres. Bip uniquement si l’article est reconnu. Les codes inconnus ne ferment pas la caméra.</p>
     </section>
 
     <!-- Étiquettes -->
@@ -236,18 +222,44 @@
           <input type="checkbox" id="chkDebug" class="btn">
           Mode développeur (overlay debug du scanner)
         </label>
-        <span class="muted">Affiche FPS, cadre ROI et infos de détection pendant le scan.</span>
+        <span class="muted">Affiche FPS, cadre ROI et infos détection pendant le scan.</span>
+      </div>
+
+      <hr style="border:none;border-top:1px solid var(--bd);margin:1rem 0">
+
+      <h3>Données de démo</h3>
+      <div class="toolbar">
+        <button id="btnLoadDemo" class="btn primary">Charger la mini base de démo</button>
+        <span class="muted">Charge <code>data/demo.json</code> dans IndexedDB (optionnel).</span>
+      </div>
+
+      <hr style="border:none;border-top:1px solid var(--bd);margin:1rem 0">
+
+      <h3>Sync GitHub (tests uniquement)</h3>
+      <div class="toolbar" style="gap:.75rem;align-items:flex-end;flex-wrap:wrap">
+        <label>Owner<br><input id="ghOwner" class="btn" placeholder="ex: Michto-p"></label>
+        <label>Repo<br><input id="ghRepo" class="btn" placeholder="ex: Gstock"></label>
+        <label>Chemin fichier<br><input id="ghPath" class="btn" placeholder="ex: gstock-shared.json" value="gstock-shared.json"></label>
+        <label>Token<br><input id="ghToken" class="btn" placeholder="ghp_..." style="min-width:280px"></label>
+        <button id="btnGHEnable" class="btn primary">Activer</button>
+      </div>
+      <div class="toolbar">
+        <button id="btnGHPull" class="btn">Pull (depuis GitHub)</button>
+        <button id="btnGHPush" class="btn">Push (vers GitHub)</button>
+        <button id="btnGHStart" class="btn">Auto-sync ON</button>
+        <button id="btnGHStop" class="btn">Auto-sync OFF</button>
+        <span class="muted">Testez mobile + PC via le même JSON du repo.</span>
       </div>
     </section>
   </main>
 
-  <!-- Modale AJUSTEMENT (pour ajout/retrait après scan connu) -->
+  <!-- Modale Ajustement quantité -->
   <dialog id="adjustDialog">
-    <header style="display:flex;justify-content:space-between;align-items:center;padding:.75rem 1rem">
+    <header style="display:flex;justify-content:space-between;align-items:center;padding:.75rem 1rem;border-bottom:1px solid var(--bd)">
       <strong>Ajuster le stock</strong>
       <button id="dlgClose" class="btn">Fermer</button>
     </header>
-    <div class="content">
+    <div class="content" style="padding:1rem">
       <div id="dlgItem" class="muted"></div>
       <div style="display:flex;gap:.5rem;margin-top:.75rem">
         <select id="dlgType" class="btn">
@@ -258,7 +270,7 @@
         <input id="dlgNote" class="btn" placeholder="Commentaire (optionnel)" style="flex:1">
       </div>
     </div>
-    <div class="actions">
+    <div class="actions" style="display:flex;gap:.5rem;justify-content:flex-end;padding:0 1rem 1rem">
       <button id="dlgValidate" class="btn primary">Valider</button>
     </div>
   </dialog>
@@ -268,9 +280,8 @@
   <!-- Scripts (ordre important) -->
   <script src="js/db.js?v=2.0.9"></script>
   <script src="js/barcode.js?v=2.0.9"></script>
+  <script src="js/sync-github.js?v=2.0.9"></script> <!-- optionnel, safe si absent -->
   <script src="js/app.js?v=2.0.9"></script>
-
-  <!-- SW update banner -->
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js?v=' + window.APP_VERSION).then(reg=>{
