@@ -1,8 +1,8 @@
-/* Gstock - app.js (complet) */
+/* Gstock - app.js (sans modale de scan, avec mode debug) */
 (() => {
   'use strict';
 
-  const $ = (s, r=document) => r.querySelector(s);
+  const $  = (s, r=document) => r.querySelector(s);
   const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
   const sr = $('#sr');
 
@@ -131,8 +131,8 @@
 
   async function openHistory(code){
     const item  = await dbGet(code);
-    const moves = await dbListMoves({code, limit: 100});
-    const loans = await dbListLoansByCode(code);
+    const moves = await dbListMoves({code, limit: 100}).catch(()=>[]);
+    const loans = await dbListLoansByCode(code).catch(()=>[]);
     alert(`Historique "${item?.name||code}"\n\nMouvements: ${moves.length}\nEmprunts (actifs+clos): ${loans.length}`);
   }
 
@@ -247,7 +247,7 @@
   async function refreshJournal(){
     const from = $('#dateFrom')?.value ? new Date($('#dateFrom').value).getTime() : 0;
     const to   = $('#dateTo')?.value   ? new Date($('#dateTo').value).getTime()+24*3600*1000 : Infinity;
-    const list = await dbListMoves({from,to,limit:1000});
+    const list = await dbListMoves({from,to,limit:1000}).catch(()=>[]);
     if (journalTbody) journalTbody.innerHTML = list.map(m=>`<tr>
       <td>${new Date(m.ts).toLocaleString()}</td>
       <td>${m.type}</td>
@@ -278,7 +278,7 @@
   async function refreshLoansTable(){
     if (!loansTbody) return;
     const q = ($('#searchLoans')?.value||'').toLowerCase();
-    const loans = await dbListLoans(false);
+    const loans = await dbListLoans(false).catch(()=>[]);
     const rows = loans.filter(l=>{
       return !q || [l.person,l.code,l.name].join(' ').toLowerCase().includes(q);
     }).map(l=>{
@@ -317,162 +317,4 @@
   // Import JSON
   $('#btnImportJSON')?.addEventListener('click', async ()=>{
     try{
-      const [fileHandle] = await window.showOpenFilePicker({types:[{description:'JSON',accept:{'application/json':['.json']}}]});
-      const file = await fileHandle.getFile();
-      const text = await file.text();
-      const data = JSON.parse(text);
-      await dbImportFull(data);
-      announce('Import terminé');
-      await refreshTable(); await refreshJournal(); await refreshLoansTable();
-    }catch(e){ console.warn(e); alert('Import annulé / invalide'); }
-  });
-
-  // Fichier partagé (desktop)
-  const sharedFileStatus = $('#sharedFileStatus');
-  $('#btnLinkSharedFile')?.addEventListener('click', async ()=>{
-    if (!('showSaveFilePicker' in window)) return alert('File System Access API non supportée sur ce navigateur.');
-    const handle = await showSaveFilePicker({suggestedName:'gstock-shared.json', types:[{description:'JSON',accept:{'application/json':['.json']}}]});
-    await dbLinkSharedFile(handle);
-    sharedFileStatus && (sharedFileStatus.textContent = 'Fichier partagé lié (autosave activé)');
-  });
-
-  // Init panneau paramètres
-  function initSettingsPanel(){
-    (async ()=>{
-      const set = await dbGetSettings();
-      $('#inputBuffer')      && ($('#inputBuffer').value = set.buffer|0);
-      $('#inputDefaultTags') && ($('#inputDefaultTags').value = (set.defaultTags||[]).join(', '));
-
-      // Pré-remplir sync GitHub depuis localStorage si dispo
-      if (window.githubSync?.loadSaved) {
-        const saved = window.githubSync.loadSaved();
-        $('#ghOwner') && ($('#ghOwner').value = saved.owner || '');
-        $('#ghRepo')  && ($('#ghRepo').value  = saved.repo  || '');
-        $('#ghPath')  && ($('#ghPath').value  = saved.path  || 'gstock-shared.json');
-        $('#ghToken') && ($('#ghToken').value = saved.token || '');
-      }
-    })();
-  }
-
-  $('#btnSaveSettings')?.addEventListener('click', async ()=>{
-    const buffer = Math.max(0, parseInt($('#inputBuffer')?.value||'0',10));
-    const defaultTags = ($('#inputDefaultTags')?.value||'').split(',').map(t=>t.trim()).filter(Boolean);
-    await dbSetSettings({buffer, defaultTags});
-    announce('Paramètres enregistrés');
-    await refreshTable();
-  });
-
-  // ---- Mini base de démo ----
-  $('#btnLoadDemo')?.addEventListener('click', async ()=>{
-    try{
-      const res = await fetch('data/demo.json', {cache:'no-store'});
-      if (!res.ok) throw new Error('demo.json introuvable');
-      const data = await res.json();
-      await dbImportFull(data);
-      announce('Mini base de démo chargée');
-      await refreshTable(); await refreshJournal(); await refreshLoansTable();
-    }catch(e){
-      console.warn(e);
-      alert('Impossible de charger la démo : ' + e.message);
-    }
-  });
-
-  // ---- Sync GitHub (tests uniquement) ----
-  $('#btnGHEnable')?.addEventListener('click', ()=>{
-    if (!window.githubSync) return alert('Module sync-github non chargé');
-    const owner = ($('#ghOwner')?.value||'').trim();
-    const repo  = ($('#ghRepo')?.value||'').trim();
-    const path  = ($('#ghPath')?.value||'gstock-shared.json').trim();
-    const token = ($('#ghToken')?.value||'').trim();
-    if (!owner || !repo || !path || !token) return alert('Renseignez owner, repo, chemin et token.');
-    window.githubSync.init({owner, repo, path, token});
-    alert('Sync GitHub configurée (tests).');
-  });
-
-  $('#btnGHPull')?.addEventListener('click', async ()=>{
-    try{
-      await window.githubSync.pull();
-      announce('Pull GitHub OK');
-      await refreshTable(); await refreshJournal(); await refreshLoansTable();
-    }catch(e){ alert('Pull GitHub échoué : '+ e.message); }
-  });
-
-  $('#btnGHPush')?.addEventListener('click', async ()=>{
-    try{
-      await window.githubSync.push();
-      announce('Push GitHub OK');
-    }catch(e){ alert('Push GitHub échoué : '+ e.message); }
-  });
-
-  $('#btnGHStart')?.addEventListener('click', ()=>{
-    try{ window.githubSync.startAuto(4000); alert('Auto-sync ON (toutes les 4s)'); }catch(e){ alert(e.message); }
-  });
-  $('#btnGHStop')?.addEventListener('click', ()=>{
-    try{ window.githubSync.stopAuto(); alert('Auto-sync OFF'); }catch(e){ alert(e.message); }
-  });
-
-  // ====================================================
-  //                     SCAN AMELIORÉ
-  // ====================================================
-  const scanBtn      = $('#btnScanOnce');
-  const scanDialog   = $('#scanDialog');
-  const scanVideo    = $('#scanVideo');
-  const scanHint     = $('#scanHint');
-  const scanTorchBtn = $('#scanTorch');
-
-  $('#scanClose')?.addEventListener('click', onScanCancel);
-  $('#scanCancel')?.addEventListener('click', onScanCancel);
-  scanTorchBtn?.addEventListener('click', ()=> window.toggleTorch && window.toggleTorch());
-
-  // Affiche hint si code inconnu (venu de barcode.js)
-  window.addEventListener('gstock:scan-unknown', (ev)=>{
-    const code = ev.detail.code;
-    if (scanHint) scanHint.textContent = `Code ${code} inconnu — continuez à viser un article enregistré.`;
-  });
-
-  scanBtn?.addEventListener('click', async ()=>{
-    try{
-      if (typeof window.scanUntilKnown !== 'function') {
-        alert('Le module de scan n’est pas chargé. Recharge la page.');
-        return;
-      }
-      if (scanHint) scanHint.textContent = 'Visez le code-barres. Les codes inconnus ne ferment pas la caméra.';
-      scanDialog?.showModal();
-      const code = await window.scanUntilKnown(scanVideo);
-      try{ scanDialog?.close(); }catch(_){}
-      if (!code) return;           // annulé
-      openAdjustDialog({code});    // connu → modale Ajout/Retrait
-    }catch(e){
-      console.warn(e);
-      try{ scanDialog?.close(); }catch(_){}
-      alert('Le scan a échoué ou a été annulé.');
-    }
-  });
-
-  function onScanCancel(){
-    try{ scanDialog?.close(); }catch(_){}
-    window.stopScan && window.stopScan();
-  }
-
-  // ====================================================
-  //                       Helpers
-  // ====================================================
-  function escapeHTML(s){ return String(s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
-  function downloadFile(name, data, type){
-    const blob = new Blob([data], {type}); const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url), 5000);
-  }
-  function announce(msg){ sr && (sr.textContent=''); setTimeout(()=>{ sr && (sr.textContent = msg); }, 10); }
-
-  // ====================================================
-  //                        INIT
-  // ====================================================
-  (async function init(){
-    $('#appVersion') && ( $('#appVersion').textContent = window.APP_VERSION || '' );
-    await dbInit();
-    await refreshTable();
-    showTab('items');
-  })();
-
-})();
+      const [fileHandle]
