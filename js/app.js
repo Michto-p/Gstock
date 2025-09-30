@@ -177,4 +177,163 @@
 
   async function renderSheet(mode='all', code=null){
     const items = (mode==='all') ? await dbList() : [await dbGet(code)].filter(Boolean);
-    const html = items.map(it=>`<div style="display:inline-block;border:1px das
+    const html = items.map(it=>`<div style="display:inline-block;border:1px dashed var(--bd);border-radius:8px;padding:8px;margin:6px;width:220px">
+      <div style="font-weight:600;margin-bottom:6px">${escapeHTML(it.name)}</div>
+      <div style="font-size:12px;color:#6b7280">${escapeHTML(it.code)}</div>
+      <svg width="200" height="60" data-barcode="${escapeHTML(it.code)}"></svg>
+    </div>`).join('');
+    if (labelsPreview) labelsPreview.innerHTML = html || `<div class="muted">Aucun article</div>`;
+    labelsPreview?.querySelectorAll('svg[data-barcode]').forEach(svg=>{
+      drawFakeCode128(svg, svg.getAttribute('data-barcode'));
+    });
+    announce('Planche étiquettes générée');
+  }
+
+  function drawFakeCode128(svg, value){
+    const w = +svg.getAttribute('width'), h = +svg.getAttribute('height');
+    const rnd = (s)=>{ let x=0; for (let i=0;i<s.length;i++) x=(x*31 + s.charCodeAt(i))>>>0; return x; };
+    const seed = rnd(String(value));
+    const bars = 95;
+    const ctx = document.createElementNS('http://www.w3.org/2000/svg','g');
+    let x = 0; const bw = Math.max(1, Math.floor(w/bars));
+    for (let i=0;i<bars;i++){
+      const on = ((seed >> (i%31)) & 1) ^ (i%3===0?1:0);
+      if (on) {
+        const r = document.createElementNS('http://www.w3.org/2000/svg','rect');
+        r.setAttribute('x', String(x));
+        r.setAttribute('y', '0');
+        r.setAttribute('width', String(bw));
+        r.setAttribute('height', String(h));
+        r.setAttribute('fill', '#111827');
+        ctx.appendChild(r);
+      }
+      x += bw;
+    }
+    svg.innerHTML = ''; svg.appendChild(ctx);
+  }
+
+  async function refreshLabelItems(){}
+
+  // ----------- Journal
+  const journalTbody = $('#journalTbody');
+  $('#btnFilterJournal')?.addEventListener('click', refreshJournal);
+  $('#btnExportCSV')?.addEventListener('click', async ()=>{
+    const data = await dbExport('csv'); downloadFile('journal.csv', data, 'text/csv');
+  });
+  $('#btnExportJSON')?.addEventListener('click', async ()=>{
+    const data = await dbExport('json'); downloadFile('journal.json', data, 'application/json');
+  });
+
+  async function refreshJournal(){
+    const from = $('#dateFrom')?.value ? new Date($('#dateFrom').value).getTime() : 0;
+    const to = $('#dateTo')?.value ? new Date($('#dateTo').value).getTime()+24*3600*1000 : Infinity;
+    const list = await dbListMoves({from,to,limit:1000});
+    if (journalTbody) journalTbody.innerHTML = list.map(m=>`<tr>
+      <td>${new Date(m.ts).toLocaleString()}</td>
+      <td>${m.type}</td>
+      <td><code>${escapeHTML(m.code)}</code></td>
+      <td>${escapeHTML(m.name||'')}</td>
+      <td>${m.qty}</td>
+      <td>${escapeHTML(m.note||'')}</td>
+    </tr>`).join('') || `<tr><td colspan="6" class="muted">Aucun mouvement</td></tr>`;
+  }
+
+  // ----------- Prêts
+  const loansTbody = $('#loansTbody');
+  $('#btnNewLoan')?.addEventListener('click', async ()=>{
+    const code = prompt('Code article ?'); if (!code) return;
+    const it = await dbGet(code); if (!it) return alert('Article introuvable');
+    const person = prompt('Nom emprunteur ?'); if (!person) return;
+    const due = prompt('Date prévue retour (YYYY-MM-DD) ?'); if (!due) return;
+    const note = prompt('Note (optionnel)')||'';
+    await dbCreateLoan({code, name:it.name, person, due, note});
+    announce(`Prêt créé → ${person}`);
+    await refreshLoansTable();
+  });
+  $('#searchLoans')?.addEventListener('input', refreshLoansTable);
+
+  async function refreshLoansTable(){
+    const q = ($('#searchLoans')?.value||'').toLowerCase();
+    const loans = await dbListLoans(false);
+    const rows = loans.filter(l=>{
+      return !q || [l.person,l.code,l.name].join(' ').toLowerCase().includes(q);
+    }).map(l=>{
+      const overdue = (l.returnedAt?false:(Date.now()>new Date(l.due).getTime()));
+      return `<tr>
+        <td>${escapeHTML(l.name||'')}</td>
+        <td><code>${escapeHTML(l.code)}</code></td>
+        <td>${escapeHTML(l.person)}</td>
+        <td>${escapeHTML(l.due)}</td>
+        <td>${overdue?'<span class="badge under">En retard</span>':'<span class="badge ok">Actif</span>'}</td>
+        <td>${l.returnedAt? `<span class="muted">Clos</span>` : `<button class="btn" data-return="${l.id}">Retour</button>`}</td>
+      </tr>`;
+    }).join('');
+    if (loansTbody) loansTbody.innerHTML = rows || `<tr><td colspan="6" class="muted">Aucun emprunt</td></tr>`;
+    loansTbody?.querySelectorAll('button[data-return]').forEach(btn=>{
+      btn.onclick = async ()=>{
+        const id = btn.getAttribute('data-return');
+        await dbReturnLoan(id);
+        announce('Matériel retourné');
+        await refreshLoansTable();
+      };
+    });
+  }
+
+  // ----------- Scan amélioré
+  const scanBtn = $('#btnScanOnce');
+  const scanDialog = $('#scanDialog');
+  const scanVideo = $('#scanVideo');
+  const scanHint = $('#scanHint');
+  const scanTorchBtn = $('#scanTorch');
+
+  $('#scanClose')?.addEventListener('click', onScanCancel);
+  $('#scanCancel')?.addEventListener('click', onScanCancel);
+  scanTorchBtn?.addEventListener('click', ()=> window.toggleTorch && window.toggleTorch());
+
+  window.addEventListener('gstock:scan-unknown', (ev)=>{
+    const code = ev.detail.code;
+    if (scanHint) scanHint.textContent = `Code ${code} inconnu — continuez à viser un article enregistré.`;
+  });
+
+  scanBtn?.addEventListener('click', async ()=>{
+    try{
+      if (typeof window.scanUntilKnown !== 'function') {
+        alert('Le module de scan n’est pas chargé. Recharge la page.');
+        return;
+      }
+      if (scanHint) scanHint.textContent = 'Visez le code-barres. Les codes inconnus ne ferment pas la caméra.';
+      scanDialog.showModal();
+      const code = await window.scanUntilKnown(scanVideo);
+      try{ scanDialog.close(); }catch(_){}
+      if (!code) return;
+      openAdjustDialog({code});
+    }catch(e){
+      console.warn(e);
+      try{ scanDialog.close(); }catch(_){}
+      alert('Le scan a échoué ou a été annulé.');
+    }
+  });
+
+  function onScanCancel(){
+    try{ scanDialog.close(); }catch(_){}
+    window.stopScan && window.stopScan();
+  }
+
+  // Helpers
+  function escapeHTML(s){ return String(s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+  function downloadFile(name, data, type){
+    const blob = new Blob([data], {type}); const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 5000);
+  }
+  function announce(msg){ sr.textContent=''; setTimeout(()=>{ sr.textContent = msg; }, 10); }
+
+  // Init
+  (async function init(){
+    $('#appVersion') && ($('#appVersion').textContent = window.APP_VERSION);
+    await dbInit();
+    await refreshTable();
+    showTab('items');
+  })();
+
+})();
