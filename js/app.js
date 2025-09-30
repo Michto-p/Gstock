@@ -1,4 +1,4 @@
-/* Gstock - app.js */
+/* Gstock - app.js (complet) */
 (() => {
   'use strict';
 
@@ -6,7 +6,7 @@
   const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
   const sr = $('#sr');
 
-  // Thème
+  // ---------------- Thème ----------------
   const themeToggle = $('#themeToggle');
   if (themeToggle){
     themeToggle.value = (localStorage.getItem('gstock.theme') || 'auto');
@@ -22,40 +22,42 @@
     });
   }
 
-  // Onglets
+  // ---------------- Onglets (topbar) ----------------
   const tabs = $$('nav button[data-tab]');
   const sections = {
-    items: $('#tab-items'),
-    scanner: $('#tab-scanner'),
-    labels: $('#tab-labels'),
-    journal: $('#tab-journal'),
-    gear: $('#tab-gear'),
+    items:    $('#tab-items'),
+    scanner:  $('#tab-scanner'),
+    labels:   $('#tab-labels'),
+    journal:  $('#tab-journal'),
+    gear:     $('#tab-gear'),
     settings: $('#tab-settings')
   };
   tabs.forEach(btn => btn.addEventListener('click', () => showTab(btn.dataset.tab)));
 
   async function showTab(name) {
-    Object.entries(sections).forEach(([k, el]) => el.hidden = k !== name);
+    Object.entries(sections).forEach(([k, el]) => el && (el.hidden = k !== name));
     tabs.forEach(b => b.classList.toggle('active', b.dataset.tab === name));
-    if (name === 'items') await refreshTable();
-    if (name === 'labels') await refreshLabelItems();
+    if (name === 'items')   await refreshTable();
+    if (name === 'labels')  await refreshLabelItems();
     if (name === 'journal') await refreshJournal();
-    if (name === 'gear' && typeof refreshLoansTable === 'function') await refreshLoansTable();
+    if (name === 'gear')    await refreshLoansTable();
     if (name === 'settings') initSettingsPanel();
   }
 
-  // Raccourcis
+  // ---------------- Raccourcis clavier ----------------
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.key.toLowerCase() === 'k') { e.preventDefault(); $('#searchItems')?.focus(); }
     if (e.key.toLowerCase() === 'a') openAdjustDialog({type:'add'});
     if (e.key.toLowerCase() === 'r') openAdjustDialog({type:'remove'});
   });
 
-  // ----------- Articles
-  const itemsTbody = $('#itemsTbody');
-  const searchItems = $('#searchItems');
+  // ====================================================
+  //                     ARTICLES
+  // ====================================================
+  const itemsTbody   = $('#itemsTbody');
+  const searchItems  = $('#searchItems');
   const filterStatus = $('#filterStatus');
-  const filterTag = $('#filterTag');
+  const filterTag    = $('#filterTag');
 
   $('#btnAddItem')?.addEventListener('click', async () => {
     const name = prompt('Nom de l’article ?');
@@ -73,29 +75,32 @@
   filterTag?.addEventListener('change', refreshTable);
 
   function statusBadge(it, buffer=0){
-    const s = it.qty - it.threshold;
-    if (it.qty <= it.threshold) return `<span class="badge under">Sous seuil</span>`;
-    if (s <= buffer) return `<span class="badge low">Approche</span>`;
+    const s = (it.qty|0) - (it.threshold|0);
+    if ((it.qty|0) <= (it.threshold|0)) return `<span class="badge under">Sous seuil</span>`;
+    if (s <= (buffer|0))               return `<span class="badge low">Approche</span>`;
     return `<span class="badge ok">OK</span>`;
   }
 
   async function refreshTable(){
-    const q = (searchItems?.value||'').toLowerCase();
+    const q   = (searchItems?.value||'').toLowerCase();
     const tag = filterTag?.value || '';
-    const st = filterStatus?.value || '';
+    const st  = filterStatus?.value || '';
     const buffer = (await dbGetSettings()).buffer|0;
     const list = await dbList();
+
+    // Rebuild liste de tags
     const allTags = new Set(); list.forEach(i => (i.tags||[]).forEach(t=>allTags.add(t)));
     if (filterTag){
       const cur = filterTag.value;
-      filterTag.innerHTML = `<option value="">Tous tags</option>` + [...allTags].map(t=>`<option ${t===cur?'selected':''}>${t}</option>`).join('');
+      filterTag.innerHTML = `<option value="">Tous tags</option>` + [...allTags].map(t=>`<option ${t===cur?'selected':''}>${escapeHTML(t)}</option>`).join('');
     }
+
     const rows = list.filter(it=>{
-      const inQ = !q || [it.name,it.code,(it.tags||[]).join(' ')].join(' ').toLowerCase().includes(q);
+      const inQ   = !q || [it.name,it.code,(it.tags||[]).join(' ')].join(' ').toLowerCase().includes(q);
       const inTag = !tag || (it.tags||[]).includes(tag);
       let stOK = true;
-      if (st==='ok') stOK = (it.qty>it.threshold && (it.qty-it.threshold)>(buffer|0));
-      if (st==='low') stOK = (it.qty>it.threshold && (it.qty-it.threshold)<=(buffer|0));
+      if (st==='ok')    stOK = (it.qty>it.threshold && (it.qty-it.threshold)>(buffer|0));
+      if (st==='low')   stOK = (it.qty>it.threshold && (it.qty-it.threshold)<=(buffer|0));
       if (st==='under') stOK = (it.qty<=it.threshold);
       return inQ && inTag && stOK;
     }).map(it=>`<tr>
@@ -106,47 +111,54 @@
       <td>${(it.tags||[]).map(t=>`<span class="pill">${escapeHTML(t)}</span>`).join(' ')}</td>
       <td>${statusBadge(it, buffer)}</td>
       <td>
-        <button class="btn" data-act="adj" data-code="${it.code}">Ajuster</button>
+        <button class="btn" data-act="adj"  data-code="${it.code}">Ajuster</button>
         <button class="btn" data-act="hist" data-code="${it.code}">Historique</button>
         <button class="btn danger" data-act="del" data-code="${it.code}">Suppr.</button>
       </td>
     </tr>`).join('');
+
     if (itemsTbody) itemsTbody.innerHTML = rows || `<tr><td colspan="7" class="muted">Aucun article</td></tr>`;
+
     itemsTbody?.querySelectorAll('button[data-act]').forEach(btn=>{
       const code = btn.dataset.code;
-      if (btn.dataset.act==='adj') btn.onclick=()=>openAdjustDialog({code});
+      if (btn.dataset.act==='adj')  btn.onclick=()=>openAdjustDialog({code});
       if (btn.dataset.act==='hist') btn.onclick=()=>openHistory(code);
-      if (btn.dataset.act==='del') btn.onclick=async()=>{
+      if (btn.dataset.act==='del')  btn.onclick=async()=>{
         if (confirm('Supprimer cet article ?')) { await dbDelete(code); await refreshTable(); }
       };
     });
   }
 
   async function openHistory(code){
-    const item = await dbGet(code);
+    const item  = await dbGet(code);
     const moves = await dbListMoves({code, limit: 100});
     const loans = await dbListLoansByCode(code);
     alert(`Historique "${item?.name||code}"\n\nMouvements: ${moves.length}\nEmprunts (actifs+clos): ${loans.length}`);
   }
 
-  // ----------- Dialog Ajustement
-  const dlg = $('#adjustDialog');
+  // ====================================================
+  //                DIALOG AJOUT / RETRAIT
+  // ====================================================
+  const dlg     = $('#adjustDialog');
   const dlgType = $('#dlgType');
-  const dlgQty = $('#dlgQty');
+  const dlgQty  = $('#dlgQty');
   const dlgNote = $('#dlgNote');
   const dlgItem = $('#dlgItem');
+
   $('#dlgClose')?.addEventListener('click', ()=> dlg?.close());
   $('#dlgValidate')?.addEventListener('click', onValidateAdjust);
 
   let dlgState = { code:null, name:null };
+
   async function openAdjustDialog({code=null,type='add'}={}){
     if (!code) code = prompt('Code article ?');
     if (!code) return;
     const item = await dbGet(code);
     if (!item) return alert('Article introuvable');
+
     dlgState.code = code; dlgState.name = item.name;
     if (dlgType) dlgType.value = type;
-    if (dlgQty) dlgQty.value = 1;
+    if (dlgQty)  dlgQty.value  = 1;
     if (dlgNote) dlgNote.value = '';
     if (dlgItem) dlgItem.textContent = `${item.name} (${item.code}) — Stock actuel: ${item.qty}`;
     dlg?.showModal();
@@ -154,10 +166,11 @@
 
   async function onValidateAdjust(){
     const type = dlgType.value;
-    const qty = Math.max(1, parseInt(dlgQty.value||'1',10));
+    const qty  = Math.max(1, parseInt(dlgQty.value||'1',10));
     const note = dlgNote.value||'';
     const item = await dbGet(dlgState.code);
     if (!item) return dlg?.close();
+
     const delta = (type==='add') ? qty : -qty;
     await dbAdjustQty(item.code, delta);
     await dbAddMove({ ts: Date.now(), type: (type==='add'?'ENTRY':'EXIT'), code: item.code, name: item.name, qty, note });
@@ -166,11 +179,14 @@
     await refreshTable();
   }
 
-  // ----------- Étiquettes
+  // ====================================================
+  //                      ETIQUETTES
+  // ====================================================
   const labelsPreview = $('#labelsPreview');
+
   $('#btnLabelsAll')?.addEventListener('click', ()=> renderSheet('all'));
   $('#btnLabelsSelected')?.addEventListener('click', async ()=>{
-    const code = prompt('Code article ? (ou laisser vide pour annuler)');
+    const code = prompt('Code article ? (laisser vide pour annuler)');
     if (!code) return;
     await renderSheet('one', code);
   });
@@ -182,6 +198,7 @@
       <div style="font-size:12px;color:#6b7280">${escapeHTML(it.code)}</div>
       <svg width="200" height="60" data-barcode="${escapeHTML(it.code)}"></svg>
     </div>`).join('');
+
     if (labelsPreview) labelsPreview.innerHTML = html || `<div class="muted">Aucun article</div>`;
     labelsPreview?.querySelectorAll('svg[data-barcode]').forEach(svg=>{
       drawFakeCode128(svg, svg.getAttribute('data-barcode'));
@@ -212,10 +229,13 @@
     svg.innerHTML = ''; svg.appendChild(ctx);
   }
 
-  async function refreshLabelItems(){}
+  async function refreshLabelItems(){ /* réservé pour évolutions futures */ }
 
-  // ----------- Journal
+  // ====================================================
+  //                       JOURNAL
+  // ====================================================
   const journalTbody = $('#journalTbody');
+
   $('#btnFilterJournal')?.addEventListener('click', refreshJournal);
   $('#btnExportCSV')?.addEventListener('click', async ()=>{
     const data = await dbExport('csv'); downloadFile('journal.csv', data, 'text/csv');
@@ -226,7 +246,7 @@
 
   async function refreshJournal(){
     const from = $('#dateFrom')?.value ? new Date($('#dateFrom').value).getTime() : 0;
-    const to = $('#dateTo')?.value ? new Date($('#dateTo').value).getTime()+24*3600*1000 : Infinity;
+    const to   = $('#dateTo')?.value   ? new Date($('#dateTo').value).getTime()+24*3600*1000 : Infinity;
     const list = await dbListMoves({from,to,limit:1000});
     if (journalTbody) journalTbody.innerHTML = list.map(m=>`<tr>
       <td>${new Date(m.ts).toLocaleString()}</td>
@@ -238,8 +258,11 @@
     </tr>`).join('') || `<tr><td colspan="6" class="muted">Aucun mouvement</td></tr>`;
   }
 
-  // ----------- Prêts
+  // ====================================================
+  //                        PRETS
+  // ====================================================
   const loansTbody = $('#loansTbody');
+
   $('#btnNewLoan')?.addEventListener('click', async ()=>{
     const code = prompt('Code article ?'); if (!code) return;
     const it = await dbGet(code); if (!it) return alert('Article introuvable');
@@ -253,6 +276,7 @@
   $('#searchLoans')?.addEventListener('input', refreshLoansTable);
 
   async function refreshLoansTable(){
+    if (!loansTbody) return;
     const q = ($('#searchLoans')?.value||'').toLowerCase();
     const loans = await dbListLoans(false);
     const rows = loans.filter(l=>{
@@ -268,8 +292,9 @@
         <td>${l.returnedAt? `<span class="muted">Clos</span>` : `<button class="btn" data-return="${l.id}">Retour</button>`}</td>
       </tr>`;
     }).join('');
-    if (loansTbody) loansTbody.innerHTML = rows || `<tr><td colspan="6" class="muted">Aucun emprunt</td></tr>`;
-    loansTbody?.querySelectorAll('button[data-return]').forEach(btn=>{
+
+    loansTbody.innerHTML = rows || `<tr><td colspan="6" class="muted">Aucun emprunt</td></tr>`;
+    loansTbody.querySelectorAll('button[data-return]').forEach(btn=>{
       btn.onclick = async ()=>{
         const id = btn.getAttribute('data-return');
         await dbReturnLoan(id);
@@ -279,17 +304,127 @@
     });
   }
 
-  // ----------- Scan amélioré
-  const scanBtn = $('#btnScanOnce');
-  const scanDialog = $('#scanDialog');
-  const scanVideo = $('#scanVideo');
-  const scanHint = $('#scanHint');
+  // ====================================================
+  //                 PARAMÈTRES / SAUVEGARDE
+  // ====================================================
+  // Export complet
+  $('#btnExportFull')?.addEventListener('click', async ()=>{
+    const blob = await dbExportFull();
+    const text = JSON.stringify(blob, null, 2);
+    downloadFile('gstock-export.json', text, 'application/json');
+  });
+
+  // Import JSON
+  $('#btnImportJSON')?.addEventListener('click', async ()=>{
+    try{
+      const [fileHandle] = await window.showOpenFilePicker({types:[{description:'JSON',accept:{'application/json':['.json']}}]});
+      const file = await fileHandle.getFile();
+      const text = await file.text();
+      const data = JSON.parse(text);
+      await dbImportFull(data);
+      announce('Import terminé');
+      await refreshTable(); await refreshJournal(); await refreshLoansTable();
+    }catch(e){ console.warn(e); alert('Import annulé / invalide'); }
+  });
+
+  // Fichier partagé (desktop)
+  const sharedFileStatus = $('#sharedFileStatus');
+  $('#btnLinkSharedFile')?.addEventListener('click', async ()=>{
+    if (!('showSaveFilePicker' in window)) return alert('File System Access API non supportée sur ce navigateur.');
+    const handle = await showSaveFilePicker({suggestedName:'gstock-shared.json', types:[{description:'JSON',accept:{'application/json':['.json']}}]});
+    await dbLinkSharedFile(handle);
+    sharedFileStatus && (sharedFileStatus.textContent = 'Fichier partagé lié (autosave activé)');
+  });
+
+  // Init panneau paramètres
+  function initSettingsPanel(){
+    (async ()=>{
+      const set = await dbGetSettings();
+      $('#inputBuffer')      && ($('#inputBuffer').value = set.buffer|0);
+      $('#inputDefaultTags') && ($('#inputDefaultTags').value = (set.defaultTags||[]).join(', '));
+
+      // Pré-remplir sync GitHub depuis localStorage si dispo
+      if (window.githubSync?.loadSaved) {
+        const saved = window.githubSync.loadSaved();
+        $('#ghOwner') && ($('#ghOwner').value = saved.owner || '');
+        $('#ghRepo')  && ($('#ghRepo').value  = saved.repo  || '');
+        $('#ghPath')  && ($('#ghPath').value  = saved.path  || 'gstock-shared.json');
+        $('#ghToken') && ($('#ghToken').value = saved.token || '');
+      }
+    })();
+  }
+
+  $('#btnSaveSettings')?.addEventListener('click', async ()=>{
+    const buffer = Math.max(0, parseInt($('#inputBuffer')?.value||'0',10));
+    const defaultTags = ($('#inputDefaultTags')?.value||'').split(',').map(t=>t.trim()).filter(Boolean);
+    await dbSetSettings({buffer, defaultTags});
+    announce('Paramètres enregistrés');
+    await refreshTable();
+  });
+
+  // ---- Mini base de démo ----
+  $('#btnLoadDemo')?.addEventListener('click', async ()=>{
+    try{
+      const res = await fetch('data/demo.json', {cache:'no-store'});
+      if (!res.ok) throw new Error('demo.json introuvable');
+      const data = await res.json();
+      await dbImportFull(data);
+      announce('Mini base de démo chargée');
+      await refreshTable(); await refreshJournal(); await refreshLoansTable();
+    }catch(e){
+      console.warn(e);
+      alert('Impossible de charger la démo : ' + e.message);
+    }
+  });
+
+  // ---- Sync GitHub (tests uniquement) ----
+  $('#btnGHEnable')?.addEventListener('click', ()=>{
+    if (!window.githubSync) return alert('Module sync-github non chargé');
+    const owner = ($('#ghOwner')?.value||'').trim();
+    const repo  = ($('#ghRepo')?.value||'').trim();
+    const path  = ($('#ghPath')?.value||'gstock-shared.json').trim();
+    const token = ($('#ghToken')?.value||'').trim();
+    if (!owner || !repo || !path || !token) return alert('Renseignez owner, repo, chemin et token.');
+    window.githubSync.init({owner, repo, path, token});
+    alert('Sync GitHub configurée (tests).');
+  });
+
+  $('#btnGHPull')?.addEventListener('click', async ()=>{
+    try{
+      await window.githubSync.pull();
+      announce('Pull GitHub OK');
+      await refreshTable(); await refreshJournal(); await refreshLoansTable();
+    }catch(e){ alert('Pull GitHub échoué : '+ e.message); }
+  });
+
+  $('#btnGHPush')?.addEventListener('click', async ()=>{
+    try{
+      await window.githubSync.push();
+      announce('Push GitHub OK');
+    }catch(e){ alert('Push GitHub échoué : '+ e.message); }
+  });
+
+  $('#btnGHStart')?.addEventListener('click', ()=>{
+    try{ window.githubSync.startAuto(4000); alert('Auto-sync ON (toutes les 4s)'); }catch(e){ alert(e.message); }
+  });
+  $('#btnGHStop')?.addEventListener('click', ()=>{
+    try{ window.githubSync.stopAuto(); alert('Auto-sync OFF'); }catch(e){ alert(e.message); }
+  });
+
+  // ====================================================
+  //                     SCAN AMELIORÉ
+  // ====================================================
+  const scanBtn      = $('#btnScanOnce');
+  const scanDialog   = $('#scanDialog');
+  const scanVideo    = $('#scanVideo');
+  const scanHint     = $('#scanHint');
   const scanTorchBtn = $('#scanTorch');
 
   $('#scanClose')?.addEventListener('click', onScanCancel);
   $('#scanCancel')?.addEventListener('click', onScanCancel);
   scanTorchBtn?.addEventListener('click', ()=> window.toggleTorch && window.toggleTorch());
 
+  // Affiche hint si code inconnu (venu de barcode.js)
   window.addEventListener('gstock:scan-unknown', (ev)=>{
     const code = ev.detail.code;
     if (scanHint) scanHint.textContent = `Code ${code} inconnu — continuez à viser un article enregistré.`;
@@ -302,35 +437,39 @@
         return;
       }
       if (scanHint) scanHint.textContent = 'Visez le code-barres. Les codes inconnus ne ferment pas la caméra.';
-      scanDialog.showModal();
+      scanDialog?.showModal();
       const code = await window.scanUntilKnown(scanVideo);
-      try{ scanDialog.close(); }catch(_){}
-      if (!code) return;
-      openAdjustDialog({code});
+      try{ scanDialog?.close(); }catch(_){}
+      if (!code) return;           // annulé
+      openAdjustDialog({code});    // connu → modale Ajout/Retrait
     }catch(e){
       console.warn(e);
-      try{ scanDialog.close(); }catch(_){}
+      try{ scanDialog?.close(); }catch(_){}
       alert('Le scan a échoué ou a été annulé.');
     }
   });
 
   function onScanCancel(){
-    try{ scanDialog.close(); }catch(_){}
+    try{ scanDialog?.close(); }catch(_){}
     window.stopScan && window.stopScan();
   }
 
-  // Helpers
+  // ====================================================
+  //                       Helpers
+  // ====================================================
   function escapeHTML(s){ return String(s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
   function downloadFile(name, data, type){
     const blob = new Blob([data], {type}); const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(url), 5000);
   }
-  function announce(msg){ sr.textContent=''; setTimeout(()=>{ sr.textContent = msg; }, 10); }
+  function announce(msg){ sr && (sr.textContent=''); setTimeout(()=>{ sr && (sr.textContent = msg); }, 10); }
 
-  // Init
+  // ====================================================
+  //                        INIT
+  // ====================================================
   (async function init(){
-    $('#appVersion') && ($('#appVersion').textContent = window.APP_VERSION);
+    $('#appVersion') && ( $('#appVersion').textContent = window.APP_VERSION || '' );
     await dbInit();
     await refreshTable();
     showTab('items');
