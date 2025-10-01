@@ -1,13 +1,13 @@
-/* Gstock - sw.js v2.1.5 */
-const CACHE='gstock-2.1.5';
+/* Gstock - sw.js v2.1.6 */
+const CACHE='gstock-2.1.6';
 const APP_SHELL=[
   './',
   'index.html',
-  'js/app.js?v=2.1.5',
-  'js/barcode.js?v=2.1.5',
-  'js/code39.js?v=2.1.5',
-  'js/db.js?v=2.1.5',
-  'js/sync-github.js?v=2.1.5',
+  'js/app.js?v=2.1.6',
+  'js/barcode.js?v=2.1.6',
+  'js/code39.js?v=2.1.6',
+  'js/db.js?v=2.1.6',
+  'js/sync-github.js?v=2.1.6',
   'manifest.json',
   'data/demo.json',
   'icons/icon-192.png',
