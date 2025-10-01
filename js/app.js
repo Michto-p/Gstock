@@ -1,4 +1,4 @@
-/* Gstock - app.js v2.1.5 */
+/* Gstock - app.js v2.1.7 */
 (()=>{'use strict';
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>Array.from(r.querySelectorAll(s)), sr=$('#sr');
 
@@ -24,8 +24,8 @@ async function showTab(name){ Object.entries(sections).forEach(([k,el])=>el&&(el
 document.addEventListener('keydown',e=>{ if(e.ctrlKey&&e.key.toLowerCase()==='k'){e.preventDefault();$('#searchItems')?.focus();}
   if(e.key.toLowerCase()==='a')openAdjustDialog({type:'add'}); if(e.key.toLowerCase()==='r')openAdjustDialog({type:'remove'}); });
 
-/* ---------- Génération de code lisible à partir du nom ---------- */
-function deaccent(s){ return s.normalize('NFD').replace(/\p{Diacritic}/gu,''); }
+/* ---- Générer un code depuis le nom ---- */
+function deaccent(s){ try{ return s.normalize('NFD').replace(/\p{Diacritic}/gu,''); }catch(_){ return s; } }
 function nameToCode(name){
   const stop = new Set(['le','la','les','des','du','de','d','l','un','une','pour','et','sur','avec','en','à','au','aux','the','of','for']);
   const parts = deaccent(String(name)).replace(/[^A-Za-z0-9]+/g,' ').trim().split(/\s+/);
@@ -35,47 +35,36 @@ function nameToCode(name){
   brandShort = brandShort ? (brandShort[0].toUpperCase()+brandShort.slice(1)) : '';
   const base=[];
   for(let i=0;i<parts.length-(brand?1:0);i++){
-    const t=parts[i];
-    const lower=t.toLowerCase();
-    if(stop.has(lower)) continue;
+    const t=parts[i]; const lower=t.toLowerCase(); if(stop.has(lower)) continue;
     if(/^\d+$/.test(t)){ base.push(t); continue; }
     if(t.length>=4) base.push(t.slice(0,4).toLowerCase());
     else if(t.length>=2) base.push(t.toLowerCase());
-    // on ignore les tokens 1 lettre (ex: "A")
   }
-  // ex: disj + 20 + xp + Leg
   return (base.join('') + brandShort);
 }
 async function generateCodeFromName(name){
   const base = nameToCode(name);
-  let candidate = base;
-  let n=2;
-  // Assurer l'unicité
+  let candidate = base; let n=2;
   while(await dbGet(candidate) || await dbGet(candidate.toUpperCase()) || await dbGet(candidate.toLowerCase())){
     candidate = `${base}-${n++}`;
   }
   return candidate;
 }
 
-/* ---------------- Articles ---------------- */
+/* ---------- Articles ---------- */
 const itemsTbody=$('#itemsTbody'), searchItems=$('#searchItems'), filterStatus=$('#filterStatus'), filterTag=$('#filterTag');
 $('#btnAddItem')?.addEventListener('click',async()=>{
   const name=prompt('Nom de l’article ?'); if(!name)return;
-  let code=prompt('Code (laisser vide pour auto à partir du nom)')||'';
-  if(!code){ code = await generateCodeFromName(name); }
+  let code=prompt('Code (laisser vide pour auto à partir du nom)')||''; if(!code){ code = await generateCodeFromName(name); }
   const qty=parseInt(prompt('Quantité initiale ?','0')||'0',10);
   const threshold=parseInt(prompt('Seuil d’alerte ?','0')||'0',10);
   const tags=(prompt('Tags (séparés par des virgules)')||'').split(',').map(t=>t.trim()).filter(Boolean);
   await dbPut({id:code,code,name,qty,threshold,tags,updated:Date.now()});
-  announce(`Article créé • code: ${code}`);
-  await refreshTable();
+  announce(`Article créé • code: ${code}`); await refreshTable();
 });
-
 searchItems?.addEventListener('input',refreshTable); filterStatus?.addEventListener('change',refreshTable); filterTag?.addEventListener('change',refreshTable);
-
 function statusBadge(it,buffer=0){ const s=(it.qty|0)-(it.threshold|0); if((it.qty|0)<=(it.threshold|0))return `<span class="badge under">Sous seuil</span>`;
   if(s<=(buffer|0))return `<span class="badge low">Approche</span>`; return `<span class="badge ok">OK</span>`; }
-
 async function refreshTable(){
   const q=(searchItems?.value||'').toLowerCase(), tag=filterTag?.value||'', st=filterStatus?.value||'', buffer=(await dbGetSettings()).buffer|0;
   const list=await dbList(); const allTags=new Set(); list.forEach(i=>(i.tags||[]).forEach(t=>allTags.add(t)));
@@ -102,8 +91,7 @@ async function refreshTable(){
     if(btn.dataset.act==='del')btn.onclick=async()=>{ if(confirm('Supprimer cet article ?')){ await dbDelete(code); await refreshTable(); } };
   });
 }
-
-async function openHistory(code){ const item=await dbGet(code)||await dbGet(code.toUpperCase())||await dbGet(code.toLowerCase());
+async function openHistory(code){ const item=(await dbGet(code))||(await dbGet(code.toUpperCase()))||(await dbGet(code.toLowerCase()));
   const moves=await dbListMoves({code:item?.code||code,limit:100}); const loans=await dbListLoansByCode(item?.code||code);
   alert(`Historique "${item?.name||code}"\n\nMouvements: ${moves.length}\nEmprunts (actifs+clos): ${loans.length}`); }
 
@@ -123,22 +111,22 @@ async function onValidateAdjust(){ const type=dlgType.value; const qty=Math.max(
   announce(`${type==='add'?'Ajout':'Retrait'}: ${qty} → ${item.name}`); dlg?.close(); await refreshTable();
 }
 
-/* ---------- Étiquettes (Code 39 scannable) ---------- */
+/* ---------- Étiquettes (Code 39) ---------- */
 const labelsPreview=$('#labelsPreview');
 $('#btnLabelsAll')?.addEventListener('click',()=>renderSheet('all'));
 $('#btnLabelsSelected')?.addEventListener('click',async()=>{ const code=prompt('Code article ?'); if(!code)return; await renderSheet('one',code); });
 $('#btnLabelsPrintA4')?.addEventListener('click',async()=>{ if(!labelsPreview||!labelsPreview.firstElementChild)await renderSheet('all'); window.print(); });
-
 async function renderSheet(mode='all',code=null){
   const items=(mode==='all')?await dbList():[await dbGet(code)||await dbGet(code?.toUpperCase())||await dbGet(code?.toLowerCase())].filter(Boolean);
-  const cards = items.map(it=>{
+  const frag=document.createDocumentFragment();
+  items.forEach(it=>{
     const card = document.createElement('div'); card.className='label-card';
     const name = document.createElement('div'); name.className='name'; name.textContent=it.name; card.appendChild(name);
     const hr = document.createElement('div'); hr.className='hr'; hr.textContent=it.code; card.appendChild(hr);
-    const svg = window.code39.svg(it.code,{module:2,height:52,margin:4,showText:false}); card.appendChild(svg);
-    return card;
+    const svg = (window.code39?.svg && window.code39.svg(it.code,{module:2,height:52,margin:4,showText:false})) || document.createElementNS('http://www.w3.org/2000/svg','svg');
+    card.appendChild(svg); frag.appendChild(card);
   });
-  if(labelsPreview){ labelsPreview.classList.add('labels-sheet'); labelsPreview.innerHTML=''; cards.forEach(c=>labelsPreview.appendChild(c)); }
+  if(labelsPreview){ labelsPreview.classList.add('labels-sheet'); labelsPreview.innerHTML=''; labelsPreview.appendChild(frag); }
   announce('Planche étiquettes Code 39 générée (scannable).');
 }
 async function refreshLabelItems(){}
@@ -182,7 +170,7 @@ $('#btnLinkSharedFile')?.addEventListener('click',async()=>{ if(!('showSaveFileP
   const handle=await showSaveFilePicker({suggestedName:'gstock-shared.json',types:[{description:'JSON',accept:{'application/json':['.json']}}]});
   await dbLinkSharedFile(handle); sharedFileStatus&&(sharedFileStatus.textContent='Fichier partagé lié (autosave activé)');
 });
-$('#btnResetCache')?.addEventListener('click',async()=>{ if(!confirm('Réinitialiser le cache PWA et recharger ?'))return;
+$('#btnResetCache')?.addEventListener('click',async()=>{ if(!confirm('Réinitialiser cache PWA et recharger ?'))return;
   try{ const regs=await (navigator.serviceWorker?.getRegistrations?.()||[]); await Promise.all(regs.map(r=>r.unregister())); }catch(e){}
   try{ const keys=await (caches?.keys?.()||[]); await Promise.all(keys.map(k=>caches.delete(k))); }catch(e){} location.reload();
 });
@@ -193,13 +181,6 @@ function initSettingsPanel(){ (async()=>{ const set=await dbGetSettings(); $('#i
 })(); }
 $('#btnSaveSettings')?.addEventListener('click',async()=>{ const buffer=Math.max(0,parseInt($('#inputBuffer')?.value||'0',10)); const defaultTags=($('#inputDefaultTags')?.value||'').split(',').map(t=>t.trim()).filter(Boolean); await dbSetSettings({buffer,defaultTags}); announce('Paramètres enregistrés'); await refreshTable(); });
 $('#btnLoadDemo')?.addEventListener('click',async()=>{ try{ const res=await fetch('data/demo.json',{cache:'no-store'}); if(!res.ok)throw new Error('data/demo.json introuvable'); const data=await res.json(); await dbImportFull(data); announce('Mini base de démo chargée'); await refreshTable(); await refreshJournal(); await refreshLoansTable(); }catch(e){ console.warn(e); alert('Impossible de charger la démo : '+e.message); }});
-
-$('#btnGHEnable')?.addEventListener('click',()=>{ if(!window.githubSync)return alert('Module sync-github non chargé'); const owner=($('#ghOwner')?.value||'').trim(), repo=($('#ghRepo')?.value||'').trim(), path=($('#ghPath')?.value||'gstock-shared.json').trim(), token=($('#ghToken')?.value||'').trim();
-  if(!owner||!repo||!path||!token)return alert('Renseignez owner, repo, chemin et token.'); window.githubSync.init({owner,repo,path,token}); alert('Sync GitHub configurée (tests).'); });
-$('#btnGHPull')?.addEventListener('click',async()=>{ try{ await window.githubSync.pull(); announce('Pull GitHub OK'); await refreshTable(); await refreshJournal(); await refreshLoansTable(); }catch(e){ alert('Pull GitHub échoué : '+e.message); }});
-$('#btnGHPush')?.addEventListener('click',async()=>{ try{ await window.githubSync.push(); announce('Push GitHub OK'); }catch(e){ alert('Push GitHub échoué : '+e.message); }});
-$('#btnGHStart')?.addEventListener('click',()=>{ try{ window.githubSync.startAuto(4000); alert('Auto-sync ON (toutes les 4s)'); }catch(e){ alert(e.message); }});
-$('#btnGHStop')?.addEventListener('click',()=>{ try{ window.githubSync.stopAuto(); alert('Auto-sync OFF'); }catch(e){ alert(e.message); }});
 
 /* ---------- Scanner ---------- */
 const scanVideo=$('#scanVideo'), scanHint=$('#scanHint'), btnScanStart=$('#btnScanStart'), btnScanStop=$('#btnScanStop'), btnScanTorch=$('#btnScanTorch'); let scanning=false;
@@ -219,5 +200,17 @@ function downloadFile(name,data,type){ const blob=new Blob([data],{type}); const
   const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),5000); }
 function announce(msg){ sr&&(sr.textContent=''); setTimeout(()=>{ sr&&(sr.textContent=msg); },10); }
 
-(async function init(){ $('#appVersion')&&( $('#appVersion').textContent=window.APP_VERSION||'' ); await dbInit(); await refreshTable(); showTab('items'); })();
+(async function init(){
+  $('#appVersion')&&( $('#appVersion').textContent=window.APP_VERSION||'' );
+  try{
+    await dbInit();
+  }catch(e){
+    alert('Erreur d’initialisation DB. On tente une migration…');
+    // Forcer une réouverture (si SW/ancienne version bloque)
+    await new Promise(res=>setTimeout(res,100));
+    await dbInit();
+  }
+  await refreshTable();
+  showTab('items');
+})();
 })();
