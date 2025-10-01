@@ -1,63 +1,43 @@
-/* Gstock SW v2.1.0 – network-first core, SWR assets */
-const VERSION = (self.location.search.match(/v=([0-9.]+)/)||[])[1] || '2.1.0';
-const CACHE_CORE = `gstock-core-${VERSION}`;
-const CACHE_ASSETS = `gstock-assets-${VERSION}`;
-
-const CORE = [
+/* Gstock - sw.js v2.1.4 */
+const CACHE='gstock-2.1.4';
+const APP_SHELL=[
   './',
   'index.html',
-  `js/app.js?v=${VERSION}`,
-  `js/db.js?v=${VERSION}`,
-  `js/barcode.js?v=${VERSION}`
+  'js/app.js?v=2.1.4',
+  'js/barcode.js?v=2.1.4',
+  'js/db.js?v=2.1.4',
+  'js/sync-github.js?v=2.1.4',
+  'manifest.json',
+  'data/demo.json',
+  'icons/icon-192.png',
+  'icons/icon-512.png'
 ];
 
-self.addEventListener('install', (event)=>{
-  event.waitUntil(caches.open(CACHE_CORE).then(c=>c.addAll(CORE)));
-  self.skipWaiting();
+self.addEventListener('install',e=>{
+  e.waitUntil((async()=>{ const c=await caches.open(CACHE); await c.addAll(APP_SHELL); self.skipWaiting(); })());
 });
-
-self.addEventListener('activate', (event)=>{
-  event.waitUntil((async()=>{
-    const keys = await caches.keys();
-    await Promise.all(keys.filter(k => ![CACHE_CORE, CACHE_ASSETS].includes(k)).map(k => caches.delete(k)));
-    await self.clients.claim();
-  })());
+self.addEventListener('activate',e=>{
+  e.waitUntil((async()=>{ const keys=await caches.keys(); await Promise.all(keys.map(k=>k!==CACHE&&caches.delete(k))); await self.clients.claim(); })());
 });
+self.addEventListener('message',e=>{ if(e.data && e.data.type==='SKIP_WAITING') self.skipWaiting(); });
 
-self.addEventListener('message', (event)=>{
-  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
-});
-
-self.addEventListener('fetch', (event)=>{
-  const url = new URL(event.request.url);
-  if (event.request.method !== 'GET') return;
-
-  // Network-first pour l'app et JS cœur
-  const isCore = CORE.some(path => url.href.endsWith(path) || url.pathname.endsWith(path.split('?')[0]));
-  if (isCore || url.pathname === '/' || url.pathname.endsWith('/index.html')) {
-    event.respondWith((async()=>{
+self.addEventListener('fetch',e=>{
+  const url=new URL(e.request.url);
+  const isApp = url.pathname.endsWith('/') || /index\.html$/.test(url.pathname) || /(?:app|db|barcode|sync-github)\.js/.test(url.pathname) || /manifest\.json$/.test(url.pathname);
+  if(isApp){
+    e.respondWith((async()=>{
       try{
-        const fresh = await fetch(event.request, {cache:'no-store'});
-        const cache = await caches.open(CACHE_CORE);
-        cache.put(event.request, fresh.clone());
-        return fresh;
+        const net=await fetch(e.request,{cache:'no-store'});
+        const c=await caches.open(CACHE); c.put(e.request, net.clone()); return net;
       }catch(_){
-        const cache = await caches.open(CACHE_CORE);
-        const cached = await cache.match(event.request);
-        return cached || new Response('Offline', {status:503});
+        const hit=await caches.match(e.request); if(hit) return hit;
+        return caches.match('index.html');
       }
     })());
-    return;
+  }else{
+    e.respondWith((async()=>{
+      const hit=await caches.match(e.request); if(hit) return hit;
+      const net=await fetch(e.request); const c=await caches.open(CACHE); c.put(e.request,net.clone()); return net;
+    })());
   }
-
-  // SWR pour le reste (icônes, data, etc.)
-  event.respondWith((async()=>{
-    const cache = await caches.open(CACHE_ASSETS);
-    const cached = await cache.match(event.request);
-    const fetchPromise = fetch(event.request).then(resp=>{
-      cache.put(event.request, resp.clone());
-      return resp;
-    }).catch(()=>cached);
-    return cached || fetchPromise;
-  })());
 });
