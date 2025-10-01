@@ -72,4 +72,229 @@
       const saved=localStorage.getItem('gstock.theme');
       const prefersDark=window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
       document.documentElement.setAttribute('data-theme', saved || (prefersDark?'dark':'light'));
-      window.GSTOCK_DEBUG = localStorag_
+      window.GSTOCK_DEBUG = localStorage.getItem('gstock.debug')==='1';
+    })();
+  </script>
+</head>
+<body>
+  <div class="topbar" role="banner">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="brand-left">
+          <img src="icons/icon-192.png" alt="" width="28" height="28" style="border-radius:6px">
+          <strong>Gstock</strong><span class="muted">— Gestion de stock</span>
+          <span class="pill muted">v<span id="appVersion">2.1.9</span></span>
+        </div>
+        <div class="toggle">
+          <label for="themeToggle" class="muted">Thème</label>
+          <select id="themeToggle" class="btn">
+            <option value="auto">Auto</option>
+            <option value="light">Clair</option>
+            <option value="dark">Sombre</option>
+          </select>
+        </div>
+      </div>
+
+      <nav aria-label="Onglets">
+        <button data-tab="home" class="active"><span class="label">Accueil</span></button>
+        <button data-tab="items"><span class="label">Articles</span></button>
+        <button data-tab="scanner"><span class="label">Scanner</span></button>
+        <button data-tab="labels"><span class="label">Étiquettes</span></button>
+        <button data-tab="journal"><span class="label">Journal</span></button>
+        <button data-tab="gear"><span class="label">Prêts</span></button>
+        <button data-tab="settings"><span class="label">Paramètres</span></button>
+      </nav>
+    </div>
+  </div>
+
+  <main>
+    <!-- Accueil (identique à 2.1.8) -->
+    <section id="tab-home">
+      <div class="cards">
+        <div class="card"><h4>Total articles</h4><div id="kpiItems" class="kpi">—</div></div>
+        <div class="card"><h4>Quantité totale</h4><div id="kpiQty" class="kpi">—</div></div>
+        <div class="card"><h4>Sous seuil</h4><div id="kpiUnder" class="kpi">—</div></div>
+        <div class="card"><h4>Approche</h4><div id="kpiLow" class="kpi">—</div></div>
+      </div>
+      <div style="margin-top:12px" class="cards">
+        <div class="card" style="grid-column: span 3">
+          <h4>Derniers mouvements</h4>
+          <ul id="recentMoves" style="margin:0;padding-left:1rem"></ul>
+        </div>
+        <div class="card">
+          <h4>Emprunts</h4>
+          <div>Actifs: <strong id="kpiLoansActive">—</strong></div>
+          <div>En retard: <strong id="kpiLoansOverdue">—</strong></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Articles -->
+    <section id="tab-items" hidden>
+      <div class="toolbar sticky" id="articlesToolbar">
+        <button id="btnAddItem" class="btn primary">➕ Nouvel article</button>
+        <input id="searchItems" type="search" placeholder="Rechercher (nom, code, tag)…" class="btn" style="min-width:260px">
+        <select id="filterStatus" class="btn">
+          <option value="">Tous statuts</option>
+          <option value="ok">OK</option>
+          <option value="low">Approche</option>
+          <option value="under">Sous seuil</option>
+        </select>
+        <select id="filterTag" class="btn"><option value="">Tous tags</option></select>
+        <button id="btnClearFilters" class="btn">Réinitialiser</button>
+      </div>
+
+      <div id="bulkBar" class="bulkbar" hidden>
+        <div><strong id="bulkCount">0 sélection(s)</strong></div>
+        <div style="display:flex;gap:.5rem">
+          <button id="bulkLabels" class="btn">🏷️ Étiquettes sélection</button>
+          <button id="bulkExport" class="btn">⬇️ Export CSV sélection</button>
+          <button id="bulkDelete" class="btn danger">🗑️ Supprimer</button>
+        </div>
+      </div>
+
+      <table aria-label="Table des articles">
+        <thead>
+          <tr>
+            <th style="width:34px"><input type="checkbox" id="selAll" aria-label="Tout sélectionner"></th>
+            <th aria-sort="none">
+              <button class="th-sort" data-sort="name">Nom
+                <span class="chev">▾</span>
+              </button>
+            </th>
+            <th aria-sort="none">
+              <button class="th-sort" data-sort="code">Code <span class="chev">▾</span></button>
+            </th>
+            <th aria-sort="none" style="width:110px">
+              <button class="th-sort" data-sort="qty">Qté <span class="chev">▾</span></button>
+            </th>
+            <th aria-sort="none" style="width:110px">
+              <button class="th-sort" data-sort="threshold">Seuil <span class="chev">▾</span></button>
+            </th>
+            <th>Tags</th>
+            <th style="width:120px">État</th>
+            <th style="width:220px">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="itemsTbody"></tbody>
+      </table>
+    </section>
+
+    <!-- Scanner -->
+    <section id="tab-scanner" hidden>
+      <div class="toolbar">
+        <button id="btnScanStart" class="btn primary">Démarrer le scan</button>
+        <button id="btnScanStop" class="btn">Arrêter</button>
+        <button id="btnScanTorch" class="btn">Lampe</button>
+      </div>
+      <video id="scanVideo" style="width:100%;max-height:60vh;background:#000;border-radius:8px" playsinline></video>
+      <p id="scanHint" class="muted" style="margin:.5rem 0 0">Visez le code-barres. Bip uniquement si l’article est reconnu. Les codes inconnus ne ferment pas la caméra.</p>
+    </section>
+
+    <!-- Étiquettes -->
+    <section id="tab-labels" hidden>
+      <div class="toolbar">
+        <button id="btnLabelsAll" class="btn">Planche pour tous</button>
+        <button id="btnLabelsSelected" class="btn">Planche sélection</button>
+        <button id="btnLabelsPrintA4" class="btn primary">Imprimer A4</button>
+      </div>
+      <div id="labelsPreview" class="labels-sheet"></div>
+    </section>
+
+    <!-- Journal -->
+    <section id="tab-journal" hidden>
+      <div class="toolbar">
+        <input id="dateFrom" type="date" class="btn">
+        <input id="dateTo" type="date" class="btn">
+        <button id="btnFilterJournal" class="btn">Filtrer</button>
+        <button id="btnExportCSV" class="btn">Export CSV</button>
+        <button id="btnExportJSON" class="btn">Export JSON</button>
+      </div>
+      <table aria-label="Journal des mouvements"><thead><tr><th>Date/heure</th><th>Type</th><th>Code</th><th>Nom</th><th>Qté</th><th>Note</th></tr></thead><tbody id="journalTbody"></tbody></table>
+    </section>
+
+    <!-- Prêts -->
+    <section id="tab-gear" hidden>
+      <div class="toolbar">
+        <button id="btnNewLoan" class="btn primary">Nouvel emprunt</button>
+        <input id="searchLoans" type="search" placeholder="Rechercher emprunts…" class="btn">
+      </div>
+      <table aria-label="Table des emprunts"><thead><tr><th>Article</th><th>Code</th><th>À</th><th>Prévu retour</th><th>État</th><th>Actions</th></tr></thead><tbody id="loansTbody"></tbody></table>
+    </section>
+
+    <!-- Paramètres (identique 2.1.8) -->
+    <section id="tab-settings" hidden>
+      <div class="toolbar">
+        <button id="btnImportJSON" class="btn">Importer JSON</button>
+        <button id="btnExportFull" class="btn">Exporter JSON</button>
+        <button id="btnLinkSharedFile" class="btn">Activer fichier partagé (Desktop)</button>
+        <span id="sharedFileStatus" class="muted">Aucun fichier lié</span>
+      </div>
+
+      <div class="toolbar">
+        <label>Buffer d’alerte :
+          <input id="inputBuffer" type="number" min="0" value="0" class="btn" style="width:6rem">
+        </label>
+        <label>Tags prédéfinis :
+          <input id="inputDefaultTags" class="btn" placeholder="ex: TP, Atelier, Éclairage">
+        </label>
+        <button id="btnSaveSettings" class="btn primary">Enregistrer</button>
+      </div>
+
+      <div class="toolbar">
+        <label style="display:flex;align-items:center;gap:.5rem">
+          <input type="checkbox" id="chkDebug" class="btn"> Mode développeur (overlay scanner)
+        </label>
+      </div>
+
+      <div class="toolbar">
+        <button id="btnResetCache" class="btn danger">Réinitialiser cache PWA</button>
+      </div>
+
+      <div class="toolbar">
+        <button id="btnLoadDemo" class="btn primary">Charger la mini base de démo</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- Dialog nouvel article -->
+  <dialog id="newItemDialog">
+    <form method="dialog" style="min-width:320px">
+      <h3 style="margin:.2rem 0 1rem">Nouvel article</h3>
+      <div style="display:grid;gap:.5rem">
+        <label>Nom<br><input id="niName" class="btn" required></label>
+        <label>Code<br>
+          <div style="display:flex;gap:.5rem">
+            <input id="niCode" class="btn" required>
+            <button id="niGen" class="btn" type="button">Générer</button>
+          </div>
+        </label>
+        <div style="display:flex;gap:.5rem">
+          <label>Qté<br><input id="niQty" class="btn" type="number" min="0" value="0" required></label>
+          <label>Seuil<br><input id="niThr" class="btn" type="number" min="0" value="0" required></label>
+        </div>
+        <label>Tags (virgules)<br><input id="niTags" class="btn" placeholder="TP, Atelier"></label>
+      </div>
+      <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">
+        <button class="btn" value="cancel">Annuler</button>
+        <button id="niSave" class="btn primary" value="default">Créer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="sr" class="sr-only" aria-live="polite"></div>
+
+  <!-- Scripts -->
+  <script src="js/db.js?v=2.1.7"></script>
+  <script src="js/barcode.js?v=2.1.7"></script>
+  <script src="js/code39.js?v=2.1.7"></script>
+  <script src="js/sync-github.js?v=2.1.7"></script>
+  <script src="js/app.js?v=2.1.9"></script>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js?v=' + window.APP_VERSION);
+    }
+  </script>
+</body>
+</html>
