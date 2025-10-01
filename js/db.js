@@ -1,7 +1,7 @@
-/* Gstock - db.js v2.1.6 */
+/* Gstock - db.js v2.1.7 */
 'use strict';
 
-const DB_NAME='gstock', DB_VERSION=4; // <- bump pour forcer onupgradeneeded
+const DB_NAME='gstock', DB_VERSION=5;
 let idb=null, sharedFileHandle=null, autosaveTimer=null;
 
 function openDB(){
@@ -29,7 +29,7 @@ function openDB(){
 function tx(name,mode='readonly'){
   if(!idb) throw new Error('DB not opened');
   if(!idb.objectStoreNames.contains(name)){
-    throw new Error(`Missing object store "${name}". Please reload to upgrade DB.`);
+    throw new Error(`Missing object store "${name}". Reload to upgrade DB.`);
   }
   return idb.transaction(name,mode).objectStore(name);
 }
@@ -82,7 +82,7 @@ async function dbExport(kind='csv'){ const moves=await dbListMoves({from:0,to:In
   const rows=moves.map(m=>[m.ts,m.type,m.code,(m.name||''),(m.qty||0),(m.note||'')].map(v=>String(v).replace(/"/g,'""')).map(v=>`"${v}"`).join(',')).join('\n');
   return header+rows+'\n';
 }
-async function dbExportFull(){ const [items,moves,loans,settings]=await Promise.all([dbList(),dbListMoves({from:0,to:Infinity,limit:100000}),dbListLoans(false),dbGetSettings()]); return {version:'2.1.6',ts:Date.now(),items,moves,loans,settings}; }
+async function dbExportFull(){ const [items,moves,loans,settings]=await Promise.all([dbList(),dbListMoves({from:0,to:Infinity,limit:100000}),dbListLoans(false),dbGetSettings()]); return {version:'2.1.7',ts:Date.now(),items,moves,loans,settings}; }
 async function dbImportFull(dump){ if(!dump) return;
   const {items=[],moves=[],loans=[],settings=null}=dump;
   await new Promise((res,rej)=>{ const t=idb.transaction(['items','moves','loans','settings'],'readwrite'); const si=t.objectStore('items'), sm=t.objectStore('moves'), sl=t.objectStore('loans'), ss=t.objectStore('settings');
