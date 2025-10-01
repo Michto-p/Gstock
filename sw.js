@@ -1,9 +1,9 @@
-/* Gstock - sw.js v2.1.8 */
-const CACHE='gstock-2.1.8';
+/* Gstock - sw.js v2.1.9 */
+const CACHE='gstock-2.1.9';
 const APP_SHELL=[
   './',
   'index.html',
-  'js/app.js?v=2.1.8',
+  'js/app.js?v=2.1.9',
   'js/barcode.js?v=2.1.7',
   'js/code39.js?v=2.1.7',
   'js/db.js?v=2.1.7',
@@ -20,8 +20,6 @@ self.addEventListener('install',e=>{
 self.addEventListener('activate',e=>{
   e.waitUntil((async()=>{ const keys=await caches.keys(); await Promise.all(keys.map(k=>k!==CACHE&&caches.delete(k))); await self.clients.claim(); })());
 });
-self.addEventListener('message',e=>{ if(e.data && e.data.type==='SKIP_WAITING') self.skipWaiting(); });
-
 self.addEventListener('fetch',e=>{
   const url=new URL(e.request.url);
   const isApp = url.pathname.endsWith('/') || /index\.html$/.test(url.pathname) || /(?:app|db|barcode|code39|sync-github)\.js/.test(url.pathname) || /manifest\.json$/.test(url.pathname);
