@@ -1,6 +1,7 @@
-/* Gstock - app.js v2.1.4 */
+/* Gstock - app.js v2.1.5 */
 (()=>{'use strict';
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>Array.from(r.querySelectorAll(s)), sr=$('#sr');
+
 const themeToggle=$('#themeToggle');
 if(themeToggle){ themeToggle.value=(localStorage.getItem('gstock.theme')||'auto');
   themeToggle.addEventListener('change',()=>{ const v=themeToggle.value; localStorage.setItem('gstock.theme',v);
@@ -8,6 +9,7 @@ if(themeToggle){ themeToggle.value=(localStorage.getItem('gstock.theme')||'auto'
     else document.documentElement.setAttribute('data-theme',v);
   });
 }
+
 const tabs=$$('nav button[data-tab]');
 const sections={items:$('#tab-items'),scanner:$('#tab-scanner'),labels:$('#tab-labels'),journal:$('#tab-journal'),gear:$('#tab-gear'),settings:$('#tab-settings')};
 tabs.forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
@@ -22,17 +24,58 @@ async function showTab(name){ Object.entries(sections).forEach(([k,el])=>el&&(el
 document.addEventListener('keydown',e=>{ if(e.ctrlKey&&e.key.toLowerCase()==='k'){e.preventDefault();$('#searchItems')?.focus();}
   if(e.key.toLowerCase()==='a')openAdjustDialog({type:'add'}); if(e.key.toLowerCase()==='r')openAdjustDialog({type:'remove'}); });
 
+/* ---------- Génération de code lisible à partir du nom ---------- */
+function deaccent(s){ return s.normalize('NFD').replace(/\p{Diacritic}/gu,''); }
+function nameToCode(name){
+  const stop = new Set(['le','la','les','des','du','de','d','l','un','une','pour','et','sur','avec','en','à','au','aux','the','of','for']);
+  const parts = deaccent(String(name)).replace(/[^A-Za-z0-9]+/g,' ').trim().split(/\s+/);
+  if(parts.length===0) return 'ITM-'+Math.floor(100000+Math.random()*899999);
+  let brand = parts.length>1 ? parts[parts.length-1] : '';
+  let brandShort = brand ? (brand.slice(0,3).toLowerCase()) : '';
+  brandShort = brandShort ? (brandShort[0].toUpperCase()+brandShort.slice(1)) : '';
+  const base=[];
+  for(let i=0;i<parts.length-(brand?1:0);i++){
+    const t=parts[i];
+    const lower=t.toLowerCase();
+    if(stop.has(lower)) continue;
+    if(/^\d+$/.test(t)){ base.push(t); continue; }
+    if(t.length>=4) base.push(t.slice(0,4).toLowerCase());
+    else if(t.length>=2) base.push(t.toLowerCase());
+    // on ignore les tokens 1 lettre (ex: "A")
+  }
+  // ex: disj + 20 + xp + Leg
+  return (base.join('') + brandShort);
+}
+async function generateCodeFromName(name){
+  const base = nameToCode(name);
+  let candidate = base;
+  let n=2;
+  // Assurer l'unicité
+  while(await dbGet(candidate) || await dbGet(candidate.toUpperCase()) || await dbGet(candidate.toLowerCase())){
+    candidate = `${base}-${n++}`;
+  }
+  return candidate;
+}
+
+/* ---------------- Articles ---------------- */
 const itemsTbody=$('#itemsTbody'), searchItems=$('#searchItems'), filterStatus=$('#filterStatus'), filterTag=$('#filterTag');
-$('#btnAddItem')?.addEventListener('click',async()=>{ const name=prompt('Nom de l’article ?'); if(!name)return;
-  const code=prompt('Code-barres (laisser vide pour générer)')||await dbGenerateCode();
+$('#btnAddItem')?.addEventListener('click',async()=>{
+  const name=prompt('Nom de l’article ?'); if(!name)return;
+  let code=prompt('Code (laisser vide pour auto à partir du nom)')||'';
+  if(!code){ code = await generateCodeFromName(name); }
   const qty=parseInt(prompt('Quantité initiale ?','0')||'0',10);
   const threshold=parseInt(prompt('Seuil d’alerte ?','0')||'0',10);
   const tags=(prompt('Tags (séparés par des virgules)')||'').split(',').map(t=>t.trim()).filter(Boolean);
-  await dbPut({id:code,code,name,qty,threshold,tags,updated:Date.now()}); announce('Article créé'); await refreshTable();
+  await dbPut({id:code,code,name,qty,threshold,tags,updated:Date.now()});
+  announce(`Article créé • code: ${code}`);
+  await refreshTable();
 });
+
 searchItems?.addEventListener('input',refreshTable); filterStatus?.addEventListener('change',refreshTable); filterTag?.addEventListener('change',refreshTable);
+
 function statusBadge(it,buffer=0){ const s=(it.qty|0)-(it.threshold|0); if((it.qty|0)<=(it.threshold|0))return `<span class="badge under">Sous seuil</span>`;
   if(s<=(buffer|0))return `<span class="badge low">Approche</span>`; return `<span class="badge ok">OK</span>`; }
+
 async function refreshTable(){
   const q=(searchItems?.value||'').toLowerCase(), tag=filterTag?.value||'', st=filterStatus?.value||'', buffer=(await dbGetSettings()).buffer|0;
   const list=await dbList(); const allTags=new Set(); list.forEach(i=>(i.tags||[]).forEach(t=>allTags.add(t)));
@@ -59,15 +102,18 @@ async function refreshTable(){
     if(btn.dataset.act==='del')btn.onclick=async()=>{ if(confirm('Supprimer cet article ?')){ await dbDelete(code); await refreshTable(); } };
   });
 }
-async function openHistory(code){ const item=await dbGet(code); const moves=await dbListMoves({code,limit:100}); const loans=await dbListLoansByCode(code);
+
+async function openHistory(code){ const item=await dbGet(code)||await dbGet(code.toUpperCase())||await dbGet(code.toLowerCase());
+  const moves=await dbListMoves({code:item?.code||code,limit:100}); const loans=await dbListLoansByCode(item?.code||code);
   alert(`Historique "${item?.name||code}"\n\nMouvements: ${moves.length}\nEmprunts (actifs+clos): ${loans.length}`); }
 
+/* ---------- Ajustement ---------- */
 const dlg=$('#adjustDialog'), dlgType=$('#dlgType'), dlgQty=$('#dlgQty'), dlgNote=$('#dlgNote'), dlgItem=$('#dlgItem');
 $('#dlgClose')?.addEventListener('click',()=>dlg?.close()); $('#dlgValidate')?.addEventListener('click',onValidateAdjust);
 let dlgState={code:null,name:null};
 async function openAdjustDialog({code=null,type='add'}={}){ if(!code)code=prompt('Code article ?'); if(!code)return;
-  const item=await dbGet(code); if(!item)return alert('Article introuvable');
-  dlgState.code=code; dlgState.name=item.name; dlgType&&(dlgType.value=type); dlgQty&&(dlgQty.value=1); dlgNote&&(dlgNote.value='');
+  const item=(await dbGet(code))||(await dbGet(code.toUpperCase()))||(await dbGet(code.toLowerCase())); if(!item)return alert('Article introuvable');
+  dlgState.code=item.code; dlgState.name=item.name; dlgType&&(dlgType.value=type); dlgQty&&(dlgQty.value=1); dlgNote&&(dlgNote.value='');
   dlgItem&&(dlgItem.textContent=`${item.name} (${item.code}) — Stock actuel: ${item.qty}`); dlg?.showModal();
 }
 async function onValidateAdjust(){ const type=dlgType.value; const qty=Math.max(1,parseInt(dlgQty.value||'1',10)); const note=dlgNote.value||'';
@@ -77,26 +123,27 @@ async function onValidateAdjust(){ const type=dlgType.value; const qty=Math.max(
   announce(`${type==='add'?'Ajout':'Retrait'}: ${qty} → ${item.name}`); dlg?.close(); await refreshTable();
 }
 
+/* ---------- Étiquettes (Code 39 scannable) ---------- */
 const labelsPreview=$('#labelsPreview');
 $('#btnLabelsAll')?.addEventListener('click',()=>renderSheet('all'));
 $('#btnLabelsSelected')?.addEventListener('click',async()=>{ const code=prompt('Code article ?'); if(!code)return; await renderSheet('one',code); });
 $('#btnLabelsPrintA4')?.addEventListener('click',async()=>{ if(!labelsPreview||!labelsPreview.firstElementChild)await renderSheet('all'); window.print(); });
+
 async function renderSheet(mode='all',code=null){
-  const items=(mode==='all')?await dbList():[await dbGet(code)].filter(Boolean);
-  const html=items.map(it=>`<div class="label-card"><div class="name">${esc(it.name)}</div><code>${esc(it.code)}</code><svg data-barcode="${esc(it.code)}" width="240" height="140"></svg></div>`).join('');
-  if(labelsPreview){ labelsPreview.classList.add('labels-sheet'); labelsPreview.innerHTML=html||`<div class="muted">Aucun article</div>`;
-    labelsPreview.querySelectorAll('svg[data-barcode]').forEach(svg=>drawFakeCode128(svg,svg.getAttribute('data-barcode'))); }
-  announce('Planche étiquettes générée (A4 prête à imprimer)');
-}
-function drawFakeCode128(svg,value){ const w=+svg.getAttribute('width')||240,h=+svg.getAttribute('height')||140;
-  const rnd=s=>{let x=0;for(let i=0;i<s.length;i++)x=(x*31+s.charCodeAt(i))>>>0;return x;}; const seed=rnd(String(value));
-  const bars=95,ctx=document.createElementNS('http://www.w3.org/2000/svg','g'); let x=0,bw=Math.max(1,Math.floor(w/bars));
-  for(let i=0;i<bars;i++){ const on=((seed>>(i%31))&1)^(i%3===0?1:0); if(on){ const r=document.createElementNS('http://www.w3.org/2000/svg','rect');
-    r.setAttribute('x',String(x)); r.setAttribute('y','0'); r.setAttribute('width',String(bw)); r.setAttribute('height',String(h)); r.setAttribute('fill','#111827'); ctx.appendChild(r);} x+=bw; }
-  svg.innerHTML=''; svg.appendChild(ctx);
+  const items=(mode==='all')?await dbList():[await dbGet(code)||await dbGet(code?.toUpperCase())||await dbGet(code?.toLowerCase())].filter(Boolean);
+  const cards = items.map(it=>{
+    const card = document.createElement('div'); card.className='label-card';
+    const name = document.createElement('div'); name.className='name'; name.textContent=it.name; card.appendChild(name);
+    const hr = document.createElement('div'); hr.className='hr'; hr.textContent=it.code; card.appendChild(hr);
+    const svg = window.code39.svg(it.code,{module:2,height:52,margin:4,showText:false}); card.appendChild(svg);
+    return card;
+  });
+  if(labelsPreview){ labelsPreview.classList.add('labels-sheet'); labelsPreview.innerHTML=''; cards.forEach(c=>labelsPreview.appendChild(c)); }
+  announce('Planche étiquettes Code 39 générée (scannable).');
 }
 async function refreshLabelItems(){}
 
+/* ---------- Journal ---------- */
 const journalTbody=$('#journalTbody');
 $('#btnFilterJournal')?.addEventListener('click',refreshJournal);
 $('#btnExportCSV')?.addEventListener('click',async()=>{ const data=await dbExport('csv'); downloadFile('journal.csv',data,'text/csv'); });
@@ -108,12 +155,13 @@ async function refreshJournal(){
   journalTbody&&(journalTbody.innerHTML=list.map(m=>`<tr><td>${new Date(m.ts).toLocaleString()}</td><td>${m.type}</td><td><code>${esc(m.code)}</code></td><td>${esc(m.name||'')}</td><td>${m.qty}</td><td>${esc(m.note||'')}</td></tr>`).join('')||`<tr><td colspan="6" class="muted">Aucun mouvement</td></tr>`);
 }
 
+/* ---------- Emprunts ---------- */
 const loansTbody=$('#loansTbody');
 $('#btnNewLoan')?.addEventListener('click',async()=>{ const code=prompt('Code article ?'); if(!code)return;
-  const it=await dbGet(code); if(!it)return alert('Article introuvable');
+  const it=(await dbGet(code))||(await dbGet(code.toUpperCase()))||(await dbGet(code.toLowerCase())); if(!it)return alert('Article introuvable');
   const person=prompt('Nom emprunteur ?'); if(!person)return;
   const due=prompt('Date prévue retour (YYYY-MM-DD) ?'); if(!due)return;
-  const note=prompt('Note (optionnel)')||''; await dbCreateLoan({code,name:it.name,person,due,note}); announce(`Prêt créé → ${person}`); await refreshLoansTable();
+  const note=prompt('Note (optionnel)')||''; await dbCreateLoan({code:it.code,name:it.name,person,due,note}); announce(`Prêt créé → ${person}`); await refreshLoansTable();
 });
 $('#searchLoans')?.addEventListener('input',refreshLoansTable);
 async function refreshLoansTable(){
@@ -126,6 +174,7 @@ async function refreshLoansTable(){
   loansTbody.querySelectorAll('button[data-return]').forEach(btn=>{ btn.onclick=async()=>{ const id=btn.getAttribute('data-return'); await dbReturnLoan(id); announce('Matériel retourné'); await refreshLoansTable(); };});
 }
 
+/* ---------- Import / Export / Paramètres ---------- */
 $('#btnExportFull')?.addEventListener('click',async()=>{ const blob=await dbExportFull(); const text=JSON.stringify(blob,null,2); downloadFile('gstock-export.json',text,'application/json'); });
 $('#btnImportJSON')?.addEventListener('click',async()=>{ try{ const [h]=await window.showOpenFilePicker({types:[{description:'JSON',accept:{'application/json':['.json']}}]}); const f=await h.getFile(); const text=await f.text(); const data=JSON.parse(text); await dbImportFull(data); announce('Import terminé'); await refreshTable(); await refreshJournal(); await refreshLoansTable(); }catch(e){ console.warn(e); alert('Import annulé / invalide'); }});
 const sharedFileStatus=$('#sharedFileStatus');
@@ -152,6 +201,7 @@ $('#btnGHPush')?.addEventListener('click',async()=>{ try{ await window.githubSyn
 $('#btnGHStart')?.addEventListener('click',()=>{ try{ window.githubSync.startAuto(4000); alert('Auto-sync ON (toutes les 4s)'); }catch(e){ alert(e.message); }});
 $('#btnGHStop')?.addEventListener('click',()=>{ try{ window.githubSync.stopAuto(); alert('Auto-sync OFF'); }catch(e){ alert(e.message); }});
 
+/* ---------- Scanner ---------- */
 const scanVideo=$('#scanVideo'), scanHint=$('#scanHint'), btnScanStart=$('#btnScanStart'), btnScanStop=$('#btnScanStop'), btnScanTorch=$('#btnScanTorch'); let scanning=false;
 window.addEventListener('gstock:scan-unknown',ev=>{ const code=ev.detail.code; scanHint&&(scanHint.textContent=`Code ${code} inconnu — continuez à viser un article enregistré.`); });
 btnScanStart?.addEventListener('click',async()=>{ if(scanning)return;
