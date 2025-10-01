@@ -10,21 +10,10 @@
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <title>Gstock</title>
   <style>
-    /* ==== Thème amélioré (auto + transitions) ==== */
-    :root{
-      --bg:#ffffff; --fg:#0b0b0b; --muted:#6b7280; --acc:#0a84ff; --bd:#e5e7eb;
-      --ok:#10b981; --warn:#f59e0b; --danger:#ef4444; --elev:#fafafa;
-    }
-    [data-theme="dark"]{
-      --bg:#0b0b0b; --fg:#f5f5f5; --muted:#a1a1aa; --bd:#374151; --elev:#111827;
-    }
+    :root{ --bg:#fff; --fg:#0b0b0b; --muted:#6b7280; --acc:#0a84ff; --bd:#e5e7eb; --ok:#10b981; --warn:#f59e0b; --danger:#ef4444; --elev:#fafafa; }
+    [data-theme="dark"]{ --bg:#0b0b0b; --fg:#f5f5f5; --muted:#a1a1aa; --bd:#374151; --elev:#111827; }
     html,body{height:100%}
-    body{
-      margin:0;
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial,sans-serif;
-      background:var(--bg); color:var(--fg);
-      transition: background-color .2s ease, color .2s ease;
-    }
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial,sans-serif;background:var(--bg);color:var(--fg);transition:background-color .2s,color .2s}
     .topbar{position:sticky;top:0;z-index:50;background:color-mix(in oklab, var(--bg) 90%, transparent);backdrop-filter:saturate(1.1) blur(6px);border-bottom:1px solid var(--bd)}
     .topbar-inner{max-width:1100px;margin:0 auto;padding:.6rem 1rem}
     .brand{display:flex;gap:.6rem;align-items:center;justify-content:space-between}
@@ -36,7 +25,7 @@
     nav button{display:inline-flex;align-items:center;gap:.4rem;padding:.45rem .6rem;border:1px solid var(--bd);background:var(--elev);border-radius:.6rem;cursor:pointer;transition:transform .06s}
     nav button:active{transform:translateY(1px)}
     nav button .icon{width:18px;height:18px;display:inline-flex}
-    nav button.active{outline:2px solid var(--acc); outline-offset:1px}
+    nav button.active{outline:2px solid var(--acc);outline-offset:1px}
     .hint{margin-top:.35rem}
     @media (max-width:640px){ nav .label{display:none} .hint{display:none} }
     main{padding:1rem;max-width:1100px;margin:0 auto}
@@ -57,84 +46,34 @@
     input.btn,select.btn{appearance:none}
     code{background:rgba(0,0,0,.06);padding:.1rem .3rem;border-radius:.3rem}
     video.scanner{width:100%;max-height:60vh;background:#000;border-radius:8px}
-    video.scanner:not([src]) {
-      background: #1a1a1a;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    video.scanner:not([src])::before {
-      content: "📷 Caméra non démarrée";
-      color: #888;
-      font-size: 1.2rem;
-    }
 
-    /* ==== Étiquettes A4 prêtes à imprimer (Avery L7159 : 63.5×38.1 mm, 3×7) ==== */
-    .labels-sheet{
-      display:grid;
-      grid-template-columns: repeat(3, 63.5mm);
-      grid-auto-rows: 38.1mm;
-      gap: 2.5mm 2.5mm; /* espacement uniforme */
-      justify-content:center;
-      margin: .5rem auto;
-      background: var(--bg);
-    }
-    .label-card{
-      box-sizing: border-box;
-      width:63.5mm; height:38.1mm;
-      border:1px dashed var(--bd);
-      border-radius:2mm;
-      padding:2mm;
-      display:flex; flex-direction:column; align-items:center; justify-content:center;
-      gap:1mm;
-      background:#fff; color:#000; /* lisible à l'impression */
-    }
-    [data-theme="dark"] .label-card{ background:#fff; color:#000 } /* pour éviter l’encre inversée */
-    .label-card .name{ 
-      font-weight:700; 
-      font-size:10pt; 
-      line-height:1.1; 
-      text-align:center; 
-      max-width:100%;
-      overflow:hidden;
-      text-overflow:ellipsis;
-      white-space:nowrap;
-    }
-    .label-card .code-text{ 
-      font-family:monospace; 
-      font-size:8pt; 
-      font-weight:600;
-      color:#333;
-    }
-    .label-card .barcode-svg{ 
-      width:100%; 
-      height:15mm; 
-      margin:1mm 0;
-      border:1px solid #eee;
-    }
+    /* Étiquettes A4 (Avery L7159 : 63.5×38.1 mm, 3×7) */
+    .labels-sheet{display:grid;grid-template-columns:repeat(3,63.5mm);grid-auto-rows:38.1mm;gap:2.5mm 7mm;justify-content:center;margin:.5rem auto;background:var(--bg)}
+    .label-card{box-sizing:border-box;width:63.5mm;height:38.1mm;border:1px dashed var(--bd);border-radius:2mm;padding:2mm;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1mm;background:#fff;color:#000}
+    [data-theme="dark"] .label-card{background:#fff;color:#000}
+    .label-card .name{font-weight:700;font-size:11pt;line-height:1.1;text-align:center;max-width:100%}
+    .label-card .hr{font-size:8pt}
+    .label-card svg{width:100%;height:14mm}
+    #labelsPreview{background:var(--elev);padding:8px;border-radius:8px}
 
-    /* Aperçu non-impression (bordures visibles) */
-    #labelsPreview{ background:var(--elev); padding:8px; border-radius:8px; }
-
-    /* ==== Impression ==== */
-    @media print {
-      :root{ --bg:#ffffff; --fg:#000000; --bd:#000; }
-      @page { size: A4; margin: 10mm; }
-      body{ background:#fff; color:#000 }
-      .topbar, .hint, nav, .toolbar, #updateBanner, #tab-items, #tab-scanner, #tab-journal, #tab-gear, #tab-settings{ display:none !important; }
-      #tab-labels{ display:block !important; }
-      #labelsPreview{ background:#fff; padding:0 }
-      .label-card{ border:0 }
-      .btn{ display:none !important; }
+    @media print{
+      :root{--bg:#fff;--fg:#000;--bd:#000}
+      @page{size:A4;margin:10mm}
+      body{background:#fff;color:#000}
+      .topbar,.hint,nav,.toolbar,#updateBanner,#tab-items,#tab-scanner,#tab-journal,#tab-gear,#tab-settings{display:none!important}
+      #tab-labels{display:block!important}
+      #labelsPreview{background:#fff;padding:0}
+      .label-card{border:0}
+      .btn{display:none!important}
     }
   </style>
   <script>
-    window.APP_VERSION = '2.1.5';
+    window.APP_VERSION='2.1.7';
     (function(){
-      const saved = localStorage.getItem('gstock.theme');
-      const prefersDark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
-      document.documentElement.setAttribute('data-theme', saved || (prefersDark ? 'dark' : 'light'));
-      window.GSTOCK_DEBUG = localStorage.getItem('gstock.debug') === '1';
+      const saved=localStorage.getItem('gstock.theme');
+      const prefersDark=window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.setAttribute('data-theme', saved || (prefersDark?'dark':'light'));
+      window.GSTOCK_DEBUG = localStorage.getItem('gstock.debug')==='1';
     })();
   </script>
 </head>
@@ -144,9 +83,8 @@
       <div class="brand">
         <div class="brand-left">
           <img src="icons/icon-192.png" alt="" width="28" height="28" style="border-radius:6px">
-          <strong>Gstock</strong><span class="muted">— Gestion de stock V Bolt</span>
-          <span class="pill muted">v<span id="appVersion">2.1.1</span></span>
-          <span class="pill" style="background:linear-gradient(45deg,#0a84ff,#5ac8fa);color:white;font-weight:600">⚡ Bolt</span>
+          <strong>Gstock</strong><span class="muted">— Gestion de stock</span>
+          <span class="pill muted">v<span id="appVersion">2.1.7</span></span>
         </div>
         <div class="toggle">
           <label for="themeToggle" class="muted">Thème</label>
@@ -159,12 +97,12 @@
       </div>
 
       <nav aria-label="Onglets">
-        <button data-tab="items" aria-label="Articles" title="Articles"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span><span class="label">Articles</span></button>
+        <button data-tab="items" class="active" aria-label="Articles" title="Articles"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span><span class="label">Articles</span></button>
         <button data-tab="scanner" aria-label="Scanner" title="Scanner"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="14" rx="2"/><circle cx="12" cy="11" r="3"/><path d="M8 4h8"/></svg></span><span class="label">Scanner</span></button>
         <button data-tab="labels" aria-label="Étiquettes" title="Étiquettes"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h10v10H7z"/><path d="M3 3h4v4H3zM17 17h4v4h-4z"/></svg></span><span class="label">Étiquettes</span></button>
         <button data-tab="journal" aria-label="Journal" title="Journal"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h6M8 16h10"/></svg></span><span class="label">Journal</span></button>
-        <button data-tab="gear" aria-label="Prêts" title="Prêts"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V22a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 8 20.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 3.6 15 1.65 1.65 0 0 0 2 14H2a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 3.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06A2 2 0 1 1 6.04 3.3l.06.06A1.65 1.65 0 0 0 7.92 3a1.65 1.65 0 0 0 1-1.51V1.4a2 2 0 1 1 4 0v.09A1.65 1.65 0 0 0 16 3.6a1.65 1.65 0 0 0 1.82-.33l.06-.06A2 2 0 1 1 20.71 6l-.06.06A1.65 1.65 0 0 0 21 7.92 1.65 1.65 0 0 0 22.6 9H22.7a2 2 0 0 1 0 4h-.09A1.65 1.65 0 0 0 19.4 15z"/></svg></span><span class="label">Paramètres</span></button>
-        <button data-tab="settings" aria-label="Paramètres" title="Paramètres"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V22a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 8 20.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 3.6 15 1.65 1.65 0 0 0 2 14H2a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 3.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06A2 2 0 1 1 6.04 3.3l.06.06A1.65 1.65 0 0 0 7.92 3a1.65 1.65 0 0 0 1-1.51V1.4a2 2 0 1 1 4 0v.09A1.65 1.65 0 0 0 16 3.6a1.65 1.65 0 0 0 1.82-.33l.06-.06A2 2 0 1 1 20.71 6l-.06.06A1.65 1.65 0 0 0 21 7.92 1.65 1.65 0 0 0 22.6 9H22.7a2 2 0 0 1 0 4h-.09A1.65 1.65 0 0 0 19.4 15z"/></svg></span><span class="label">Paramètres</span></button>
+        <button data-tab="gear" aria-label="Prêts" title="Prêts"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V22a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 8 20.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 3.6 15 1.65 1.65 0 0 0 2 14H2a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 3.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06A2 2 0 1 1 6.04 3.3l.06.06A1.65 1.65 0 0 0 7.92 3a1.65 1.65 0 0 0 1-1.51V1.4a2 2 0 1 1 4 0v.09A1.65 1.65 0 0 0 16 3.6a1.65 1.65 0 0 0 1.82-.33l.06-.06A2 2 0 1 1 20.71 6l-.06.06A1.65 1.65 0 0 0 21 7.92 1.65 1.65 0 0 0 22.6 9H22.7a2 2 0 0 1 0 4h-.09A1.65 1.65 0 0 0 19.4 15z"/></svg></span><span class="label">Prêts</span></button>
+        <button data-tab="settings" aria-label="Paramètres" title="Paramètres"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82L20 17a2 2 0 1 1-2.83 2.83l-.27-.27a1.65 1.65 0 0 0-1.82.33L14 21a2 2 0 1 1-4 0l-.08-.11a1.65 1.65 0 0 0-1.82-.33l-.27.27A2 2 0 1 1 5 17l.27-.27A1.65 1.65 0 0 0 5 14.9L4.9 14a2 2 0 1 1 0-4l.11-.08A1.65 1.65 0 0 0 5.3 8.1L5 7.83A2 2 0 1 1 7.83 5l.27.27a1.65 1.65 0 0 0 1.82-.33L10 4a2 2 0 1 1 4 0l.08.11a1.65 1.65 0 0 0 1.82.33l.27-.27A2 2 0 1 1 19 7.83l-.27.27a1.65 1.65 0 0 0 .33 1.82L19 10a2 2 0 1 1 0 4l.4 1z"/></svg></span><span class="label">Paramètres</span></button>
       </nav>
 
       <div class="hint muted" title="Raccourcis clavier">
@@ -187,40 +125,21 @@
       <div class="toolbar">
         <button id="btnAddItem" class="btn primary">Nouvel article</button>
         <input id="searchItems" type="search" placeholder="Rechercher (nom, code, tag)…" class="btn" style="min-width:280px">
-        <select id="filterStatus" class="btn">
-          <option value="">Tous statuts</option>
-          <option value="ok">OK</option>
-          <option value="low">Approche</option>
-          <option value="under">Sous seuil</option>
-        </select>
-        <select id="filterTag" class="btn">
-          <option value="">Tous tags</option>
-        </select>
+        <select id="filterStatus" class="btn"><option value="">Tous statuts</option><option value="ok">OK</option><option value="low">Approche</option><option value="under">Sous seuil</option></select>
+        <select id="filterTag" class="btn"><option value="">Tous tags</option></select>
       </div>
-      <table aria-label="Table des articles">
-        <thead><tr>
-          <th>Nom</th><th>Code</th><th>Qté</th><th>Seuil</th><th>Tags</th><th>État</th><th>Actions</th>
-        </tr></thead>
-        <tbody id="itemsTbody"></tbody>
-      </table>
+      <table aria-label="Table des articles"><thead><tr><th>Nom</th><th>Code</th><th>Qté</th><th>Seuil</th><th>Tags</th><th>État</th><th>Actions</th></tr></thead><tbody id="itemsTbody"></tbody></table>
     </section>
 
     <!-- Scanner -->
     <section id="tab-scanner" hidden>
       <div class="toolbar">
         <button id="btnScanStart" class="btn primary">Démarrer le scan</button>
-        <button id="btnScanStop" class="btn" disabled>Arrêter</button>
+        <button id="btnScanStop" class="btn">Arrêter</button>
         <button id="btnScanTorch" class="btn">Lampe</button>
       </div>
       <video id="scanVideo" class="scanner" playsinline></video>
-      <p id="scanHint" class="muted" style="margin:.5rem 0 0">
-        📱 <strong>Instructions:</strong><br>
-        1. Cliquez sur "Démarrer le scan"<br>
-        2. Autorisez l'accès à la caméra<br>
-        3. Tenez le téléphone stable et proche du code-barres<br>
-        4. Visez un article enregistré - les codes inconnus continuent le scan<br>
-        5. Le code doit être bien éclairé et net
-      </p>
+      <p id="scanHint" class="muted" style="margin:.5rem 0 0">Visez le code-barres. Bip uniquement si l’article est reconnu. Les codes inconnus ne ferment pas la caméra.</p>
     </section>
 
     <!-- Étiquettes -->
@@ -243,10 +162,7 @@
         <button id="btnExportCSV" class="btn">Export CSV</button>
         <button id="btnExportJSON" class="btn">Export JSON</button>
       </div>
-      <table aria-label="Journal des mouvements">
-        <thead><tr><th>Date/heure</th><th>Type</th><th>Code</th><th>Nom</th><th>Qté</th><th>Note</th></tr></thead>
-        <tbody id="journalTbody"></tbody>
-      </table>
+      <table aria-label="Journal des mouvements"><thead><tr><th>Date/heure</th><th>Type</th><th>Code</th><th>Nom</th><th>Qté</th><th>Note</th></tr></thead><tbody id="journalTbody"></tbody></table>
     </section>
 
     <!-- Prêts -->
@@ -255,10 +171,7 @@
         <button id="btnNewLoan" class="btn primary">Nouvel emprunt</button>
         <input id="searchLoans" type="search" placeholder="Rechercher emprunts…" class="btn">
       </div>
-      <table aria-label="Table des emprunts">
-        <thead><tr><th>Article</th><th>Code</th><th>À</th><th>Prévu retour</th><th>État</th><th>Actions</th></tr></thead>
-        <tbody id="loansTbody"></tbody>
-      </table>
+      <table aria-label="Table des emprunts"><thead><tr><th>Article</th><th>Code</th><th>À</th><th>Prévu retour</th><th>État</th><th>Actions</th></tr></thead><tbody id="loansTbody"></tbody></table>
     </section>
 
     <!-- Paramètres -->
@@ -283,10 +196,14 @@
 
       <div class="toolbar">
         <label style="display:flex;align-items:center;gap:.5rem">
-          <input type="checkbox" id="chkDebug" class="btn">
-          Mode développeur (overlay debug du scanner)
+          <input type="checkbox" id="chkDebug" class="btn"> Mode développeur (overlay debug du scanner)
         </label>
         <span class="muted">FPS, cadre ROI, dernier code en direct.</span>
+      </div>
+
+      <div class="toolbar">
+        <button id="btnResetCache" class="btn danger">Réinitialiser cache PWA</button>
+        <span class="muted">Désenregistre le Service Worker et efface les caches.</span>
       </div>
 
       <hr style="border:none;border-top:1px solid var(--bd);margin:1rem 0">
@@ -317,7 +234,6 @@
     </section>
   </main>
 
-  <!-- Modale Ajustement -->
   <dialog id="adjustDialog">
     <header style="display:flex;justify-content:space-between;align-items:center;padding:.75rem 1rem;border-bottom:1px solid var(--bd)">
       <strong>Ajuster le stock</strong>
@@ -339,11 +255,11 @@
   <div id="sr" class="sr-only" aria-live="polite"></div>
 
   <!-- Scripts (ordre important) -->
-  <script src="js/db.js?v=2.1.1"></script>
-  <script src="js/barcode128.js?v=2.1.1"></script>
-  <script src="js/barcode.js?v=2.1.1"></script>
-  <script src="js/sync-github.js?v=2.1.1"></script> <!-- optionnel -->
-  <script src="js/app.js?v=2.1.1"></script>
+  <script src="js/db.js?v=2.1.7"></script>
+  <script src="js/barcode.js?v=2.1.7"></script>
+  <script src="js/code39.js?v=2.1.7"></script>
+  <script src="js/sync-github.js?v=2.1.7"></script>
+  <script src="js/app.js?v=2.1.7"></script>
 
   <script>
     if ('serviceWorker' in navigator) {
