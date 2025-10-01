@@ -1,12 +1,13 @@
-/* Gstock - sw.js v2.1.4 */
-const CACHE='gstock-2.1.4';
+/* Gstock - sw.js v2.1.5 */
+const CACHE='gstock-2.1.5';
 const APP_SHELL=[
   './',
   'index.html',
-  'js/app.js?v=2.1.4',
-  'js/barcode.js?v=2.1.4',
-  'js/db.js?v=2.1.4',
-  'js/sync-github.js?v=2.1.4',
+  'js/app.js?v=2.1.5',
+  'js/barcode.js?v=2.1.5',
+  'js/code39.js?v=2.1.5',
+  'js/db.js?v=2.1.5',
+  'js/sync-github.js?v=2.1.5',
   'manifest.json',
   'data/demo.json',
   'icons/icon-192.png',
@@ -23,7 +24,7 @@ self.addEventListener('message',e=>{ if(e.data && e.data.type==='SKIP_WAITING') 
 
 self.addEventListener('fetch',e=>{
   const url=new URL(e.request.url);
-  const isApp = url.pathname.endsWith('/') || /index\.html$/.test(url.pathname) || /(?:app|db|barcode|sync-github)\.js/.test(url.pathname) || /manifest\.json$/.test(url.pathname);
+  const isApp = url.pathname.endsWith('/') || /index\.html$/.test(url.pathname) || /(?:app|db|barcode|code39|sync-github)\.js/.test(url.pathname) || /manifest\.json$/.test(url.pathname);
   if(isApp){
     e.respondWith((async()=>{
       try{
