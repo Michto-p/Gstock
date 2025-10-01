@@ -1,9 +1,9 @@
-/* Gstock - sw.js v2.1.7 */
-const CACHE='gstock-2.1.7';
+/* Gstock - sw.js v2.1.8 */
+const CACHE='gstock-2.1.8';
 const APP_SHELL=[
   './',
   'index.html',
-  'js/app.js?v=2.1.7',
+  'js/app.js?v=2.1.8',
   'js/barcode.js?v=2.1.7',
   'js/code39.js?v=2.1.7',
   'js/db.js?v=2.1.7',
