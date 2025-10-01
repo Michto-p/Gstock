@@ -1,4 +1,4 @@
-/* Gstock - app.js v2.1.7 */
+/* Gstock - app.js v2.1.8 (Accueil + KPIs) */
 (()=>{'use strict';
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>Array.from(r.querySelectorAll(s)), sr=$('#sr');
 
@@ -10,21 +10,35 @@ if(themeToggle){ themeToggle.value=(localStorage.getItem('gstock.theme')||'auto'
   });
 }
 
+/* Tabs */
 const tabs=$$('nav button[data-tab]');
-const sections={items:$('#tab-items'),scanner:$('#tab-scanner'),labels:$('#tab-labels'),journal:$('#tab-journal'),gear:$('#tab-gear'),settings:$('#tab-settings')};
+const sections={
+  home:$('#tab-home'),
+  items:$('#tab-items'),
+  scanner:$('#tab-scanner'),
+  labels:$('#tab-labels'),
+  journal:$('#tab-journal'),
+  gear:$('#tab-gear'),
+  settings:$('#tab-settings')
+};
 tabs.forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
-async function showTab(name){ Object.entries(sections).forEach(([k,el])=>el&&(el.hidden=k!==name));
+async function showTab(name){
+  Object.entries(sections).forEach(([k,el])=>el&&(el.hidden=k!==name));
   tabs.forEach(b=>b.classList.toggle('active',b.dataset.tab===name));
+  if(name==='home')await refreshHome();
   if(name==='items')await refreshTable();
   if(name==='labels')await refreshLabelItems();
   if(name==='journal')await refreshJournal();
   if(name==='gear')await refreshLoansTable();
   if(name==='settings')initSettingsPanel();
 }
-document.addEventListener('keydown',e=>{ if(e.ctrlKey&&e.key.toLowerCase()==='k'){e.preventDefault();$('#searchItems')?.focus();}
-  if(e.key.toLowerCase()==='a')openAdjustDialog({type:'add'}); if(e.key.toLowerCase()==='r')openAdjustDialog({type:'remove'}); });
+document.addEventListener('keydown',e=>{
+  if(e.ctrlKey&&e.key.toLowerCase()==='k'){e.preventDefault();$('#searchItems')?.focus();}
+  if(e.key.toLowerCase()==='a')openAdjustDialog({type:'add'});
+  if(e.key.toLowerCase()==='r')openAdjustDialog({type:'remove'});
+});
 
-/* ---- Générer un code depuis le nom ---- */
+/* ---- Générer un code depuis le nom (déjà utilisé ailleurs) ---- */
 function deaccent(s){ try{ return s.normalize('NFD').replace(/\p{Diacritic}/gu,''); }catch(_){ return s; } }
 function nameToCode(name){
   const stop = new Set(['le','la','les','des','du','de','d','l','un','une','pour','et','sur','avec','en','à','au','aux','the','of','for']);
@@ -51,6 +65,73 @@ async function generateCodeFromName(name){
   return candidate;
 }
 
+/* ---------- Accueil ---------- */
+async function refreshHome(){
+  const items = await dbList();
+  const settings = await dbGetSettings();
+  const buffer = (settings?.buffer|0);
+
+  const totalItems = items.length;
+  const totalQty = items.reduce((s,i)=>s+(i.qty|0),0);
+  const under = items.filter(i=>(i.qty|0)<=(i.threshold|0)).length;
+  const low = items.filter(i=>(i.qty|0)>(i.threshold|0) && ((i.qty|0)-(i.threshold|0))<=buffer).length;
+
+  $('#kpiItems')&&( $('#kpiItems').textContent = String(totalItems) );
+  $('#kpiQty')&&( $('#kpiQty').textContent = String(totalQty) );
+  $('#kpiUnder')&&( $('#kpiUnder').textContent = String(under) );
+  $('#kpiLow')&&( $('#kpiLow').textContent = String(low) );
+
+  // Emprunts
+  const loans = await dbListLoans(true);
+  const overdue = loans.filter(l=>!l.returnedAt && Date.now()>new Date(l.due).getTime()).length;
+  $('#kpiLoansActive')&&( $('#kpiLoansActive').textContent = String(loans.length) );
+  $('#kpiLoansOverdue')&&( $('#kpiLoansOverdue').textContent = String(overdue) );
+
+  // Derniers mouvements
+  const recent = await dbListMoves({from:0,to:Infinity,limit:8});
+  const ul = $('#recentMoves');
+  if(ul){
+    ul.innerHTML = (recent.slice(0,8).map(m=>{
+      const d=new Date(m.ts); const dt=d.toLocaleString();
+      const type=(m.type||'').replace('_',' ');
+      return `<li><span>${dt} • <strong>${esc(type)}</strong> <code>${esc(m.code)}</code> ×${m.qty}</span><span class="muted">${esc(m.name||'')}</span></li>`;
+    }).join('')) || '<li class="muted">Aucun mouvement récent</li>';
+  }
+
+  // Mini bar-chart sorties des 7 derniers jours
+  drawUsageSpark(await buildUsage7d());
+}
+async function buildUsage7d(){
+  const now=Date.now();
+  const from = now - 7*24*3600*1000;
+  const moves = await dbListMoves({from,to:now,limit:5000});
+  const days = Array.from({length:7},(_,i)=>{ const start=from + i*24*3600*1000; const end=start+24*3600*1000-1; return {start,end,exit:0,entry:0}; });
+  for(const m of moves){
+    const idx = Math.floor((m.ts - from)/(24*3600*1000));
+    if(idx>=0 && idx<7){
+      if(m.type==='EXIT') days[idx].exit += (m.qty|0);
+      if(m.type==='ENTRY') days[idx].entry += (m.qty|0);
+    }
+  }
+  return days;
+}
+function drawUsageSpark(days){
+  const svg=$('#sparkUsage'); if(!svg) return;
+  const W=200, H=48, pad=6; svg.setAttribute('viewBox',`0 0 ${W} ${H}`); svg.innerHTML='';
+  const max=Math.max(1,...days.map(d=>d.exit));
+  const barW=(W-2*pad)/days.length-2;
+  days.forEach((d,i)=>{
+    const h = Math.round((d.exit/max)*(H-2*pad));
+    const x = pad + i*((W-2*pad)/days.length);
+    const y = H-pad-h;
+    const r=document.createElementNS('http://www.w3.org/2000/svg','rect');
+    r.setAttribute('x',String(x)); r.setAttribute('y',String(y));
+    r.setAttribute('width',String(barW)); r.setAttribute('height',String(h||1));
+    r.setAttribute('rx','2'); r.setAttribute('fill','currentColor');
+    svg.appendChild(r);
+  });
+}
+
 /* ---------- Articles ---------- */
 const itemsTbody=$('#itemsTbody'), searchItems=$('#searchItems'), filterStatus=$('#filterStatus'), filterTag=$('#filterTag');
 $('#btnAddItem')?.addEventListener('click',async()=>{
@@ -60,7 +141,7 @@ $('#btnAddItem')?.addEventListener('click',async()=>{
   const threshold=parseInt(prompt('Seuil d’alerte ?','0')||'0',10);
   const tags=(prompt('Tags (séparés par des virgules)')||'').split(',').map(t=>t.trim()).filter(Boolean);
   await dbPut({id:code,code,name,qty,threshold,tags,updated:Date.now()});
-  announce(`Article créé • code: ${code}`); await refreshTable();
+  announce(`Article créé • code: ${code}`); await refreshTable(); await refreshHome();
 });
 searchItems?.addEventListener('input',refreshTable); filterStatus?.addEventListener('change',refreshTable); filterTag?.addEventListener('change',refreshTable);
 function statusBadge(it,buffer=0){ const s=(it.qty|0)-(it.threshold|0); if((it.qty|0)<=(it.threshold|0))return `<span class="badge under">Sous seuil</span>`;
@@ -88,7 +169,7 @@ async function refreshTable(){
   itemsTbody?.querySelectorAll('button[data-act]').forEach(btn=>{ const code=btn.dataset.code;
     if(btn.dataset.act==='adj')btn.onclick=()=>openAdjustDialog({code});
     if(btn.dataset.act==='hist')btn.onclick=()=>openHistory(code);
-    if(btn.dataset.act==='del')btn.onclick=async()=>{ if(confirm('Supprimer cet article ?')){ await dbDelete(code); await refreshTable(); } };
+    if(btn.dataset.act==='del')btn.onclick=async()=>{ if(confirm('Supprimer cet article ?')){ await dbDelete(code); await refreshTable(); await refreshHome(); } };
   });
 }
 async function openHistory(code){ const item=(await dbGet(code))||(await dbGet(code.toUpperCase()))||(await dbGet(code.toLowerCase()));
@@ -108,10 +189,10 @@ async function onValidateAdjust(){ const type=dlgType.value; const qty=Math.max(
   const item=await dbGet(dlgState.code); if(!item)return dlg?.close();
   const delta=(type==='add')?qty:-qty; await dbAdjustQty(item.code,delta);
   await dbAddMove({ts:Date.now(),type:(type==='add'?'ENTRY':'EXIT'),code:item.code,name:item.name,qty,note});
-  announce(`${type==='add'?'Ajout':'Retrait'}: ${qty} → ${item.name}`); dlg?.close(); await refreshTable();
+  announce(`${type==='add'?'Ajout':'Retrait'}: ${qty} → ${item.name}`); dlg?.close(); await refreshTable(); await refreshHome();
 }
 
-/* ---------- Étiquettes (Code 39) ---------- */
+/* ---------- Étiquettes ---------- */
 const labelsPreview=$('#labelsPreview');
 $('#btnLabelsAll')?.addEventListener('click',()=>renderSheet('all'));
 $('#btnLabelsSelected')?.addEventListener('click',async()=>{ const code=prompt('Code article ?'); if(!code)return; await renderSheet('one',code); });
@@ -149,7 +230,7 @@ $('#btnNewLoan')?.addEventListener('click',async()=>{ const code=prompt('Code ar
   const it=(await dbGet(code))||(await dbGet(code.toUpperCase()))||(await dbGet(code.toLowerCase())); if(!it)return alert('Article introuvable');
   const person=prompt('Nom emprunteur ?'); if(!person)return;
   const due=prompt('Date prévue retour (YYYY-MM-DD) ?'); if(!due)return;
-  const note=prompt('Note (optionnel)')||''; await dbCreateLoan({code:it.code,name:it.name,person,due,note}); announce(`Prêt créé → ${person}`); await refreshLoansTable();
+  const note=prompt('Note (optionnel)')||''; await dbCreateLoan({code:it.code,name:it.name,person,due,note}); announce(`Prêt créé → ${person}`); await refreshLoansTable(); await refreshHome();
 });
 $('#searchLoans')?.addEventListener('input',refreshLoansTable);
 async function refreshLoansTable(){
@@ -159,12 +240,12 @@ async function refreshLoansTable(){
     return `<tr><td>${esc(l.name||'')}</td><td><code>${esc(l.code)}</code></td><td>${esc(l.person)}</td><td>${esc(l.due)}</td><td>${overdue?'<span class="badge under">En retard</span>':'<span class="badge ok">Actif</span>'}</td><td>${l.returnedAt?'<span class="muted">Clos</span>':`<button class="btn" data-return="${l.id}">Retour</button>`}</td></tr>`;
   }).join('');
   loansTbody.innerHTML=rows||`<tr><td colspan="6" class="muted">Aucun emprunt</td></tr>`;
-  loansTbody.querySelectorAll('button[data-return]').forEach(btn=>{ btn.onclick=async()=>{ const id=btn.getAttribute('data-return'); await dbReturnLoan(id); announce('Matériel retourné'); await refreshLoansTable(); };});
+  loansTbody.querySelectorAll('button[data-return]').forEach(btn=>{ btn.onclick=async()=>{ const id=btn.getAttribute('data-return'); await dbReturnLoan(id); announce('Matériel retourné'); await refreshLoansTable(); await refreshHome(); };});
 }
 
 /* ---------- Import / Export / Paramètres ---------- */
 $('#btnExportFull')?.addEventListener('click',async()=>{ const blob=await dbExportFull(); const text=JSON.stringify(blob,null,2); downloadFile('gstock-export.json',text,'application/json'); });
-$('#btnImportJSON')?.addEventListener('click',async()=>{ try{ const [h]=await window.showOpenFilePicker({types:[{description:'JSON',accept:{'application/json':['.json']}}]}); const f=await h.getFile(); const text=await f.text(); const data=JSON.parse(text); await dbImportFull(data); announce('Import terminé'); await refreshTable(); await refreshJournal(); await refreshLoansTable(); }catch(e){ console.warn(e); alert('Import annulé / invalide'); }});
+$('#btnImportJSON')?.addEventListener('click',async()=>{ try{ const [h]=await window.showOpenFilePicker({types:[{description:'JSON',accept:{'application/json':['.json']}}]}); const f=await h.getFile(); const text=await f.text(); const data=JSON.parse(text); await dbImportFull(data); announce('Import terminé'); await refreshTable(); await refreshJournal(); await refreshLoansTable(); await refreshHome(); }catch(e){ console.warn(e); alert('Import annulé / invalide'); }});
 const sharedFileStatus=$('#sharedFileStatus');
 $('#btnLinkSharedFile')?.addEventListener('click',async()=>{ if(!('showSaveFilePicker' in window))return alert('File System Access API non supportée.');
   const handle=await showSaveFilePicker({suggestedName:'gstock-shared.json',types:[{description:'JSON',accept:{'application/json':['.json']}}]});
@@ -177,10 +258,9 @@ $('#btnResetCache')?.addEventListener('click',async()=>{ if(!confirm('Réinitial
 function initSettingsPanel(){ (async()=>{ const set=await dbGetSettings(); $('#inputBuffer')&&($('#inputBuffer').value=set.buffer|0); $('#inputDefaultTags')&&($('#inputDefaultTags').value=(set.defaultTags||[]).join(', '));
   const chkDebug=$('#chkDebug'); if(chkDebug){ const apply=en=>{ window.GSTOCK_DEBUG=!!en; localStorage.setItem('gstock.debug',en?'1':'0'); window.dispatchEvent(new CustomEvent('gstock:debug-changed',{detail:{enabled:!!en}})); };
     chkDebug.checked=(localStorage.getItem('gstock.debug')==='1'); apply(chkDebug.checked); chkDebug.addEventListener('change',e=>apply(e.target.checked)); }
-  if(window.githubSync?.loadSaved){ const saved=window.githubSync.loadSaved(); $('#ghOwner')&&($('#ghOwner').value=saved.owner||''); $('#ghRepo')&&($('#ghRepo').value=saved.repo||''); $('#ghPath')&&($('#ghPath').value=saved.path||'gstock-shared.json'); $('#ghToken')&&($('#ghToken').value=saved.token||''); }
 })(); }
-$('#btnSaveSettings')?.addEventListener('click',async()=>{ const buffer=Math.max(0,parseInt($('#inputBuffer')?.value||'0',10)); const defaultTags=($('#inputDefaultTags')?.value||'').split(',').map(t=>t.trim()).filter(Boolean); await dbSetSettings({buffer,defaultTags}); announce('Paramètres enregistrés'); await refreshTable(); });
-$('#btnLoadDemo')?.addEventListener('click',async()=>{ try{ const res=await fetch('data/demo.json',{cache:'no-store'}); if(!res.ok)throw new Error('data/demo.json introuvable'); const data=await res.json(); await dbImportFull(data); announce('Mini base de démo chargée'); await refreshTable(); await refreshJournal(); await refreshLoansTable(); }catch(e){ console.warn(e); alert('Impossible de charger la démo : '+e.message); }});
+$('#btnSaveSettings')?.addEventListener('click',async()=>{ const buffer=Math.max(0,parseInt($('#inputBuffer')?.value||'0',10)); const defaultTags=($('#inputDefaultTags')?.value||'').split(',').map(t=>t.trim()).filter(Boolean); await dbSetSettings({buffer,defaultTags}); announce('Paramètres enregistrés'); await refreshTable(); await refreshHome(); });
+$('#btnLoadDemo')?.addEventListener('click',async()=>{ try{ const res=await fetch('data/demo.json',{cache:'no-store'}); if(!res.ok)throw new Error('data/demo.json introuvable'); const data=await res.json(); await dbImportFull(data); announce('Mini base de démo chargée'); await refreshTable(); await refreshJournal(); await refreshLoansTable(); await refreshHome(); }catch(e){ console.warn(e); alert('Impossible de charger la démo : '+e.message); }});
 
 /* ---------- Scanner ---------- */
 const scanVideo=$('#scanVideo'), scanHint=$('#scanHint'), btnScanStart=$('#btnScanStart'), btnScanStop=$('#btnScanStop'), btnScanTorch=$('#btnScanTorch'); let scanning=false;
@@ -195,22 +275,23 @@ btnScanStart?.addEventListener('click',async()=>{ if(scanning)return;
 btnScanStop?.addEventListener('click',async()=>{ scanning=false; try{ await window.stopScan?.(); }catch(_){} scanHint&&(scanHint.textContent='Scan arrêté.'); btnScanStart.disabled=false; });
 btnScanTorch?.addEventListener('click',()=>window.toggleTorch?.());
 
+/* ---------- Accueil : actions rapides ---------- */
+$('#qaScan')?.addEventListener('click',()=>{ showTab('scanner'); $('#btnScanStart')?.click(); });
+$('#qaAdd')?.addEventListener('click',()=>{ showTab('items'); $('#btnAddItem')?.click(); });
+$('#qaLabels')?.addEventListener('click',()=>{ showTab('labels'); });
+$('#qaExport')?.addEventListener('click',()=>{ $('#btnExportFull')?.click(); });
+
+/* Utils */
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
 function downloadFile(name,data,type){ const blob=new Blob([data],{type}); const url=URL.createObjectURL(blob);
   const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),5000); }
 function announce(msg){ sr&&(sr.textContent=''); setTimeout(()=>{ sr&&(sr.textContent=msg); },10); }
 
+/* Init */
 (async function init(){
   $('#appVersion')&&( $('#appVersion').textContent=window.APP_VERSION||'' );
-  try{
-    await dbInit();
-  }catch(e){
-    alert('Erreur d’initialisation DB. On tente une migration…');
-    // Forcer une réouverture (si SW/ancienne version bloque)
-    await new Promise(res=>setTimeout(res,100));
-    await dbInit();
-  }
-  await refreshTable();
-  showTab('items');
+  await dbInit();
+  await refreshHome();
+  showTab('home');
 })();
 })();
