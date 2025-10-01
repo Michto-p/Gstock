@@ -1,4 +1,4 @@
-/* Gstock - code39.js v2.1.6 (renderer Code 39 en SVG) */
+/* Gstock - code39.js v2.1.7 (renderer Code 39 en SVG) */
 'use strict';
 (function(){
   const MAP = {
@@ -12,6 +12,7 @@
     'Z':'nwwnwnnnn','-':'nwnnnnwnw','.':'wwnnnnwnn',' ':'nwwnnnwnn','*':'nwnnwnwnn',
     '$':'nwnwnwnnn','/':'nwnwnnnwn','+':'nwnnnwnwn','%':'nnnwnwnwn'
   };
+
   function svg(value, opts={}){
     const {module=2, height=40, margin=10, showText=true, fontSize=12} = opts;
     const data = `*${String(value).toUpperCase()}*`;
@@ -35,7 +36,7 @@
       for(let i=0;i<9;i++){
         const wide = pat[i]==='w';
         const ww = (wide?3:1)*module;
-        if(i%2===0){ // bar
+        if(i%2===0){ // barre
           const r=document.createElementNS(svgns,'rect');
           r.setAttribute('x', String(x));
           r.setAttribute('y', '0');
@@ -60,5 +61,6 @@
     }
     return s;
   }
+
   window.code39 = { svg };
 })();
