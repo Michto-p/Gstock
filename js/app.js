@@ -1,4 +1,4 @@
-/* Gstock - app.js v2.1.9 (ergonomie Articles) */
+/* Gstock - app.js v2.2.0 (Étiquettes : multi-sélection, tailles, pagination) */
 (()=>{'use strict';
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>Array.from(r.querySelectorAll(s)), sr=$('#sr');
 
@@ -10,28 +10,26 @@ if(themeToggle){ themeToggle.value=(localStorage.getItem('gstock.theme')||'auto'
   });
 }
 
-/* Tabs */
-const tabs=$$('nav button[data-tab]');
+/* ---- Tabs ---- */
 const sections={home:$('#tab-home'),items:$('#tab-items'),scanner:$('#tab-scanner'),labels:$('#tab-labels'),journal:$('#tab-journal'),gear:$('#tab-gear'),settings:$('#tab-settings')};
-tabs.forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
-async function showTab(name){ Object.entries(sections).forEach(([k,el])=>el&&(el.hidden=k!==name));
-  tabs.forEach(b=>b.classList.toggle('active',b.dataset.tab===name));
+$$('nav button[data-tab]').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
+async function showTab(name){
+  Object.entries(sections).forEach(([k,el])=>el&&(el.hidden=k!==name));
+  $$('nav button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));
   if(name==='home')await refreshHome();
   if(name==='items')await refreshTable();
-  if(name==='labels')await refreshLabelItems();
+  if(name==='labels')await initLabelsPanel();
   if(name==='journal')await refreshJournal();
   if(name==='gear')await refreshLoansTable();
   if(name==='settings')initSettingsPanel();
 }
-document.addEventListener('keydown',e=>{ if(e.ctrlKey&&e.key.toLowerCase()==='k'){e.preventDefault();$('#searchItems')?.focus();} });
 
-/* ----- utils ----- */
+/* ---- Utils ---- */
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
 function downloadFile(name,data,type){ const blob=new Blob([data],{type}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),3000); }
 function announce(msg){ sr&&(sr.textContent=''); setTimeout(()=>{ sr&&(sr.textContent=msg); },10); }
-const wait=ms=>new Promise(r=>setTimeout(r,ms));
 
-/* ---- code from name ---- */
+/* ---- Générateur de code depuis le nom ---- */
 function deaccent(s){ try{ return s.normalize('NFD').replace(/\p{Diacritic}/gu,''); }catch(_){ return s; } }
 function nameToCode(name){
   const stop=new Set(['le','la','les','des','du','de','d','l','un','une','pour','et','sur','avec','en','à','au','aux','the','of','for']);
@@ -58,56 +56,43 @@ async function refreshHome(){
   const recent=await dbListMoves({from:0,to:Infinity,limit:8}); const ul=$('#recentMoves'); if(ul){ ul.innerHTML=(recent.map(m=>`<li>${new Date(m.ts).toLocaleString()} • <strong>${esc(m.type)}</strong> <code>${esc(m.code)}</code> ×${m.qty}</li>`).join(''))||'<li class="muted">Aucun mouvement</li>'; }
 }
 
-/* ---------- Articles ---------- */
+/* ---------- Articles (version simple 2.1.9) ---------- */
 const itemsTbody=$('#itemsTbody'), searchItems=$('#searchItems'), filterStatus=$('#filterStatus'), filterTag=$('#filterTag');
 const selAll=$('#selAll'), bulkBar=$('#bulkBar'), bulkCount=$('#bulkCount');
 const bulkExport=$('#bulkExport'), bulkDelete=$('#bulkDelete'), bulkLabels=$('#bulkLabels');
-let selected=new Set();
+let selectedArticles=new Set();
 
-let sortKey=(JSON.parse(localStorage.getItem('gstock.articles.sort')||'{}').key)||'name';
-let sortDir=(JSON.parse(localStorage.getItem('gstock.articles.sort')||'{}').dir)||'asc';
-let filters=JSON.parse(localStorage.getItem('gstock.articles.filters')||'{}');
-if(filters.q) searchItems.value=filters.q||'';
-if(filters.status) filterStatus.value=filters.status||'';
-if(filters.tag) filterTag.value=filters.tag||'';
-
-function saveSort(){ localStorage.setItem('gstock.articles.sort', JSON.stringify({key:sortKey,dir:sortDir})); }
-function saveFilters(){ localStorage.setItem('gstock.articles.filters', JSON.stringify({q:searchItems?.value||'', status:filterStatus?.value||'', tag:filterTag?.value||''})); }
+$('#btnAddItem')?.addEventListener('click',()=>{ $('#niName').value=''; $('#niCode').value=''; $('#niQty').value='0'; $('#niThr').value='0'; $('#niTags').value=''; $('#newItemDialog').showModal(); setTimeout(()=>$('#niName').focus(),0); });
+$('#niGen')?.addEventListener('click',async()=>{ const n=$('#niName').value.trim(); if(!n)return; $('#niCode').value=await generateCodeFromName(n); });
+$('#niName')?.addEventListener('blur',async()=>{ const n=$('#niName').value.trim(); if(!$('#niCode').value.trim() && n){ $('#niCode').value=await generateCodeFromName(n);} });
+$('#niSave')?.addEventListener('click',async(e)=>{
+  e.preventDefault();
+  const name=$('#niName').value.trim(), code=$('#niCode').value.trim();
+  if(!name||!code) return;
+  const qty=Math.max(0,parseInt($('#niQty').value||'0',10)), threshold=Math.max(0,parseInt($('#niThr').value||'0',10));
+  const tags=($('#niTags').value||'').split(',').map(t=>t.trim()).filter(Boolean);
+  await dbPut({id:code,code,name,qty,threshold,tags,updated:Date.now()});
+  $('#newItemDialog').close(); announce(`Article créé • ${name} (${code})`);
+  await refreshTable(); await refreshHome(); await maybeRefreshLabelsData();
+});
 
 let searchTimer=null;
-searchItems?.addEventListener('input',()=>{ clearTimeout(searchTimer); searchTimer=setTimeout(()=>{ saveFilters(); refreshTable(); }, 80); });
-filterStatus?.addEventListener('change',()=>{ saveFilters(); refreshTable(); });
-filterTag?.addEventListener('change',()=>{ saveFilters(); refreshTable(); });
-$('#btnClearFilters')?.addEventListener('click',()=>{ if(searchItems)searchItems.value=''; if(filterStatus)filterStatus.value=''; if(filterTag)filterTag.value=''; saveFilters(); refreshTable(); });
-
-$$('th button.th-sort').forEach(btn=>{
-  btn.addEventListener('click',()=>{
-    const key=btn.dataset.sort;
-    if(sortKey===key){ sortDir=(sortDir==='asc'?'desc':'asc'); } else { sortKey=key; sortDir='asc'; }
-    saveSort(); refreshTable(); updateSortIndicators();
-  });
-});
-function updateSortIndicators(){
-  $$('thead th').forEach(th=>th.setAttribute('aria-sort','none'));
-  const th=$(`th button.th-sort[data-sort="${sortKey}"]`)?.closest('th'); if(th) th.setAttribute('aria-sort', sortDir==='asc'?'ascending':'descending');
-}
-
-selAll?.addEventListener('change',()=>{ if(!itemsTbody)return; itemsTbody.querySelectorAll('input.rowSel').forEach(cb=>{ cb.checked=selAll.checked; cb.dispatchEvent(new Event('change')); }); });
+searchItems?.addEventListener('input',()=>{ clearTimeout(searchTimer); searchTimer=setTimeout(()=>refreshTable(),100); });
+filterStatus?.addEventListener('change',refreshTable); filterTag?.addEventListener('change',refreshTable);
+$('#btnClearFilters')?.addEventListener('click',()=>{ if(searchItems)searchItems.value=''; if(filterStatus)filterStatus.value=''; if(filterTag)filterTag.value=''; refreshTable(); });
 
 function statusBadge(it,buffer=0){
   const s=(it.qty|0)-(it.threshold|0);
-  if((it.qty|0)<=(it.threshold|0))return `<span class="badge under" data-fstatus="under" title="Cliquez pour filtrer Sous seuil">Sous seuil</span>`;
-  if(s<=(buffer|0))return `<span class="badge low" data-fstatus="low" title="Cliquez pour filtrer Approche">Approche</span>`;
-  return `<span class="badge ok" data-fstatus="ok" title="Cliquez pour filtrer OK">OK</span>`;
+  if((it.qty|0)<=(it.threshold|0))return `<span class="badge under">Sous seuil</span>`;
+  if(s<=(buffer|0))return `<span class="badge low">Approche</span>`;
+  return `<span class="badge ok">OK</span>`;
 }
-
 async function refreshTable(){
   const q=(searchItems?.value||'').toLowerCase(), tag=filterTag?.value||'', st=filterStatus?.value||'', buffer=(await dbGetSettings()).buffer|0;
-  const list=await dbList();
-  const allTags=new Set(); list.forEach(i=>(i.tags||[]).forEach(t=>allTags.add(t)));
+  const list=await dbList(); const allTags=new Set(); list.forEach(i=>(i.tags||[]).forEach(t=>allTags.add(t)));
   if(filterTag){ const cur=filterTag.value; filterTag.innerHTML=`<option value="">Tous tags</option>`+[...allTags].sort().map(t=>`<option ${t===cur?'selected':''}>${esc(t)}</option>`).join(''); }
 
-  let filtered=list.filter(it=>{
+  const filtered=list.filter(it=>{
     const inQ=!q||[it.name,it.code,(it.tags||[]).join(' ')].join(' ').toLowerCase().includes(q);
     const inTag=!tag||(it.tags||[]).includes(tag);
     let stOK=true;
@@ -117,17 +102,8 @@ async function refreshTable(){
     return inQ&&inTag&&stOK;
   });
 
-  filtered.sort((a,b)=>{
-    const dir = (sortDir==='asc')?1:-1;
-    if(sortKey==='name') return dir * a.name.localeCompare(b.name,'fr');
-    if(sortKey==='code') return dir * a.code.localeCompare(b.code,'fr');
-    if(sortKey==='qty') return dir * ((a.qty|0)-(b.qty|0));
-    if(sortKey==='threshold') return dir * ((a.threshold|0)-(b.threshold|0));
-    return 0;
-  });
-
   const rows=filtered.map(it=>`<tr>
-    <td><input type="checkbox" class="rowSel" data-code="${esc(it.code)}" ${selected.has(it.code)?'checked':''}></td>
+    <td><input type="checkbox" class="rowSel" data-code="${esc(it.code)}" ${selectedArticles.has(it.code)?'checked':''}></td>
     <td>${esc(it.name)}</td>
     <td><code>${esc(it.code)}</code></td>
     <td>
@@ -148,111 +124,155 @@ async function refreshTable(){
   </tr>`).join('');
 
   itemsTbody && (itemsTbody.innerHTML = rows || `<tr><td colspan="8" class="muted">Aucun article</td></tr>`);
-  updateSortIndicators();
 
-  // Bind actions par ligne
+  // Bind
   itemsTbody?.querySelectorAll('button[data-act]').forEach(btn=>{
     const code=btn.dataset.code;
     if(btn.dataset.act==='adj') btn.onclick=()=>openAdjustDialog({code});
     if(btn.dataset.act==='hist') btn.onclick=()=>openHistory(code);
-    if(btn.dataset.act==='del') btn.onclick=async()=>{ if(confirm('Supprimer cet article ?')){ await dbDelete(code); selected.delete(code); await refreshTable(); announce('Article supprimé'); } };
+    if(btn.dataset.act==='del') btn.onclick=async()=>{ if(confirm('Supprimer cet article ?')){ await dbDelete(code); selectedArticles.delete(code); await refreshTable(); announce('Article supprimé'); await maybeRefreshLabelsData(); } };
   });
-  // Quick adjust
   itemsTbody?.querySelectorAll('button[data-qa]').forEach(btn=>{
     btn.onclick=async()=>{
       const code=btn.dataset.code; const delta = (btn.dataset.qa==='+1')?+1:-1;
-      await quickAdjust(code, delta);
+      const it=await dbGet(code)||await dbGet(code.toUpperCase())||await dbGet(code.toLowerCase()); if(!it)return;
+      await dbAdjustQty(it.code, delta);
+      await dbAddMove({ts:Date.now(),type:(delta>0?'ENTRY':'EXIT'),code:it.code,name:it.name,qty:Math.abs(delta),note:'ajustement rapide'});
+      announce(`${delta>0?'+1':'−1'} → ${it.name}`); await refreshTable(); await refreshHome();
     };
   });
-  // Sélection
   itemsTbody?.querySelectorAll('input.rowSel').forEach(cb=>{
-    cb.addEventListener('change',()=>{ const code=cb.dataset.code; if(cb.checked)selected.add(code); else selected.delete(code); updateBulkBar(); });
-  });
-  // Badge → filtre statut
-  itemsTbody?.querySelectorAll('[data-fstatus]').forEach(el=>{
-    el.addEventListener('click',()=>{ filterStatus.value=el.getAttribute('data-fstatus'); saveFilters(); refreshTable(); });
+    cb.addEventListener('change',()=>{ const code=cb.dataset.code; if(cb.checked)selectedArticles.add(code); else selectedArticles.delete(code); updateBulkBar(); });
   });
 
-  // Maj selAll
-  selAll.checked = filtered.length>0 && filtered.every(it=>selected.has(it.code));
+  selAll && (selAll.checked = filtered.length>0 && filtered.every(it=>selectedArticles.has(it.code)));
+  selAll?.addEventListener('change',()=>{ itemsTbody?.querySelectorAll('input.rowSel').forEach(cb=>{ cb.checked=selAll.checked; cb.dispatchEvent(new Event('change')); }); });
+
   updateBulkBar();
 }
-
-function updateBulkBar(){ const n=[...selected].length; if(!bulkBar)return; bulkBar.hidden = n===0; bulkCount&&(bulkCount.textContent = `${n} sélection(s)`); }
-
-async function quickAdjust(code, delta){
-  const it=await dbGet(code)||await dbGet(code.toUpperCase())||await dbGet(code.toLowerCase());
-  if(!it) return alert('Article introuvable');
-  const newQty=Math.max(0,(it.qty|0)+delta);
-  await dbAdjustQty(it.code, delta);
-  await dbAddMove({ts:Date.now(),type:(delta>0?'ENTRY':'EXIT'),code:it.code,name:it.name,qty:Math.abs(delta),note:'ajustement rapide'});
-  announce(`${delta>0?'+1':'−1'} → ${it.name}`);
-  await refreshTable();
-  await refreshHome();
-}
-
-// Bulk actions
-bulkDelete?.addEventListener('click',async()=>{
-  if(selected.size===0) return;
-  if(!confirm(`Supprimer ${selected.size} article(s) ?`)) return;
-  for(const code of selected){ await dbDelete(code); }
-  selected.clear(); await refreshTable(); announce('Articles supprimés');
-});
-bulkExport?.addEventListener('click',async()=>{
-  if(selected.size===0) return;
-  const items=[]; for(const code of selected){ const it=await dbGet(code); if(it)items.push(it); }
-  const header='name,code,qty,threshold,tags\n';
-  const rows=items.map(i=>[i.name,i.code,(i.qty|0),(i.threshold|0),(i.tags||[]).join('|')].map(v=>String(v).replace(/"/g,'""')).map(v=>`"${v}"`).join(',')).join('\n');
-  downloadFile('articles-selection.csv', header+rows+'\n', 'text/csv');
-});
-bulkLabels?.addEventListener('click',async()=>{
-  if(selected.size===0) return;
-  await renderSheet('selected', Array.from(selected));
-  announce('Aperçu des étiquettes (sélection) mis à jour dans l’onglet Étiquettes.');
-  showTab('labels');
-});
+function updateBulkBar(){ const n=[...selectedArticles].length; if(!bulkBar)return; bulkBar.hidden = n===0; bulkCount&&(bulkCount.textContent = `${n} sélection(s)`); }
+bulkDelete?.addEventListener('click',async()=>{ if(selectedArticles.size===0)return; if(!confirm(`Supprimer ${selectedArticles.size} article(s) ?`))return; for(const code of selectedArticles){ await dbDelete(code); } selectedArticles.clear(); await refreshTable(); announce('Articles supprimés'); await maybeRefreshLabelsData(); });
+bulkExport?.addEventListener('click',async()=>{ if(selectedArticles.size===0)return; const items=[]; for(const code of selectedArticles){ const it=await dbGet(code); if(it)items.push(it); } const header='name,code,qty,threshold,tags\n'; const rows=items.map(i=>[i.name,i.code,(i.qty|0),(i.threshold|0),(i.tags||[]).join('|')].map(v=>String(v).replace(/"/g,'""')).map(v=>`"${v}"`).join(',')).join('\n'); downloadFile('articles-selection.csv', header+rows+'\n', 'text/csv'); });
+bulkLabels?.addEventListener('click',async()=>{ if(selectedArticles.size===0)return; await labelsSelectCodes(Array.from(selectedArticles)); showTab('labels'); });
 
 /* Historique simple */
 async function openHistory(code){ const item=(await dbGet(code))||(await dbGet(code.toUpperCase()))||(await dbGet(code.toLowerCase()));
   const moves=await dbListMoves({code:item?.code||code,limit:100}); const loans=await dbListLoansByCode(item?.code||code);
   alert(`Historique "${item?.name||code}"\n\nMouvements: ${moves.length}\nEmprunts (actifs+clos): ${loans.length}`); }
 
-/* ----- Dialog Nouvel article ----- */
-const newItemDialog=$('#newItemDialog'); const niName=$('#niName'), niCode=$('#niCode'), niQty=$('#niQty'), niThr=$('#niThr'), niTags=$('#niTags');
-$('#btnAddItem')?.addEventListener('click',()=>{ niName.value=''; niCode.value=''; niQty.value='0'; niThr.value='0'; niTags.value=''; newItemDialog.showModal(); setTimeout(()=>niName.focus(),0); });
-$('#niGen')?.addEventListener('click',async()=>{ if(!niName.value.trim())return; niCode.value = await generateCodeFromName(niName.value.trim()); });
-niName?.addEventListener('blur',async()=>{ if(!niCode.value.trim() && niName.value.trim()){ niCode.value = await generateCodeFromName(niName.value.trim()); } });
-$('#niSave')?.addEventListener('click',async(e)=>{
-  e.preventDefault();
-  if(!niName.value.trim() || !niCode.value.trim()) return;
-  const name=niName.value.trim(); const code=niCode.value.trim();
-  const qty=Math.max(0,parseInt(niQty.value||'0',10)); const threshold=Math.max(0,parseInt(niThr.value||'0',10));
-  const tags=(niTags.value||'').split(',').map(t=>t.trim()).filter(Boolean);
-  await dbPut({id:code,code,name,qty,threshold,tags,updated:Date.now()});
-  newItemDialog.close(); announce(`Article créé • ${name} (${code})`);
-  await refreshTable(); await refreshHome();
-});
+/* ---------- Ajustement (dialog) ---------- */
+const dlg=$('#adjustDialog'), dlgType=$('#dlgType'), dlgQty=$('#dlgQty'), dlgNote=$('#dlgNote'), dlgItem=$('#dlgItem'); let dlgState={code:null};
+$('#dlgClose')?.addEventListener('click',()=>dlg?.close()); $('#dlgValidate')?.addEventListener('click',onValidateAdjust);
+async function openAdjustDialog({code=null,type='add'}={}){ if(!code)code=prompt('Code article ?'); if(!code)return;
+  const item=(await dbGet(code))||(await dbGet(code.toUpperCase()))||(await dbGet(code.toLowerCase())); if(!item)return alert('Article introuvable');
+  dlgState.code=item.code; dlgType.value=type; dlgQty.value=1; dlgNote.value=''; dlgItem.textContent=`${item.name} (${item.code}) — Stock actuel: ${item.qty}`; dlg.showModal();
+}
+async function onValidateAdjust(){ const type=dlgType.value; const qty=Math.max(1,parseInt(dlgQty.value||'1',10)); const note=dlgNote.value||''; const item=await dbGet(dlgState.code); if(!item)return dlg.close(); const delta=(type==='add')?qty:-qty; await dbAdjustQty(item.code,delta); await dbAddMove({ts:Date.now(),type:(type==='add'?'ENTRY':'EXIT'),code:item.code,name:item.name,qty,note}); announce(`${type==='add'?'Ajout':'Retrait'}: ${qty} → ${item.name}`); dlg.close(); await refreshTable(); await refreshHome(); }
 
-/* ---------- Étiquettes ---------- */
-const labelsPreview=$('#labelsPreview');
-$('#btnLabelsAll')?.addEventListener('click',()=>renderSheet('all'));
-$('#btnLabelsSelected')?.addEventListener('click',async()=>{ const code=prompt('Code article ?'); if(!code)return; await renderSheet('one',code); });
-$('#btnLabelsPrintA4')?.addEventListener('click',async()=>{ if(!labelsPreview||!labelsPreview.firstElementChild)await renderSheet('all'); window.print(); });
+/* ---------- Étiquettes (nouveau) ---------- */
+const LABEL_TEMPLATES={
+  'avery-l7159': { cols:3, rows:7, cellW:63.5, cellH:38.1, gapX:7, gapY:2.5 },
+  'mm50x25':    { cols:4, rows:10, cellW:50,  cellH:25,   gapX:5, gapY:5   },
+  'mm70x35':    { cols:3, rows:8,  cellW:70,  cellH:35,   gapX:5, gapY:5   }
+};
+let labelsInitDone=false, labelsAllItems=[], labelsSelected=new Set(), lblPage=0, lblPagesCount=1;
+const labelSearch=$('#labelSearch'), labelsList=$('#labelsList'), lblSelInfo=$('#lblSelInfo'), lblTemplate=$('#lblTemplate'), lblDensity=$('#lblDensity'), lblNameSize=$('#lblNameSize'), lblShowText=$('#lblShowText'), labelsPages=$('#labelsPages');
+const btnLblAll=$('#lblAll'), btnLblNone=$('#lblNone'), btnLblPrev=$('#lblPrev'), btnLblNext=$('#lblNext'), lblPageInfo=$('#lblPageInfo'), btnLabelsPrint=$('#btnLabelsPrint');
 
-async function renderSheet(mode='all', payload=null){
-  let items=[];
-  if(mode==='all'){ items=await dbList(); }
-  else if(mode==='one'){ const code=payload; const it=(await dbGet(code))||(await dbGet(code?.toUpperCase()))||(await dbGet(code?.toLowerCase())); if(it)items=[it]; }
-  else if(mode==='selected'){ const codes=Array.isArray(payload)?payload:[]; for(const c of codes){ const it=await dbGet(c); if(it)items.push(it); } }
-  const frag=document.createDocumentFragment();
-  items.forEach(it=>{
-    const card=document.createElement('div'); card.className='label-card';
-    const name=document.createElement('div'); name.className='name'; name.textContent=it.name; card.appendChild(name);
-    const hr=document.createElement('div'); hr.className='hr'; hr.textContent=it.code; card.appendChild(hr);
-    const svg=(window.code39?.svg && window.code39.svg(it.code,{module:2,height:52,margin:4,showText:false}))||document.createElementNS('http://www.w3.org/2000/svg','svg');
-    card.appendChild(svg); frag.appendChild(card);
+async function initLabelsPanel(){
+  if(!labelsInitDone){ await loadLabelsData(); bindLabelsUI(); labelsInitDone=true; }
+  // toujours regen en arrivant (au cas où l’inventaire a changé)
+  await rebuildLabelsList();
+  await rebuildLabelsPreview(true);
+}
+async function maybeRefreshLabelsData(){ if(labelsInitDone){ await loadLabelsData(); await rebuildLabelsList(); await rebuildLabelsPreview(true); } }
+async function loadLabelsData(){ labelsAllItems = await dbList(); if(labelsSelected.size===0){ labelsAllItems.forEach(i=>labelsSelected.add(i.code)); } }
+
+function bindLabelsUI(){
+  labelSearch?.addEventListener('input',()=>rebuildLabelsList());
+  btnLblAll?.addEventListener('click',()=>{ labelsAllItems.forEach(i=>labelsSelected.add(i.code)); rebuildLabelsList(); rebuildLabelsPreview(true); });
+  btnLblNone?.addEventListener('click',()=>{ labelsSelected.clear(); rebuildLabelsList(); rebuildLabelsPreview(true); });
+  lblTemplate?.addEventListener('change',()=>rebuildLabelsPreview(true));
+  lblDensity?.addEventListener('change',()=>rebuildLabelsPreview(false));
+  lblNameSize?.addEventListener('change',()=>rebuildLabelsPreview(false));
+  lblShowText?.addEventListener('change',()=>rebuildLabelsPreview(false));
+  btnLblPrev?.addEventListener('click',()=>{ if(lblPage>0){ lblPage--; updatePaginationDisplay(); } });
+  btnLblNext?.addEventListener('click',()=>{ if(lblPage<lblPagesCount-1){ lblPage++; updatePaginationDisplay(); } });
+  btnLabelsPrint?.addEventListener('click',()=>window.print());
+}
+
+async function rebuildLabelsList(){
+  const q=(labelSearch?.value||'').toLowerCase();
+  const rows=labelsAllItems.filter(i=>!q || [i.name,i.code,(i.tags||[]).join(' ')].join(' ').toLowerCase().includes(q))
+    .map(i=>`<div class="row"><label style="display:flex;align-items:center;gap:.5rem;flex:1"><input type="checkbox" class="lblRow" data-code="${esc(i.code)}" ${labelsSelected.has(i.code)?'checked':''}> <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.name)}</span></label><code>${esc(i.code)}</code></div>`).join('');
+  labelsList&&(labelsList.innerHTML=rows||'<div class="muted">Aucun article</div>');
+  labelsList?.querySelectorAll('.lblRow').forEach(cb=>{
+    cb.addEventListener('change',()=>{ const code=cb.dataset.code; if(cb.checked)labelsSelected.add(code); else labelsSelected.delete(code); updateLblSelInfo(); rebuildLabelsPreview(true); });
   });
-  if(labelsPreview){ labelsPreview.classList.add('labels-sheet'); labelsPreview.innerHTML=''; labelsPreview.appendChild(frag); }
+  updateLblSelInfo();
+}
+function updateLblSelInfo(){ lblSelInfo&&(lblSelInfo.textContent=`${labelsSelected.size} sélection(s)`); }
+
+function chunkArray(arr, size){ const out=[]; for(let i=0;i<arr.length;i+=size) out.push(arr.slice(i,i+size)); return out; }
+function mm(n){ return `${n}mm`; }
+
+async function rebuildLabelsPreview(resetPage){
+  const tmpl = LABEL_TEMPLATES[lblTemplate?.value||'avery-l7159'];
+  const module = parseFloat(lblDensity?.value||'2');
+  const namePt = parseInt(lblNameSize?.value||'11',10);
+  const showText = !!(lblShowText?.checked);
+
+  const selectedItems = labelsAllItems.filter(i=>labelsSelected.has(i.code));
+  const perPage = (tmpl.cols|0)*(tmpl.rows|0);
+  const pages = chunkArray(selectedItems, perPage);
+
+  labelsPages.innerHTML='';
+  pages.forEach((items,pageIndex)=>{
+    const page=document.createElement('div'); page.className='labels-page'; page.dataset.index=String(pageIndex);
+    const sheet=document.createElement('div'); sheet.className='labels-sheet';
+    sheet.style.gridTemplateColumns=`repeat(${tmpl.cols}, ${mm(tmpl.cellW)})`;
+    sheet.style.gridAutoRows=mm(tmpl.cellH);
+    sheet.style.columnGap=mm(tmpl.gapX);
+    sheet.style.rowGap=mm(tmpl.gapY);
+
+    items.forEach(it=>{
+      const card=document.createElement('div'); card.className='label-card';
+      // Nom
+      const name=document.createElement('div'); name.className='name'; name.textContent=it.name; name.style.fontSize=`${namePt}pt`; card.appendChild(name);
+      // Code lisible
+      const hr=document.createElement('div'); hr.className='hr'; hr.textContent=it.code; card.appendChild(hr);
+      // Code barre
+      const svg=(window.code39?.svg && window.code39.svg(it.code,{module:module,height:52,margin:4,showText:showText,fontSize:10})) || document.createElementNS('http://www.w3.org/2000/svg','svg');
+      card.appendChild(svg);
+      sheet.appendChild(card);
+    });
+
+    // si dernière page pas complète → on remplit avec blancs pour garder la grille alignée (optionnel)
+    const rest = perPage - items.length;
+    for(let k=0;k<rest;k++){ const empty=document.createElement('div'); empty.className='label-card'; empty.style.border='1px dashed transparent'; sheet.appendChild(empty); }
+
+    page.appendChild(sheet);
+    labelsPages.appendChild(page);
+  });
+
+  lblPagesCount = Math.max(1, pages.length||1);
+  if(resetPage) lblPage=0;
+  updatePaginationDisplay();
+}
+function updatePaginationDisplay(){
+  const pages=$$('.labels-page', labelsPages);
+  pages.forEach((p,i)=>p.classList.toggle('active', i===lblPage));
+  lblPageInfo&&(lblPageInfo.textContent=`Page ${Math.min(lblPage+1,lblPagesCount)} / ${lblPagesCount}`);
+  btnLblPrev.disabled = (lblPage<=0);
+  btnLblNext.disabled = (lblPage>=lblPagesCount-1);
+}
+
+/* APIs pour compat : déclenchées depuis l’onglet Articles */
+async function labelsSelectCodes(codes){
+  await loadLabelsData();
+  labelsSelected = new Set(codes.filter(Boolean));
+  await rebuildLabelsList();
+  await rebuildLabelsPreview(true);
 }
 
 /* ---------- Journal ---------- */
@@ -288,7 +308,7 @@ async function refreshLoansTable(){
 
 /* ---------- Paramètres ---------- */
 $('#btnExportFull')?.addEventListener('click',async()=>{ const blob=await dbExportFull(); const text=JSON.stringify(blob,null,2); downloadFile('gstock-export.json',text,'application/json'); });
-$('#btnImportJSON')?.addEventListener('click',async()=>{ try{ const [h]=await window.showOpenFilePicker({types:[{description:'JSON',accept:{'application/json':['.json']}}]}); const f=await h.getFile(); const text=await f.text(); const data=JSON.parse(text); await dbImportFull(data); announce('Import terminé'); await refreshTable(); await refreshJournal(); await refreshLoansTable(); await refreshHome(); }catch(e){ console.warn(e); alert('Import annulé / invalide'); }});
+$('#btnImportJSON')?.addEventListener('click',async()=>{ try{ const [h]=await window.showOpenFilePicker({types:[{description:'JSON',accept:{'application/json':['.json']}}]}); const f=await h.getFile(); const text=await f.text(); const data=JSON.parse(text); await dbImportFull(data); announce('Import terminé'); await refreshTable(); await refreshJournal(); await refreshLoansTable(); await refreshHome(); await maybeRefreshLabelsData(); }catch(e){ console.warn(e); alert('Import annulé / invalide'); }});
 const sharedFileStatus=$('#sharedFileStatus');
 $('#btnLinkSharedFile')?.addEventListener('click',async()=>{ if(!('showSaveFilePicker' in window))return alert('File System Access API non supportée.');
   const handle=await showSaveFilePicker({suggestedName:'gstock-shared.json',types:[{description:'JSON',accept:{'application/json':['.json']}}]});
