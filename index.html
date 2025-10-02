@@ -42,15 +42,17 @@
     input.btn,select.btn{appearance:none}
     code{background:rgba(0,0,0,.06);padding:.1rem .3rem;border-radius:.3rem}
     .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+    .chip{display:inline-flex;align-items:center;gap:.3rem;border:1px solid var(--bd);border-radius:999px;padding:.15rem .5rem;background:var(--bg);font-size:.8rem}
+    .chip .x{cursor:pointer}
 
-    /* Accueil (résumé) */
+    /* Accueil */
     .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
     .card{background:var(--elev);border:1px solid var(--bd);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;min-height:90px}
     .kpi{font-size:1.6rem;font-weight:700;line-height:1}
     @media (max-width:900px){ .cards{grid-template-columns:repeat(2,1fr)} }
     @media (max-width:520px){ .cards{grid-template-columns:1fr} }
 
-    /* Étiquettes (déjà v2.2.0) */
+    /* Étiquettes (v2.2 déjà) */
     .labels-layout{display:grid;grid-template-columns:280px 1fr;gap:12px}
     .labels-side{border:1px solid var(--bd);border-radius:.6rem;padding:.6rem;background:var(--elev);display:flex;flex-direction:column;gap:.5rem;max-height:70vh}
     .labels-list{flex:1;overflow:auto;border:1px dashed var(--bd);border-radius:.5rem;padding:.4rem;background:color-mix(in oklab, var(--elev) 90%, transparent)}
@@ -68,18 +70,20 @@
     .label-card .hr{font-size:8pt}
     .label-card svg{width:100%}
 
-    /* Dialog CSV */
-    dialog{border:1px solid var(--bd);border-radius:8px;padding:0;max-width:min(900px,95vw)}
-    dialog .hdr{display:flex;align-items:center;justify-content:space-between;padding:.75rem 1rem;border-bottom:1px solid var(--bd)}
-    dialog .cnt{padding:1rem}
-    dialog .ftr{display:flex;gap:.5rem;justify-content:flex-end;padding:1rem;border-top:1px solid var(--bd)}
-    .grid{display:grid;gap:.5rem}
-    .grid.two{grid-template-columns:1fr 1fr}
-    .grid.three{grid-template-columns:repeat(3,1fr)}
-    .note{color:var(--muted);font-size:.9rem}
+    @media print{
+      :root{--bg:#fff;--fg:#000;--bd:#000}
+      @page{size:A4;margin:10mm}
+      body{background:#fff;color:#000}
+      .topbar,nav,.toolbar,#tab-home,#tab-scanner,#tab-journal,#tab-gear,#tab-settings,.labels-side,.labels-options,.labels-pagination{display:none!important}
+      #tab-labels,#tab-stock,#tab-atelier{display:block!important}
+      .labels-pages{border:0;padding:0}
+      .labels-page{display:block!important;break-after:page}
+      .label-card{border:0}
+      .btn{display:none!important}
+    }
   </style>
   <script>
-    window.APP_VERSION='2.3.0';
+    window.APP_VERSION='2.4.0';
     (function(){
       const saved=localStorage.getItem('gstock.theme');
       const prefersDark=window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
@@ -95,7 +99,7 @@
         <div class="brand-left">
           <img src="icons/icon-192.png" alt="" width="28" height="28" style="border-radius:6px">
           <strong>Gstock</strong><span class="muted">— Gestion de stock</span>
-          <span class="pill muted">v<span id="appVersion">2.3.0</span></span>
+          <span class="pill muted">v<span id="appVersion">2.4.0</span></span>
         </div>
         <div class="toggle">
           <label for="themeToggle" class="muted">Thème</label>
@@ -109,7 +113,8 @@
 
       <nav aria-label="Onglets">
         <button data-tab="home" class="active"><span class="label">Accueil</span></button>
-        <button data-tab="items"><span class="label">Articles</span></button>
+        <button data-tab="stock"><span class="label">Stock</span></button>
+        <button data-tab="atelier"><span class="label">Matériel atelier</span></button>
         <button data-tab="scanner"><span class="label">Scanner</span></button>
         <button data-tab="labels"><span class="label">Étiquettes</span></button>
         <button data-tab="journal"><span class="label">Journal</span></button>
@@ -120,7 +125,7 @@
   </div>
 
   <main>
-    <!-- Accueil (résumé) -->
+    <!-- Accueil -->
     <section id="tab-home">
       <div class="cards">
         <div class="card"><h4>Total articles</h4><div id="kpiItems" class="kpi">—</div></div>
@@ -141,33 +146,65 @@
       </div>
     </section>
 
-    <!-- Articles (procure les étiquettes depuis “Actions de masse”) -->
-    <section id="tab-items" hidden>
-      <div class="toolbar sticky" id="articlesToolbar">
-        <button id="btnAddItem" class="btn primary">➕ Nouvel article</button>
-        <input id="searchItems" type="search" placeholder="Rechercher (nom, code, tag)…" class="btn" style="min-width:260px">
-        <select id="filterStatus" class="btn"><option value="">Tous statuts</option><option value="ok">OK</option><option value="low">Approche</option><option value="under">Sous seuil</option></select>
-        <select id="filterTag" class="btn"><option value="">Tous tags</option></select>
-        <button id="btnClearFilters" class="btn">Réinitialiser</button>
+    <!-- Stock -->
+    <section id="tab-stock" hidden>
+      <div class="toolbar sticky">
+        <button id="btnAddStock" class="btn primary">➕ Nouvel article (Stock)</button>
+        <input id="stockSearch" type="search" placeholder="Rechercher (nom, code, tag, emplacement)…" class="btn" style="min-width:260px">
+        <select id="stockStatus" class="btn"><option value="">Tous statuts</option><option value="ok">OK</option><option value="low">Approche</option><option value="under">Sous seuil</option></select>
+        <select id="stockTag" class="btn"><option value="">Tous tags</option></select>
+        <select id="stockLoc" class="btn"><option value="">Tous emplacements</option></select>
+        <button id="stockClear" class="btn">Réinitialiser</button>
       </div>
 
-      <div id="bulkBar" class="toolbar" hidden>
-        <strong id="bulkCount">0 sélection(s)</strong>
+      <div id="stockBulk" class="toolbar" hidden>
+        <strong id="stockBulkCount">0 sélection(s)</strong>
         <div style="display:flex;gap:.5rem">
-          <button id="bulkLabels" class="btn">🏷️ Étiquettes sélection</button>
-          <button id="bulkExport" class="btn">⬇️ Export CSV sélection</button>
-          <button id="bulkDelete" class="btn danger">🗑️ Supprimer</button>
+          <button id="stockBulkLabels" class="btn">🏷️ Étiquettes</button>
+          <button id="stockBulkExport" class="btn">⬇️ Export CSV</button>
+          <button id="stockBulkDelete" class="btn danger">🗑️ Supprimer</button>
         </div>
       </div>
 
-      <table aria-label="Table des articles">
+      <table aria-label="Table Stock">
         <thead>
           <tr>
-            <th style="width:34px"><input type="checkbox" id="selAll" aria-label="Tout sélectionner"></th>
-            <th>Nom</th><th>Code</th><th style="width:110px">Qté</th><th style="width:110px">Seuil</th><th>Tags</th><th style="width:120px">État</th><th style="width:220px">Actions</th>
+            <th style="width:34px"><input type="checkbox" id="stockSelAll" aria-label="Tout sélectionner"></th>
+            <th>Nom</th><th>Code</th><th style="width:110px">Qté</th><th style="width:110px">Seuil</th><th>Tags</th><th>Emplacement</th><th style="width:120px">État</th><th style="width:220px">Actions</th>
           </tr>
         </thead>
-        <tbody id="itemsTbody"></tbody>
+        <tbody id="stockTbody"></tbody>
+      </table>
+    </section>
+
+    <!-- Matériel atelier -->
+    <section id="tab-atelier" hidden>
+      <div class="toolbar sticky">
+        <button id="btnAddAtelier" class="btn primary">➕ Nouveau matériel (Atelier)</button>
+        <input id="atelierSearch" type="search" placeholder="Rechercher (nom, code, tag, emplacement)…" class="btn" style="min-width:260px">
+        <select id="atelierStatus" class="btn"><option value="">Tous statuts</option><option value="ok">OK</option><option value="low">Approche</option><option value="under">Sous seuil</option></select>
+        <select id="atelierTag" class="btn"><option value="">Tous tags</option></select>
+        <select id="atelierLoc" class="btn"><option value="">Tous emplacements</option></select>
+        <button id="atelierClear" class="btn">Réinitialiser</button>
+      </div>
+
+      <div id="atelierBulk" class="toolbar" hidden>
+        <strong id="atelierBulkCount">0 sélection(s)</strong>
+        <div style="display:flex;gap:.5rem">
+          <button id="atelierBulkLabels" class="btn">🏷️ Étiquettes</button>
+          <button id="atelierBulkExport" class="btn">⬇️ Export CSV</button>
+          <button id="atelierBulkDelete" class="btn danger">🗑️ Supprimer</button>
+        </div>
+      </div>
+
+      <table aria-label="Table Atelier">
+        <thead>
+          <tr>
+            <th style="width:34px"><input type="checkbox" id="atelierSelAll" aria-label="Tout sélectionner"></th>
+            <th>Nom</th><th>Code</th><th style="width:110px">Qté</th><th style="width:110px">Seuil</th><th>Tags</th><th>Emplacement</th><th style="width:120px">État</th><th style="width:220px">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="atelierTbody"></tbody>
       </table>
     </section>
 
@@ -182,7 +219,7 @@
       <p id="scanHint" class="muted" style="margin:.5rem 0 0">Visez le code-barres. Bip uniquement si l’article est reconnu. Les codes inconnus ne ferment pas la caméra.</p>
     </section>
 
-    <!-- Étiquettes (v2.2.0) -->
+    <!-- Étiquettes (v2.2.0 déjà) -->
     <section id="tab-labels" hidden>
       <div class="labels-layout">
         <aside class="labels-side">
@@ -245,17 +282,18 @@
       <table aria-label="Journal des mouvements"><thead><tr><th>Date/heure</th><th>Type</th><th>Code</th><th>Nom</th><th>Qté</th><th>Note</th></tr></thead><tbody id="journalTbody"></tbody></table>
     </section>
 
-    <!-- Paramètres (Aide + Import CSV avec mappage) -->
-    <section id="tab-settings" hidden>
-      <h3>Aide intégrée</h3>
-      <div style="border:1px solid var(--bd);border-radius:.6rem;padding:.8rem;background:var(--elev);line-height:1.5">
-        <p><strong>Pourquoi Gstock ?</strong> Cette application PWA 100% front-end permet de gérer simplement le stock du CFA : scan des codes-barres, entrées/sorties, seuils d’alerte, étiquettes prêtes à imprimer, et journal des mouvements pour la traçabilité.</p>
-        <p><strong>Utilisation multi-appareils.</strong> Gstock fonctionne hors ligne. Sur plusieurs appareils, vous pouvez partager un fichier JSON (Desktop) ou connecter une synchronisation (GitHub, serveur) pour garder les données alignées. En cas de doute, exportez régulièrement un JSON.</p>
-        <p><strong>Scanner & accessibilité.</strong> Le bip ne sonne que si l’article est reconnu. Les éléments sont étiquetés pour les lecteurs d’écran et l’interface s’adapte au thème clair/sombre. Les seuils et le “buffer” aident à repérer rapidement les manques.</p>
-        <p><strong>Mises à jour PWA.</strong> Après une mise à jour, utilisez “Réinitialiser cache PWA” pour forcer le rafraîchissement si besoin. Le bandeau “Nouvelle version” peut aussi apparaître automatiquement.</p>
+    <!-- Prêts -->
+    <section id="tab-gear" hidden>
+      <div class="toolbar">
+        <button id="btnNewLoan" class="btn primary">Nouvel emprunt</button>
+        <input id="searchLoans" type="search" placeholder="Rechercher emprunts…" class="btn">
       </div>
+      <table aria-label="Table des emprunts"><thead><tr><th>Article</th><th>Code</th><th>À</th><th>Prévu retour</th><th>État</th><th>Actions</th></tr></thead><tbody id="loansTbody"></tbody></table>
+    </section>
 
-      <h3 style="margin-top:1rem">Sauvegarde et paramètres</h3>
+    <!-- Paramètres -->
+    <section id="tab-settings" hidden>
+      <h3>Paramètres généraux</h3>
       <div class="toolbar">
         <button id="btnImportJSON" class="btn">Importer JSON</button>
         <button id="btnExportFull" class="btn">Exporter JSON</button>
@@ -267,8 +305,11 @@
         <label>Buffer d’alerte :
           <input id="inputBuffer" type="number" min="0" value="0" class="btn" style="width:6rem">
         </label>
-        <label>Tags prédéfinis :
-          <input id="inputDefaultTags" class="btn" placeholder="ex: TP, Atelier, Éclairage">
+        <label>Tags Stock (prédéfinis, virgules) :
+          <input id="inputTagsStock" class="btn" placeholder="ex: TP, Éclairage, Câblage">
+        </label>
+        <label>Tags Atelier (prédéfinis, virgules) :
+          <input id="inputTagsAtelier" class="btn" placeholder="ex: Mesure, Sécurité, Machines">
         </label>
         <button id="btnSaveSettings" class="btn primary">Enregistrer</button>
       </div>
@@ -282,24 +323,14 @@
       <div class="toolbar">
         <button id="btnResetCache" class="btn danger">Réinitialiser cache PWA</button>
       </div>
-
-      <h3 style="margin-top:1rem">Import CSV (Articles) — Assistant de mappage</h3>
-      <div class="toolbar">
-        <input id="inputCSV" type="file" accept=".csv,text/csv" class="btn" style="padding:.4rem" />
-        <button id="btnOpenCsvMap" class="btn primary">Mapper & Importer…</button>
-        <span class="muted">Colonnes attendues&nbsp;: au minimum <code>Nom</code> et <code>Code</code>. Qté/Seuil/Tags sont optionnels.</span>
-      </div>
-
-      <div class="toolbar">
-        <button id="btnLoadDemo" class="btn">Charger la mini base de démo</button>
-      </div>
     </section>
   </main>
 
-  <!-- Dialog nouvel article (existant) -->
+  <!-- Dialog : Nouvel article/matériel -->
   <dialog id="newItemDialog">
-    <form method="dialog" style="min-width:320px">
-      <h3 style="margin:.2rem 0 1rem">Nouvel article</h3>
+    <form method="dialog" style="min-width:330px">
+      <h3 style="margin:.2rem 0 1rem" id="niTitle">Nouvel élément</h3>
+      <input type="hidden" id="niType" value="stock">
       <div style="display:grid;gap:.5rem">
         <label>Nom<br><input id="niName" class="btn" required></label>
         <label>Code<br>
@@ -312,7 +343,18 @@
           <label>Qté<br><input id="niQty" class="btn" type="number" min="0" value="0" required></label>
           <label>Seuil<br><input id="niThr" class="btn" type="number" min="0" value="0" required></label>
         </div>
-        <label>Tags (virgules)<br><input id="niTags" class="btn" placeholder="TP, Atelier"></label>
+        <label>Emplacement<br>
+          <input id="niLoc" class="btn" list="locList" placeholder="ex: Stock atelier — Étagère 1">
+          <datalist id="locList"></datalist>
+        </label>
+        <fieldset style="border:1px solid var(--bd);border-radius:.5rem;padding:.5rem">
+          <legend style="padding:0 .4rem">Tags prédéfinis (<span id="niTagCategory">Stock</span>)</legend>
+          <div id="niTagChecks" style="display:flex;flex-wrap:wrap;gap:.5rem"></div>
+          <div style="display:flex;gap:.4rem;margin-top:.4rem">
+            <input id="niTagsExtra" class="btn" placeholder="Tags supplémentaires (virgules)">
+            <button id="niTagsClear" type="button" class="btn">Tout décocher</button>
+          </div>
+        </fieldset>
       </div>
       <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">
         <button class="btn" value="cancel">Annuler</button>
@@ -321,66 +363,23 @@
     </form>
   </dialog>
 
-  <!-- Dialog Import CSV + Mapping -->
-  <dialog id="csvMapDialog" aria-labelledby="csvMapTitle">
-    <div class="hdr">
-      <strong id="csvMapTitle">Import CSV — Mappage des colonnes</strong>
-      <button id="csvClose" class="btn">Fermer</button>
-    </div>
-    <div class="cnt">
-      <div class="grid three">
-        <label>Détecteur de séparateur<br>
-          <select id="csvDelimiter" class="btn">
-            <option value="auto">Auto (recommandé)</option>
-            <option value=",">Virgule (,)</option>
-            <option value=";">Point-virgule (;)</option>
-            <option value="\t">Tabulation (TAB)</option>
-          </select>
-        </label>
-        <label>Ligne d’en-tête<br>
-          <select id="csvHeader" class="btn">
-            <option value="1">Oui — première ligne = noms de colonnes</option>
-            <option value="0">Non — pas d’en-tête</option>
-          </select>
-        </label>
-        <label>Séparateur des tags<br>
-          <select id="csvTagSep" class="btn">
-            <option value=",">Virgule (,)</option>
-            <option value=";">Point-virgule (;)</option>
-            <option value="|">Barre verticale (|)</option>
-            <option value="auto">Auto</option>
-          </select>
-        </label>
+  <!-- Dialog Ajustement -->
+  <dialog id="adjustDialog" aria-labelledby="adjTitle">
+    <form method="dialog" style="min-width:320px">
+      <h3 id="adjTitle" style="margin:.2rem 0 1rem">Ajuster le stock</h3>
+      <div id="dlgItem" class="muted" style="margin-bottom:.5rem"></div>
+      <label>Type de mouvement<br>
+        <select id="dlgType" class="btn"><option value="add">Entrée</option><option value="remove">Sortie</option></select>
+      </label>
+      <div style="display:flex;gap:.5rem;margin-top:.5rem">
+        <label>Quantité<br><input id="dlgQty" class="btn" type="number" min="1" value="1"></label>
+        <label>Note<br><input id="dlgNote" class="btn" placeholder="Motif"></label>
       </div>
-
-      <h4 style="margin:.8rem 0 .4rem">Associer les colonnes</h4>
-      <div class="grid two">
-        <label>Nom (obligatoire)<br><select id="mapName" class="btn"></select></label>
-        <label>Code (obligatoire)<br><select id="mapCode" class="btn"></select></label>
-        <label>Quantité (optionnel)<br><select id="mapQty" class="btn"></select></label>
-        <label>Seuil (optionnel)<br><select id="mapThr" class="btn"></select></label>
-        <label>Tags (optionnel)<br><select id="mapTags" class="btn"></select></label>
-        <label>Comportement doublons<br>
-          <select id="csvDup" class="btn">
-            <option value="upsert">Créer ou mettre à jour (recommandé)</option>
-            <option value="create">Créer uniquement (ignorer si déjà présent)</option>
-          </select>
-        </label>
+      <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">
+        <button id="dlgClose" class="btn" value="cancel">Annuler</button>
+        <button id="dlgValidate" class="btn primary" value="default">Valider</button>
       </div>
-
-      <h4 style="margin:.8rem 0 .4rem">Aperçu</h4>
-      <div class="note">Aperçu des 20 premières lignes après mappage. Contrôlez les colonnes avant d’importer.</div>
-      <div style="max-height:260px;overflow:auto;border:1px solid var(--bd);border-radius:.6rem;margin-top:.4rem">
-        <table style="width:100%;border-collapse:collapse">
-          <thead><tr id="csvPrevHead"></tr></thead>
-          <tbody id="csvPrevBody"></tbody>
-        </table>
-      </div>
-      <div id="csvSummary" class="note" style="margin-top:.4rem"></div>
-    </div>
-    <div class="ftr">
-      <button id="csvImport" class="btn primary">Importer</button>
-    </div>
+    </form>
   </dialog>
 
   <div id="sr" class="sr-only" aria-live="polite"></div>
@@ -390,7 +389,7 @@
   <script src="js/barcode.js?v=2.1.7"></script>
   <script src="js/code39.js?v=2.1.7"></script>
   <script src="js/sync-github.js?v=2.1.7"></script>
-  <script src="js/app.js?v=2.3.0"></script>
+  <script src="js/app.js?v=2.4.0"></script>
 
   <script>
     if ('serviceWorker' in navigator) {
