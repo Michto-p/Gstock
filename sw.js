@@ -1,5 +1,5 @@
 /* Gstock - sw.js v2.4.0 */
-const CACHE='gstock-2.4.0';
+const CACHE='gstock-2.4.0.2';
 const APP_SHELL=[
   './',
   'index.html',
