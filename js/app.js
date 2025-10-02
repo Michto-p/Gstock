@@ -1,4 +1,4 @@
-/* Gstock - app.js v2.3.0 (Paramètres : aide + import CSV avec mappage) */
+/* Gstock - app.js v2.4.0 (Stock/Atelier + tags à cocher + emplacement) */
 (()=>{'use strict';
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>Array.from(r.querySelectorAll(s)), sr=$('#sr');
 
@@ -12,23 +12,26 @@ if(themeToggle){ themeToggle.value=(localStorage.getItem('gstock.theme')||'auto'
 }
 
 /* Tabs */
-const sections={home:$('#tab-home'),items:$('#tab-items'),scanner:$('#tab-scanner'),labels:$('#tab-labels'),journal:$('#tab-journal'),gear:$('#tab-gear'),settings:$('#tab-settings')};
+const sections={home:$('#tab-home'),stock:$('#tab-stock'),atelier:$('#tab-atelier'),scanner:$('#tab-scanner'),labels:$('#tab-labels'),journal:$('#tab-journal'),gear:$('#tab-gear'),settings:$('#tab-settings')};
 $$('nav button[data-tab]').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
 async function showTab(name){
   Object.entries(sections).forEach(([k,el])=>el&&(el.hidden=k!==name));
   $$('nav button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));
   if(name==='home')await refreshHome();
-  if(name==='items')await refreshTable();
+  if(name==='stock')await refreshTable('stock');
+  if(name==='atelier')await refreshTable('atelier');
   if(name==='labels')await initLabelsPanel?.();
   if(name==='journal')await refreshJournal();
   if(name==='gear')await refreshLoansTable();
   if(name==='settings')initSettingsPanel();
 }
-function announce(msg){ sr&&(sr.textContent=''); setTimeout(()=>{ sr&&(sr.textContent=msg); },10); }
+
+/* Utils */
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+function announce(msg){ sr&&(sr.textContent=''); setTimeout(()=>{ sr&&(sr.textContent=msg); },10); }
 function downloadFile(name,data,type){ const blob=new Blob([data],{type}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),3000); }
 
-/* Name→Code helper */
+/* Name→Code (slug intelligent) */
 function deaccent(s){ try{ return s.normalize('NFD').replace(/\p{Diacritic}/gu,''); }catch(_){ return s; } }
 function nameToCode(name){
   const stop=new Set(['le','la','les','des','du','de','d','l','un','une','pour','et','sur','avec','en','à','au','aux','the','of','for']);
@@ -42,9 +45,10 @@ function nameToCode(name){
 }
 async function generateCodeFromName(name){ const base=nameToCode(name); let c=base, n=2; while(await dbGet(c)||await dbGet(c.toUpperCase())||await dbGet(c.toLowerCase())) c=`${base}-${n++}`; return c; }
 
-/* -------- Accueil (résumé) -------- */
+/* Accueil */
 async function refreshHome(){
-  const items=await dbList(); const set=await dbGetSettings(); const buf=(set?.buffer|0);
+  const items=await dbList();
+  const set=await dbGetSettings(); const buf=(set?.buffer|0);
   $('#kpiItems')&&( $('#kpiItems').textContent=String(items.length) );
   $('#kpiQty')&&( $('#kpiQty').textContent=String(items.reduce((s,i)=>s+(i.qty|0),0)) );
   $('#kpiUnder')&&( $('#kpiUnder').textContent=String(items.filter(i=>(i.qty|0)<=(i.threshold|0)).length) );
@@ -55,62 +59,88 @@ async function refreshHome(){
   const recent=await dbListMoves({from:0,to:Infinity,limit:8}); const ul=$('#recentMoves'); if(ul){ ul.innerHTML=(recent.map(m=>`<li>${new Date(m.ts).toLocaleString()} • <strong>${esc(m.type)}</strong> <code>${esc(m.code)}</code> ×${m.qty}</li>`).join(''))||'<li class="muted">Aucun mouvement</li>'; }
 }
 
-/* -------- Articles (résumé des actions utiles) -------- */
-const itemsTbody=$('#itemsTbody'), searchItems=$('#searchItems'), filterStatus=$('#filterStatus'), filterTag=$('#filterTag');
-const selAll=$('#selAll'), bulkBar=$('#bulkBar'), bulkCount=$('#bulkCount');
-const bulkExport=$('#bulkExport'), bulkDelete=$('#bulkDelete'), bulkLabels=$('#bulkLabels');
-let selectedArticles=new Set();
-
-$('#btnAddItem')?.addEventListener('click',()=>{ $('#niName').value=''; $('#niCode').value=''; $('#niQty').value='0'; $('#niThr').value='0'; $('#niTags').value=''; $('#newItemDialog').showModal(); setTimeout(()=>$('#niName').focus(),0); });
-$('#niGen')?.addEventListener('click',async()=>{ const n=$('#niName').value.trim(); if(!n)return; $('#niCode').value=await generateCodeFromName(n); });
-$('#niName')?.addEventListener('blur',async()=>{ const n=$('#niName').value.trim(); if(!$('#niCode').value.trim() && n){ $('#niCode').value=await generateCodeFromName(n);} });
-$('#niSave')?.addEventListener('click',async(e)=>{
-  e.preventDefault();
-  const name=$('#niName').value.trim(), code=$('#niCode').value.trim();
-  if(!name||!code) return;
-  const qty=Math.max(0,parseInt($('#niQty').value||'0',10)), threshold=Math.max(0,parseInt($('#niThr').value||'0',10));
-  const tags=($('#niTags').value||'').split(',').map(t=>t.trim()).filter(Boolean);
-  await dbPut({id:code,code,name,qty,threshold,tags,updated:Date.now()});
-  $('#newItemDialog').close(); announce(`Article créé • ${name} (${code})`);
-  await refreshTable(); await refreshHome();
-});
-
-let searchTimer=null;
-searchItems?.addEventListener('input',()=>{ clearTimeout(searchTimer); searchTimer=setTimeout(()=>refreshTable(),100); });
-filterStatus?.addEventListener('change',refreshTable); filterTag?.addEventListener('change',refreshTable);
-$('#btnClearFilters')?.addEventListener('click',()=>{ if(searchItems)searchItems.value=''; if(filterStatus)filterStatus.value=''; if(filterTag)filterTag.value=''; refreshTable(); });
-
-function statusBadge(it,buffer=0){ const s=(it.qty|0)-(it.threshold|0);
+/* ---- Etat & helpers UI ---- */
+function statusBadge(it,buffer=0){
+  const s=(it.qty|0)-(it.threshold|0);
   if((it.qty|0)<=(it.threshold|0))return `<span class="badge under">Sous seuil</span>`;
   if(s<=(buffer|0))return `<span class="badge low">Approche</span>`;
   return `<span class="badge ok">OK</span>`;
 }
-async function refreshTable(){
-  if(!itemsTbody)return;
-  const q=(searchItems?.value||'').toLowerCase(), tag=filterTag?.value||'', st=filterStatus?.value||'', buffer=(await dbGetSettings()).buffer|0;
-  const list=await dbList(); const allTags=new Set(); list.forEach(i=>(i.tags||[]).forEach(t=>allTags.add(t)));
-  if(filterTag){ const cur=filterTag.value; filterTag.innerHTML=`<option value="">Tous tags</option>`+[...allTags].sort().map(t=>`<option ${t===cur?'selected':''}>${esc(t)}</option>`).join(''); }
-  const filtered=list.filter(it=>{
-    const inQ=!q||[it.name,it.code,(it.tags||[]).join(' ')].join(' ').toLowerCase().includes(q);
+function getTypeLabel(t){ return t==='atelier'?'Atelier':'Stock'; }
+function ensureType(it){ return it.type||'stock'; }
+
+/* ---- Tables (Stock & Atelier) ---- */
+const state={
+  stock:{ sel:new Set(), q:'', status:'', tag:'', loc:'' },
+  atelier:{ sel:new Set(), q:'', status:'', tag:'', loc:'' }
+};
+const els={
+  stock:{ tbody:$('#stockTbody'), search:$('#stockSearch'), status:$('#stockStatus'), tag:$('#stockTag'), loc:$('#stockLoc'),
+          selAll:$('#stockSelAll'), bulk:$('#stockBulk'), bulkCount:$('#stockBulkCount'),
+          bulkLabels:$('#stockBulkLabels'), bulkExport:$('#stockBulkExport'), bulkDelete:$('#stockBulkDelete'),
+          btnAdd:$('#btnAddStock'), btnClear:$('#stockClear') },
+  atelier:{ tbody:$('#atelierTbody'), search:$('#atelierSearch'), status:$('#atelierStatus'), tag:$('#atelierTag'), loc:$('#atelierLoc'),
+          selAll:$('#atelierSelAll'), bulk:$('#atelierBulk'), bulkCount:$('#atelierBulkCount'),
+          bulkLabels:$('#atelierBulkLabels'), bulkExport:$('#atelierBulkExport'), bulkDelete:$('#atelierBulkDelete'),
+          btnAdd:$('#btnAddAtelier'), btnClear:$('#atelierClear') }
+};
+
+Object.entries(els).forEach(([type, e])=>{
+  e.search?.addEventListener('input',debounced(()=>{ state[type].q=e.search.value||''; refreshTable(type); },120));
+  e.status?.addEventListener('change',()=>{ state[type].status=e.status.value||''; refreshTable(type); });
+  e.tag?.addEventListener('change',()=>{ state[type].tag=e.tag.value||''; refreshTable(type); });
+  e.loc?.addEventListener('change',()=>{ state[type].loc=e.loc.value||''; refreshTable(type); });
+  e.btnClear?.addEventListener('click',()=>{ state[type]={...state[type], q:'',status:'',tag:'',loc:''}; if(e.search)e.search.value=''; if(e.status)e.status.value=''; if(e.tag)e.tag.value=''; if(e.loc)e.loc.value=''; refreshTable(type); });
+  e.selAll?.addEventListener('change',()=>{ e.tbody?.querySelectorAll('input.rowSel').forEach(cb=>{ cb.checked=e.selAll.checked; cb.dispatchEvent(new Event('change')); }); });
+  e.bulkDelete?.addEventListener('click',async()=>{ const s=state[type].sel; if(!s.size) return; if(!confirm(`Supprimer ${s.size} élément(s) ?`))return; for(const code of s){ await dbDelete(code); } s.clear(); await refreshTable(type); announce('Éléments supprimés'); });
+  e.bulkExport?.addEventListener('click',async()=>{ const s=state[type].sel; if(!s.size) return; const items=[]; for(const code of s){ const it=await dbGet(code); if(it&&ensureType(it)===type)items.push(it); } const header='type,name,code,qty,threshold,tags,location\n'; const rows=items.map(i=>[ensureType(i),i.name,i.code,(i.qty|0),(i.threshold|0),(i.tags||[]).join('|'),i.location||''].map(v=>String(v).replace(/"/g,'""')).map(v=>`"${v}"`).join(',')).join('\n'); downloadFile(`${type}-selection.csv`, header+rows+'\n', 'text/csv'); });
+  e.bulkLabels?.addEventListener('click',async()=>{ const s=state[type].sel; if(!s.size) return; await labelsSelectCodes?.(Array.from(s)); showTab('labels'); });
+  e.btnAdd?.addEventListener('click',()=>openNewDialog(type));
+});
+
+function debounced(fn,ms){ let t=null; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; }
+
+async function refreshTable(type){
+  const e=els[type]; if(!e||!e.tbody) return;
+  const set=await dbGetSettings(); const buffer=(set?.buffer|0);
+  const list=await dbList();
+  const all = list.map(i=>({...i, type:ensureType(i)})).filter(i=>i.type===type);
+
+  // fill filters content
+  const tagsSet=new Set(), locSet=new Set();
+  all.forEach(i=>{ (i.tags||[]).forEach(t=>tagsSet.add(t)); if(i.location) locSet.add(i.location); });
+  const curTag=e.tag?.value||''; const curLoc=e.loc?.value||'';
+  if(e.tag) e.tag.innerHTML=`<option value="">Tous tags</option>`+[...tagsSet].sort().map(t=>`<option ${t===curTag?'selected':''}>${esc(t)}</option>`).join('');
+  if(e.loc) e.loc.innerHTML=`<option value="">Tous emplacements</option>`+[...locSet].sort().map(l=>`<option ${l===curLoc?'selected':''}>${esc(l)}</option>`).join('');
+
+  // apply filters
+  const q=(state[type].q||'').toLowerCase(), st=state[type].status||'', tag=state[type].tag||'', loc=state[type].loc||'';
+  const filtered=all.filter(it=>{
+    const inQ=!q||[it.name,it.code,(it.tags||[]).join(' '),it.location||''].join(' ').toLowerCase().includes(q);
     const inTag=!tag||(it.tags||[]).includes(tag);
+    const inLoc=!loc||(it.location||'')===loc;
     let stOK=true;
     if(st==='ok')stOK=(it.qty>it.threshold && (it.qty-it.threshold)>(buffer|0));
     if(st==='low')stOK=(it.qty>it.threshold && (it.qty-it.threshold)<=(buffer|0));
     if(st==='under')stOK=(it.qty<=it.threshold);
-    return inQ&&inTag&&stOK;
+    return inQ&&inTag&&inLoc&&stOK;
   });
+
+  // rows
   const rows=filtered.map(it=>`<tr>
-    <td><input type="checkbox" class="rowSel" data-code="${esc(it.code)}" ${selectedArticles.has(it.code)?'checked':''}></td>
-    <td>${esc(it.name)}</td><td><code>${esc(it.code)}</code></td>
+    <td><input type="checkbox" class="rowSel" data-code="${esc(it.code)}" ${state[type].sel.has(it.code)?'checked':''}></td>
+    <td>${esc(it.name)}</td>
+    <td><code>${esc(it.code)}</code> <span class="pill muted" style="font-size:.7rem">${getTypeLabel(type)}</span></td>
     <td>
       <div style="display:flex;gap:.3rem;align-items:center">
         <button class="btn" data-qa="-1" data-code="${esc(it.code)}" title="Retirer 1">−1</button>
-        <strong>${it.qty}</strong>
+        <strong>${it.qty|0}</strong>
         <button class="btn" data-qa="+1" data-code="${esc(it.code)}" title="Ajouter 1">+1</button>
       </div>
     </td>
-    <td>${it.threshold}</td>
+    <td>${it.threshold|0}</td>
     <td>${(it.tags||[]).map(t=>`<span class="pill">${esc(t)}</span>`).join(' ')}</td>
+    <td>${esc(it.location||'')}</td>
     <td>${statusBadge(it,buffer)}</td>
     <td>
       <button class="btn" data-act="adj" data-code="${esc(it.code)}">Ajuster…</button>
@@ -118,54 +148,96 @@ async function refreshTable(){
       <button class="btn danger" data-act="del" data-code="${esc(it.code)}">Suppr.</button>
     </td>
   </tr>`).join('');
-  itemsTbody.innerHTML=rows||`<tr><td colspan="8" class="muted">Aucun article</td></tr>`;
+
+  e.tbody.innerHTML=rows||`<tr><td colspan="9" class="muted">Aucun élément</td></tr>`;
+
   // binds
-  itemsTbody.querySelectorAll('button[data-act]').forEach(btn=>{
+  e.tbody.querySelectorAll('button[data-act]').forEach(btn=>{
     const code=btn.dataset.code;
     if(btn.dataset.act==='adj') btn.onclick=()=>openAdjustDialog({code});
     if(btn.dataset.act==='hist') btn.onclick=()=>openHistory(code);
-    if(btn.dataset.act==='del') btn.onclick=async()=>{ if(confirm('Supprimer cet article ?')){ await dbDelete(code); selectedArticles.delete(code); await refreshTable(); announce('Article supprimé'); } };
+    if(btn.dataset.act==='del') btn.onclick=async()=>{ if(confirm('Supprimer cet élément ?')){ await dbDelete(code); state[type].sel.delete(code); await refreshTable(type); announce('Élément supprimé'); } };
   });
-  itemsTbody.querySelectorAll('button[data-qa]').forEach(btn=>{
+  e.tbody.querySelectorAll('button[data-qa]').forEach(btn=>{
     btn.onclick=async()=>{
-      const code=btn.dataset.code; const delta=(btn.dataset.qa==='+1')?+1:-1;
+      const code=btn.dataset.code; const delta = (btn.dataset.qa==='+1')?+1:-1;
       const it=await dbGet(code)||await dbGet(code.toUpperCase())||await dbGet(code.toLowerCase()); if(!it)return;
-      await dbAdjustQty(it.code,delta);
-      await dbAddMove({ts:Date.now(),type:(delta>0?'ENTRY':'EXIT'),code:it.code,name:it.name,qty:Math.abs(delta),note:'ajustement rapide'});
-      announce(`${delta>0?'+1':'−1'} → ${it.name}`); await refreshTable(); await refreshHome();
+      await dbAdjustQty(it.code, delta);
+      await dbAddMove({ts:Date.now(),type:(delta>0?'ENTRY':'EXIT'),code:it.code,name:it.name,qty:Math.abs(delta),note:`ajustement rapide (${getTypeLabel(ensureType(it))})`});
+      announce(`${delta>0?'+1':'−1'} → ${it.name}`); await refreshTable(type); await refreshHome();
     };
   });
-  itemsTbody.querySelectorAll('input.rowSel').forEach(cb=>{
-    cb.addEventListener('change',()=>{ const code=cb.dataset.code; if(cb.checked)selectedArticles.add(code); else selectedArticles.delete(code); updateBulkBar(); });
+  e.tbody.querySelectorAll('input.rowSel').forEach(cb=>{
+    cb.addEventListener('change',()=>{ const code=cb.dataset.code; if(cb.checked)state[type].sel.add(code); else state[type].sel.delete(code); updateBulk(type); });
   });
-  selAll && (selAll.checked = filtered.length>0 && filtered.every(it=>selectedArticles.has(it.code)));
-  selAll?.addEventListener('change',()=>{ itemsTbody?.querySelectorAll('input.rowSel').forEach(cb=>{ cb.checked=selAll.checked; cb.dispatchEvent(new Event('change')); }); });
-  updateBulkBar();
+  e.selAll && (e.selAll.checked = filtered.length>0 && filtered.every(it=>state[type].sel.has(it.code)));
+  updateBulk(type);
 }
-function updateBulkBar(){ const n=[...selectedArticles].length; if(!bulkBar)return; bulkBar.hidden=(n===0); bulkCount&&(bulkCount.textContent=`${n} sélection(s)`); }
-bulkDelete?.addEventListener('click',async()=>{ if(selectedArticles.size===0)return; if(!confirm(`Supprimer ${selectedArticles.size} article(s) ?`))return; for(const code of selectedArticles){ await dbDelete(code); } selectedArticles.clear(); await refreshTable(); announce('Articles supprimés'); });
-bulkExport?.addEventListener('click',async()=>{ if(selectedArticles.size===0)return; const items=[]; for(const code of selectedArticles){ const it=await dbGet(code); if(it)items.push(it); } const header='name,code,qty,threshold,tags\n'; const rows=items.map(i=>[i.name,i.code,(i.qty|0),(i.threshold|0),(i.tags||[]).join('|')].map(v=>String(v).replace(/"/g,'""')).map(v=>`"${v}"`).join(',')).join('\n'); downloadFile('articles-selection.csv', header+rows+'\n', 'text/csv'); });
-bulkLabels?.addEventListener('click',async()=>{ if(selectedArticles.size===0)return; await labelsSelectCodes?.(Array.from(selectedArticles)); showTab('labels'); });
+function updateBulk(type){
+  const e=els[type]; const n=state[type].sel.size; if(!e||!e.bulk)return; e.bulk.hidden=(n===0); if(e.bulkCount) e.bulkCount.textContent=`${n} sélection(s)`;
+}
 
 /* Historique simple */
 async function openHistory(code){ const item=(await dbGet(code))||(await dbGet(code.toUpperCase()))||(await dbGet(code.toLowerCase()));
-  const moves=await dbListMoves({code:item?.code||code,limit:100}); const loans=await dbListLoansByCode(item?.code||code);
+  const moves=await dbListMoves({code:item?.code||code,limit:100}); const loans=await dbListLoansByCode?.(item?.code||code) || [];
   alert(`Historique "${item?.name||code}"\n\nMouvements: ${moves.length}\nEmprunts (actifs+clos): ${loans.length}`); }
 
-/* -------- Ajustement dialog -------- */
+/* Dialog Ajustement */
 const dlg=$('#adjustDialog'), dlgType=$('#dlgType'), dlgQty=$('#dlgQty'), dlgNote=$('#dlgNote'), dlgItem=$('#dlgItem'); let dlgState={code:null};
 $('#dlgClose')?.addEventListener('click',()=>dlg?.close()); $('#dlgValidate')?.addEventListener('click',onValidateAdjust);
-async function openAdjustDialog({code=null,type='add'}={}){ if(!code)code=prompt('Code article ?'); if(!code)return;
-  const item=(await dbGet(code))||(await dbGet(code.toUpperCase()))||(await dbGet(code.toLowerCase())); if(!item)return alert('Article introuvable');
+async function openAdjustDialog({code=null,type='add'}={}){ if(!code)code=prompt('Code ?'); if(!code)return;
+  const item=(await dbGet(code))||(await dbGet(code.toUpperCase()))||(await dbGet(code.toLowerCase())); if(!item)return alert('Introuvable');
   dlgState.code=item.code; dlgType.value=type; dlgQty.value=1; dlgNote.value=''; dlgItem.textContent=`${item.name} (${item.code}) — Stock actuel: ${item.qty}`; dlg.showModal();
 }
-async function onValidateAdjust(){ const type=dlgType.value; const qty=Math.max(1,parseInt(dlgQty.value||'1',10)); const note=dlgNote.value||''; const item=await dbGet(dlgState.code); if(!item)return dlg.close(); const delta=(type==='add')?qty:-qty; await dbAdjustQty(item.code,delta); await dbAddMove({ts:Date.now(),type:(type==='add'?'ENTRY':'EXIT'),code:item.code,name:item.name,qty,note}); announce(`${type==='add'?'Ajout':'Retrait'}: ${qty} → ${item.name}`); dlg.close(); await refreshTable(); await refreshHome(); }
+async function onValidateAdjust(){ const type=dlgType.value; const qty=Math.max(1,parseInt(dlgQty.value||'1',10)); const note=dlgNote.value||''; const item=await dbGet(dlgState.code); if(!item)return dlg.close(); const delta=(type==='add')?qty:-qty; await dbAdjustQty(item.code,delta); await dbAddMove({ts:Date.now(),type:(type==='add'?'ENTRY':'EXIT'),code:item.code,name:item.name,qty,note}); announce(`${type==='add'?'Ajout':'Retrait'}: ${qty} → ${item.name}`); dlg.close(); await refreshTable(ensureType(item)); await refreshHome(); }
 
-/* -------- Étiquettes (v2.2.0) — stubs publics utilisés par Articles -------- */
-async function initLabelsPanel(){ /* no-op ici; impl. déjà dans v2.2.0 si présent */ }
+/* Création : tags à cocher + emplacement */
+const newItemDialog=$('#newItemDialog'); const niTitle=$('#niTitle'), niType=$('#niType'), niName=$('#niName'), niCode=$('#niCode'), niQty=$('#niQty'), niThr=$('#niThr'), niLoc=$('#niLoc'), niTagChecks=$('#niTagChecks'), niTagsExtra=$('#niTagsExtra'), niTagCat=$('#niTagCategory');
+$('#niGen')?.addEventListener('click',async()=>{ const n=niName.value.trim(); if(!n)return; niCode.value=await generateCodeFromName(n); });
+niName?.addEventListener('blur',async()=>{ const n=niName.value.trim(); if(!niCode.value.trim() && n){ niCode.value=await generateCodeFromName(n);} });
+$('#niTagsClear')?.addEventListener('click',()=>{ niTagChecks.querySelectorAll('input[type="checkbox"]').forEach(cb=>cb.checked=false); });
+
+async function openNewDialog(type='stock'){
+  niType.value=type;
+  niTitle.textContent = (type==='atelier'?'Nouveau matériel (Atelier)':'Nouvel article (Stock)');
+  niTagCat.textContent = (type==='atelier'?'Atelier':'Stock');
+
+  // suggestions d’emplacements (datalist)
+  const items=await dbList(); const locs=[...new Set(items.map(i=>i.location).filter(Boolean))].sort();
+  const dl=$('#locList'); if(dl){ dl.innerHTML=locs.map(l=>`<option value="${esc(l)}">`).join(''); }
+
+  // checkboxes de tags (issus des paramètres)
+  const set=await dbGetSettings();
+  const defaults = (type==='atelier'?(set.defaultTagsAtelier||[]):(set.defaultTagsStock||[]));
+  niTagChecks.innerHTML = (defaults.length?defaults:[]).map(t=>`<label class="chip"><input type="checkbox" value="${esc(t)}"> ${esc(t)}</label>`).join('') || `<span class="muted">Aucun tag prédéfini (Paramètres)</span>`;
+
+  // reset champs
+  niName.value=''; niCode.value=''; niQty.value='0'; niThr.value='0'; niLoc.value=''; niTagsExtra.value='';
+  newItemDialog.showModal(); setTimeout(()=>niName.focus(),0);
+}
+
+$('#btnAddStock')?.addEventListener('click',()=>openNewDialog('stock'));
+$('#btnAddAtelier')?.addEventListener('click',()=>openNewDialog('atelier'));
+
+$('#niSave')?.addEventListener('click',async(e)=>{
+  e.preventDefault();
+  const name=niName.value.trim(), code=niCode.value.trim(), type=niType.value==='atelier'?'atelier':'stock';
+  if(!name||!code) return;
+  const qty=Math.max(0,parseInt(niQty.value||'0',10)), threshold=Math.max(0,parseInt(niThr.value||'0',10));
+  const loc=niLoc.value.trim()||'';
+  const checked=[...niTagChecks.querySelectorAll('input[type="checkbox"]:checked')].map(cb=>cb.value);
+  const extras=(niTagsExtra.value||'').split(',').map(t=>t.trim()).filter(Boolean);
+  const tags=[...new Set([...checked, ...extras])];
+  await dbPut({id:code,code,name,qty,threshold,tags,location:loc,type,updated:Date.now()});
+  newItemDialog.close(); announce(`Créé • ${name} (${code}) → ${getTypeLabel(type)}`);
+  await refreshTable(type); await refreshHome();
+});
+
+/* Étiquettes (v2.2) : API d’intégration */
+async function initLabelsPanel(){ /* no-op ici */ }
 async function labelsSelectCodes(){}
 
-/* -------- Journal -------- */
+/* Journal */
 const journalTbody=$('#journalTbody');
 $('#btnFilterJournal')?.addEventListener('click',refreshJournal);
 $('#btnExportCSV')?.addEventListener('click',async()=>{ const data=await dbExport('csv'); downloadFile('journal.csv',data,'text/csv'); });
@@ -177,186 +249,7 @@ async function refreshJournal(){
   journalTbody&&(journalTbody.innerHTML=list.map(m=>`<tr><td>${new Date(m.ts).toLocaleString()}</td><td>${m.type}</td><td><code>${esc(m.code)}</code></td><td>${esc(m.name||'')}</td><td>${m.qty}</td><td>${esc(m.note||'')}</td></tr>`).join('')||`<tr><td colspan="6" class="muted">Aucun mouvement</td></tr>`);
 }
 
-/* -------- Paramètres -------- */
-$('#btnExportFull')?.addEventListener('click',async()=>{ const blob=await dbExportFull(); const text=JSON.stringify(blob,null,2); downloadFile('gstock-export.json',text,'application/json'); });
-$('#btnImportJSON')?.addEventListener('click',async()=>{ try{ const [h]=await window.showOpenFilePicker({types:[{description:'JSON',accept:{'application/json':['.json']}}]}); const f=await h.getFile(); const text=await f.text(); const data=JSON.parse(text); await dbImportFull(data); announce('Import terminé'); await refreshTable(); await refreshJournal(); await refreshLoansTable(); await refreshHome(); }catch(e){ console.warn(e); alert('Import annulé / invalide'); }});
-const sharedFileStatus=$('#sharedFileStatus');
-$('#btnLinkSharedFile')?.addEventListener('click',async()=>{ if(!('showSaveFilePicker' in window))return alert('File System Access API non supportée.');
-  const handle=await showSaveFilePicker({suggestedName:'gstock-shared.json',types:[{description:'JSON',accept:{'application/json':['.json']}}]});
-  await dbLinkSharedFile(handle); sharedFileStatus&&(sharedFileStatus.textContent='Fichier partagé lié (autosave activé)');
-});
-$('#btnResetCache')?.addEventListener('click',async()=>{ if(!confirm('Réinitialiser cache PWA et recharger ?'))return;
-  try{ const regs=await (navigator.serviceWorker?.getRegistrations?.()||[]); await Promise.all(regs.map(r=>r.unregister())); }catch(e){}
-  try{ const keys=await (caches?.keys?.()||[]); await Promise.all(keys.map(k=>caches.delete(k))); }catch(e){} location.reload();
-});
-function initSettingsPanel(){ (async()=>{ const set=await dbGetSettings(); $('#inputBuffer')&&($('#inputBuffer').value=set.buffer|0); $('#inputDefaultTags')&&($('#inputDefaultTags').value=(set.defaultTags||[]).join(', '));
-  const chkDebug=$('#chkDebug'); if(chkDebug){ const apply=en=>{ window.GSTOCK_DEBUG=!!en; localStorage.setItem('gstock.debug',en?'1':'0'); window.dispatchEvent(new CustomEvent('gstock:debug-changed',{detail:{enabled:!!en}})); };
-    chkDebug.checked=(localStorage.getItem('gstock.debug')==='1'); apply(chkDebug.checked); chkDebug.addEventListener('change',e=>apply(e.target.checked)); }
-})(); }
-
-/* -------- Import CSV avec assistant de mappage -------- */
-const inputCSV=$('#inputCSV'), btnOpenCsvMap=$('#btnOpenCsvMap'), csvDlg=$('#csvMapDialog');
-const csvClose=$('#csvClose'), csvDelimiter=$('#csvDelimiter'), csvHeader=$('#csvHeader'), csvTagSep=$('#csvTagSep');
-const mapName=$('#mapName'), mapCode=$('#mapCode'), mapQty=$('#mapQty'), mapThr=$('#mapThr'), mapTags=$('#mapTags'), csvDup=$('#csvDup');
-const csvPrevHead=$('#csvPrevHead'), csvPrevBody=$('#csvPrevBody'), csvSummary=$('#csvSummary'), csvImport=$('#csvImport');
-
-let csvText='', csvRows=[], csvCols=[], csvHasHeader=true, csvSep=',', csvHeaders=[], csvDetected={rows:0, cols:0};
-function resetCsvState(){ csvText=''; csvRows=[]; csvCols=[]; csvHasHeader=true; csvSep=','; csvHeaders=[]; csvDetected={rows:0,cols:0}; }
-
-/* Parser CSV robuste (gère quotes, séparateurs) */
-function detectSeparator(sample){
-  const cands=[',',';','\t']; let best=',', bestScore=-1;
-  for(const sep of cands){
-    const lines=sample.split(/\r?\n/).filter(Boolean).slice(0,20);
-    const counts=lines.map(l=>splitCsvLine(l,sep).length);
-    const score = - Math.abs(new Set(counts).size) + (counts[0]||0); // homogénéité + nb colonnes
-    if(score>bestScore){ best=sep; bestScore=score; }
-  }
-  return best;
-}
-function splitCsvLine(line, sep){
-  const out=[]; let cur=''; let inQ=false; for(let i=0;i<line.length;i++){
-    const ch=line[i];
-    if(ch==='"'){ if(inQ && line[i+1]==='"'){ cur+='"'; i++; } else { inQ=!inQ; } }
-    else if(ch===sep && !inQ){ out.push(cur); cur=''; }
-    else cur+=ch;
-  }
-  out.push(cur); return out;
-}
-function parseCSV(text, sep, hasHeader){
-  const lines=text.split(/\r?\n/).filter(l=>l.length>0);
-  const rows=lines.map(l=>splitCsvLine(l, sep));
-  const cols=Math.max(0,...rows.map(r=>r.length));
-  return {rows, cols, headers: hasHeader? (rows[0]||[]): Array.from({length:cols},(_,i)=>`Col${i+1}`), startIndex: hasHeader?1:0};
-}
-
-/* Auto-map des entêtes */
-function autoMap(headers){
-  const H=headers.map(h=>String(h||'').toLowerCase().trim());
-  const find=(alts)=>{ for(const a of alts){ const i=H.findIndex(h=>h===a || h.includes(a)); if(i>=0) return i; } return -1; };
-  return {
-    name: find(['nom','name','designation','libelle','libellé']),
-    code: find(['code','sku','ref','réf','reference','référence']),
-    qty:  find(['qty','quantite','quantité','stock','qte']),
-    thr:  find(['seuil','threshold','min','minstock','alerte']),
-    tags: find(['tags','etiquettes','labels','motscles','mots-clés'])
-  };
-}
-
-/* Remplit les <select> de mapping */
-function fillMapSelects(headers, preset){
-  const opts = ['<option value="-1">— (ignorer)</option>']
-    .concat(headers.map((h,i)=>`<option value="${i}">${esc(h)}</option>`)).join('');
-  [mapName,mapCode,mapQty,mapThr,mapTags].forEach(sel=> sel.innerHTML=opts);
-  mapName.value = String(preset.name ?? -1);
-  mapCode.value = String(preset.code ?? -1);
-  mapQty.value  = String(preset.qty ?? -1);
-  mapThr.value  = String(preset.thr ?? -1);
-  mapTags.value = String(preset.tags ?? -1);
-}
-
-/* Aperçu (20 lignes) */
-function buildPreview(parsed){
-  csvPrevHead.innerHTML = `<th>Nom</th><th>Code</th><th>Qté</th><th>Seuil</th><th>Tags</th>`;
-  const iName=parseInt(mapName.value,10), iCode=parseInt(mapCode.value,10), iQty=parseInt(mapQty.value,10), iThr=parseInt(mapThr.value,10), iTags=parseInt(mapTags.value,10);
-  const tagSep = (csvTagSep.value==='auto')? guessTagSep(parsed, iTags) : (csvTagSep.value || ',');
-  const rows=[];
-  for(let r=parsed.startIndex; r<parsed.rows.length && rows.length<20; r++){
-    const row=parsed.rows[r]||[];
-    const name=(iName>=0?row[iName]:'')||'';
-    const code=(iCode>=0?row[iCode]:'')||'';
-    const qty = (iQty>=0?row[iQty]:'');
-    const thr = (iThr>=0?row[iThr]:'');
-    const tags=(iTags>=0?row[iTags]:'');
-    rows.push(`<tr><td>${esc(name)}</td><td><code>${esc(code)}</code></td><td>${esc(qty)}</td><td>${esc(thr)}</td><td>${esc(tags)}</td></tr>`);
-  }
-  csvPrevBody.innerHTML = rows.join('') || `<tr><td colspan="5" class="muted">Aucune ligne à prévisualiser</td></tr>`;
-  csvSummary.textContent = `Lignes lues : ${parsed.rows.length - parsed.startIndex} • Colonnes détectées : ${parsed.cols}`;
-}
-
-/* Tag separator heuristique */
-function guessTagSep(parsed, idx){
-  if(idx<0) return ',';
-  const sample = (parsed.rows[parsed.startIndex]||[])[idx]||'';
-  if(sample.includes('|')) return '|';
-  if(sample.includes(';')) return ';';
-  if(sample.includes(',')) return ',';
-  return ',';
-}
-
-/* Handlers UI CSV */
-btnOpenCsvMap?.addEventListener('click',async()=>{
-  if(!inputCSV?.files?.length){ alert('Choisissez d’abord un fichier CSV.'); return; }
-  const file=inputCSV.files[0]; const text=await file.text(); resetCsvState(); csvText=text;
-  // Detect sep + header
-  const sep = (csvDelimiter.value==='auto')? detectSeparator(text) : (csvDelimiter.value.replace('\\t','\t'));
-  csvSep = sep;
-  csvHasHeader = (csvHeader.value==='1');
-  // Parse
-  const parsed = parseCSV(text, sep, csvHasHeader);
-  csvRows = parsed.rows; csvCols = parsed.cols; csvHeaders = parsed.headers;
-  // Auto map
-  const preset = autoMap(parsed.headers);
-  fillMapSelects(parsed.headers, preset);
-  // Preview
-  buildPreview(parsed);
-  csvDlg.showModal();
-});
-csvClose?.addEventListener('click',()=>csvDlg.close());
-
-[csvDelimiter,csvHeader,csvTagSep,mapName,mapCode,mapQty,mapThr,mapTags].forEach(el=>{
-  el?.addEventListener('change',()=>{
-    if(!csvText) return;
-    const sep=(csvDelimiter.value==='auto')? detectSeparator(csvText) : (csvDelimiter.value.replace('\\t','\t'));
-    const hasHeader=(csvHeader.value==='1');
-    const parsed=parseCSV(csvText, sep, hasHeader);
-    // si on a changé le séparateur ou header, on recalcule preset si les selects sont tous à -1
-    if([mapName,mapCode,mapQty,mapThr,mapTags].every(s=>s.value==='-1')){
-      const preset=autoMap(parsed.headers); fillMapSelects(parsed.headers, preset);
-    }
-    buildPreview(parsed);
-    csvSep=sep; csvHasHeader=hasHeader; csvRows=parsed.rows; csvCols=parsed.cols; csvHeaders=parsed.headers;
-  });
-});
-
-/* Import effectif */
-csvImport?.addEventListener('click',async()=>{
-  const iName=parseInt(mapName.value,10), iCode=parseInt(mapCode.value,10), iQty=parseInt(mapQty.value,10), iThr=parseInt(mapThr.value,10), iTags=parseInt(mapTags.value,10);
-  if(iName<0 || iCode<0){ alert('Nom et Code sont obligatoires.'); return; }
-  const tagSep = (csvTagSep.value==='auto')? guessTagSep({rows:csvRows,startIndex:csvHasHeader?1:0}, iTags) : (csvTagSep.value || ',');
-
-  let created=0, updated=0, skipped=0;
-  const start = csvHasHeader?1:0;
-  for(let r=start; r<csvRows.length; r++){
-    const row=csvRows[r]||[];
-    const name=(row[iName]||'').trim(); const code=(row[iCode]||'').trim();
-    if(!name || !code){ skipped++; continue; }
-    const qty = iQty>=0 ? Math.max(0, parseInt(String(row[iQty]).replace(',','.'))||0) : 0;
-    const thr = iThr>=0 ? Math.max(0, parseInt(String(row[iThr]).replace(',','.'))||0) : 0;
-    let tags=[]; if(iTags>=0){ tags=String(row[iTags]||'').split(tagSep).map(t=>t.trim()).filter(Boolean); }
-
-    const existing = await dbGet(code)||await dbGet(code.toUpperCase())||await dbGet(code.toLowerCase());
-    if(existing){
-      if(csvDup.value==='create'){ skipped++; continue; }
-      // upsert: met à jour champs de base (sans écraser tags existants si vides)
-      existing.name = name || existing.name;
-      if(iQty>=0) existing.qty = qty;
-      if(iThr>=0) existing.threshold = thr;
-      if(iTags>=0) existing.tags = tags;
-      existing.updated = Date.now();
-      await dbPut(existing);
-      updated++;
-    }else{
-      await dbPut({id:code,code,name,qty,threshold:thr,tags,updated:Date.now()});
-      created++;
-    }
-  }
-  announce(`Import CSV terminé • ${created} créé(s), ${updated} mis à jour, ${skipped} ignoré(s)`);
-  csvDlg.close();
-  await refreshTable(); await refreshHome();
-});
-
-/* -------- Emprunts -------- */
+/* Prêts */
 const loansTbody=$('#loansTbody');
 $('#btnNewLoan')?.addEventListener('click',async()=>{ const code=prompt('Code article ?'); if(!code)return;
   const it=(await dbGet(code))||(await dbGet(code.toUpperCase()))||(await dbGet(code.toLowerCase())); if(!it)return alert('Article introuvable');
@@ -374,6 +267,36 @@ async function refreshLoansTable(){
   loansTbody.innerHTML=rows||`<tr><td colspan="6" class="muted">Aucun emprunt</td></tr>`;
   loansTbody.querySelectorAll('button[data-return]').forEach(btn=>{ btn.onclick=async()=>{ const id=btn.getAttribute('data-return'); await dbReturnLoan(id); announce('Matériel retourné'); await refreshLoansTable(); await refreshHome(); };});
 }
+
+/* Paramètres */
+$('#btnExportFull')?.addEventListener('click',async()=>{ const blob=await dbExportFull(); const text=JSON.stringify(blob,null,2); downloadFile('gstock-export.json',text,'application/json'); });
+$('#btnImportJSON')?.addEventListener('click',async()=>{ try{ const [h]=await window.showOpenFilePicker({types:[{description:'JSON',accept:{'application/json':['.json']}}]}); const f=await h.getFile(); const text=await f.text(); const data=JSON.parse(text); await dbImportFull(data); announce('Import terminé'); await refreshHome(); await refreshTable('stock'); await refreshTable('atelier'); }catch(e){ console.warn(e); alert('Import annulé / invalide'); }});
+const sharedFileStatus=$('#sharedFileStatus');
+$('#btnLinkSharedFile')?.addEventListener('click',async()=>{ if(!('showSaveFilePicker' in window))return alert('File System Access API non supportée.');
+  const handle=await showSaveFilePicker({suggestedName:'gstock-shared.json',types:[{description:'JSON',accept:{'application/json':['.json']}}]});
+  await dbLinkSharedFile(handle); sharedFileStatus&&(sharedFileStatus.textContent='Fichier partagé lié (autosave activé)');
+});
+$('#btnResetCache')?.addEventListener('click',async()=>{ if(!confirm('Réinitialiser cache PWA et recharger ?'))return;
+  try{ const regs=await (navigator.serviceWorker?.getRegistrations?.()||[]); await Promise.all(regs.map(r=>r.unregister())); }catch(e){}
+  try{ const keys=await (caches?.keys?.()||[]); await Promise.all(keys.map(k=>caches.delete(k))); }catch(e){} location.reload();
+});
+function initSettingsPanel(){ (async()=>{
+  const set=await dbGetSettings();
+  $('#inputBuffer')&&($('#inputBuffer').value=set.buffer|0);
+  $('#inputTagsStock')&&($('#inputTagsStock').value=(set.defaultTagsStock||[]).join(', '));
+  $('#inputTagsAtelier')&&($('#inputTagsAtelier').value=(set.defaultTagsAtelier||[]).join(', '));
+  const chkDebug=$('#chkDebug'); if(chkDebug){ const apply=en=>{ window.GSTOCK_DEBUG=!!en; localStorage.setItem('gstock.debug',en?'1':'0'); window.dispatchEvent(new CustomEvent('gstock:debug-changed',{detail:{enabled:!!en}})); };
+    chkDebug.checked=(localStorage.getItem('gstock.debug')==='1'); apply(chkDebug.checked); chkDebug.addEventListener('change',e=>apply(e.target.checked)); }
+})();
+}
+$('#btnSaveSettings')?.addEventListener('click',async()=>{
+  const s=await dbGetSettings();
+  const newSet={...s, buffer:Math.max(0,parseInt($('#inputBuffer').value||'0',10)),
+    defaultTagsStock: ($('#inputTagsStock').value||'').split(',').map(t=>t.trim()).filter(Boolean),
+    defaultTagsAtelier: ($('#inputTagsAtelier').value||'').split(',').map(t=>t.trim()).filter(Boolean)
+  };
+  await dbSaveSettings(newSet); announce('Paramètres enregistrés');
+});
 
 /* Init */
 (async function init(){
