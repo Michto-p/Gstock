@@ -1,4 +1,4 @@
-/* Gstock - app.js v2.4.1 (fix save settings + Labels restored) */
+/* Gstock - app.js v2.4.2 (Stock/Atelier + tags/loc + Scanner relié) */
 (()=>{'use strict';
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>Array.from(r.querySelectorAll(s)), sr=$('#sr');
 
@@ -68,7 +68,7 @@ async function refreshHome(){
   const recent=await dbListMoves({from:0,to:Infinity,limit:8}); const ul=$('#recentMoves'); if(ul){ ul.innerHTML=(recent.map(m=>`<li>${new Date(m.ts).toLocaleString()} • <strong>${esc(m.type)}</strong> <code>${esc(m.code)}</code> ×${m.qty}</li>`).join(''))||'<li class="muted">Aucun mouvement</li>'; }
 }
 
-/* ---------- Etat tables ---------- */
+/* ---------- Etat & helpers ---------- */
 function statusBadge(it,buffer=0){
   const s=(it.qty|0)-(it.threshold|0);
   if((it.qty|0)<=(it.threshold|0))return `<span class="badge under">Sous seuil</span>`;
@@ -78,7 +78,7 @@ function statusBadge(it,buffer=0){
 function getTypeLabel(t){ return t==='atelier'?'Atelier':'Stock'; }
 function ensureType(it){ return it.type||'stock'; }
 
-/* ---------- Stock & Atelier ---------- */
+/* ---------- Stock & Atelier (tables) ---------- */
 const state={
   stock:{ sel:new Set(), q:'', status:'', tag:'', loc:'' },
   atelier:{ sel:new Set(), q:'', status:'', tag:'', loc:'' }
@@ -239,7 +239,7 @@ $('#niSave')?.addEventListener('click',async(e)=>{
   await refreshTable(type); await refreshHome();
 });
 
-/* ---------- Étiquettes (restauré) ---------- */
+/* ---------- Étiquettes ---------- */
 const LABEL_TEMPLATES={
   'avery-l7159': { cols:3, rows:7, cellW:63.5, cellH:38.1, gapX:7, gapY:2.5 },
   'mm50x25':    { cols:4, rows:10, cellW:50,  cellH:25,   gapX:5, gapY:5   },
@@ -252,10 +252,7 @@ const labelSearch=$('#labelSearch'), labelsList=$('#labelsList'), lblSelInfo=$('
       btnLblPrev=$('#lblPrev'), btnLblNext=$('#lblNext'), lblPageInfo=$('#lblPageInfo'), btnLabelsPrint=$('#btnLabelsPrint');
 
 async function initLabelsPanel(){
-  if(!labelsInitDone){
-    bindLabelsUI();
-    labelsInitDone=true;
-  }
+  if(!labelsInitDone){ bindLabelsUI(); labelsInitDone=true; }
   await loadLabelsData();
   await rebuildLabelsList();
   await rebuildLabelsPreview(true);
@@ -315,7 +312,6 @@ async function rebuildLabelsPreview(resetPage){
       sheet.appendChild(card);
     });
 
-    // complétion de page (cases vides pour alignement)
     const rest = perPage - items.length;
     for(let k=0;k<rest;k++){ const empty=document.createElement('div'); empty.className='label-card'; empty.style.border='1px dashed transparent'; sheet.appendChild(empty); }
 
@@ -331,11 +327,9 @@ function updatePaginationDisplay(){
   const pages=$$('.labels-page', labelsPages);
   pages.forEach((p,i)=>p.classList.toggle('active', i===lblPage));
   lblPageInfo&&(lblPageInfo.textContent=`Page ${Math.min(lblPage+1,lblPagesCount)} / ${lblPagesCount}`);
-  btnLblPrev&&(btnLblPrev.disabled = (lblPage<=0));
-  btnLblNext&&(btnLblNext.disabled = (lblPage>=lblPagesCount-1));
+  $('#lblPrev')&&( $('#lblPrev').disabled = (lblPage<=0) );
+  $('#lblNext')&&( $('#lblNext').disabled = (lblPage>=lblPagesCount-1) );
 }
-
-/* API pour Articles → Étiquettes */
 async function labelsSelectCodes(codes){
   await loadLabelsData();
   labelsSelected = new Set((codes||[]).filter(Boolean));
@@ -396,7 +390,7 @@ function initSettingsPanel(){ (async()=>{
 })();
 }
 
-/* ---- Fallback universel pour sauvegarder les paramètres ---- */
+/* Sauvegarde paramètres (fallback) */
 async function saveSettingsUniversal(obj){
   if(typeof window.dbSaveSettings==='function') return await window.dbSaveSettings(obj);
   if(typeof window.dbSetSettings==='function') return await window.dbSetSettings(obj);
@@ -415,10 +409,115 @@ $('#btnSaveSettings')?.addEventListener('click',async()=>{
   announce('Paramètres enregistrés');
 });
 
+/* ---------- Scanner ---------- */
+const videoEl=$('#scanVideo'), btnScanStart=$('#btnScanStart'), btnScanStop=$('#btnScanStop'), btnScanTorch=$('#btnScanTorch'), scanHint=$('#scanHint');
+let scanStream=null, scanTrack=null, scanDetector=null, scanLoopId=0, torchOn=false;
+let lastCode='', lastReadTs=0;
+const DUP_MS=1200;
+
+function beepKnown(ms=140, hz=880){
+  try{
+    const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
+    const ctx=new AC();
+    const o=ctx.createOscillator(), g=ctx.createGain();
+    o.frequency.value=hz; o.type='sine'; o.connect(g); g.connect(ctx.destination);
+    o.start();
+    g.gain.setValueAtTime(0.001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+ms/1000);
+    setTimeout(()=>{ o.stop(); ctx.close(); }, ms+60);
+  }catch(_){}
+}
+
+async function ensureDetector(){
+  if(!('BarcodeDetector' in window)) throw new Error('BarcodeDetector non supporté');
+  let fmts=['ean_13','code_128','code_39','qr_code','ean_8','upc_a','upc_e','itf','codabar','pdf417'];
+  try{
+    const supported = (await (window.BarcodeDetector.getSupportedFormats?.()||[]));
+    if(Array.isArray(supported) && supported.length) fmts = fmts.filter(f=>supported.includes(f));
+  }catch(_){}
+  scanDetector = new window.BarcodeDetector({formats: fmts});
+}
+
+async function startScan(){
+  try{
+    // Permissions/flux caméra
+    const constraints={ video:{ facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} }, audio:false };
+    scanStream = await navigator.mediaDevices.getUserMedia(constraints);
+    videoEl.srcObject=scanStream; await videoEl.play();
+    scanTrack = scanStream.getVideoTracks()[0];
+    // Torche
+    const caps = scanTrack.getCapabilities?.()||{};
+    if(caps.torch){ btnScanTorch.disabled=false; } else { btnScanTorch.disabled=true; torchOn=false; }
+
+    await ensureDetector();
+    lastCode=''; lastReadTs=0;
+    scanHint && (scanHint.textContent='Visez le code-barres… (les codes inconnus ne ferment pas la caméra)');
+    runDetectLoop();
+  }catch(err){
+    console.warn('startScan error', err);
+    if(String(err).includes('BarcodeDetector')) scanHint && (scanHint.textContent='Scanner non supporté sur ce navigateur. Utilisez Chrome/Edge récents et HTTPS.');
+    else scanHint && (scanHint.textContent='Impossible d’accéder à la caméra. Vérifiez HTTPS et les autorisations.');
+    stopScan();
+  }
+}
+function stopScan(){
+  if(scanLoopId){ cancelAnimationFrame(scanLoopId); scanLoopId=0; }
+  try{ videoEl.pause?.(); }catch(_){}
+  if(scanTrack){ try{ scanTrack.stop(); }catch(_){ } scanTrack=null; }
+  if(scanStream){ try{ scanStream.getTracks().forEach(t=>t.stop()); }catch(_){ } scanStream=null; }
+  videoEl.srcObject=null;
+  btnScanTorch && (btnScanTorch.disabled=true); torchOn=false;
+}
+
+async function runDetectLoop(){
+  const step = async ()=>{
+    if(!scanDetector || !videoEl || !scanStream){ return; }
+    try{
+      const codes = await scanDetector.detect(videoEl);
+      if(Array.isArray(codes) && codes.length){
+        // prend le plus “confiant”
+        const raw=(codes[0].rawValue||'').trim();
+        const now=Date.now();
+        if(raw && (raw!==lastCode || (now-lastReadTs)>DUP_MS)){
+          lastCode=raw; lastReadTs=now;
+          // recherche DB
+          const item=(await dbGet(raw))||(await dbGet(raw.toUpperCase()))||(await dbGet(raw.toLowerCase()));
+          if(item){
+            // BIP + arrêt + ajustement
+            beepKnown();
+            stopScan();
+            await openAdjustDialog({code:item.code, type:'add'});
+            return; // on sort, l’utilisateur gère l’ajustement
+          }else{
+            // inconnu → on continue le scan
+            scanHint && (scanHint.textContent=`Code inconnu : ${raw} — on continue…`);
+            if(window.GSTOCK_DEBUG) console.debug('[scan] inconnu', raw);
+          }
+        }
+      }
+    }catch(err){
+      if(window.GSTOCK_DEBUG) console.debug('detect error', err);
+    }
+    scanLoopId = requestAnimationFrame(step);
+  };
+  scanLoopId = requestAnimationFrame(step);
+}
+
+/* boutons scanner */
+btnScanStart?.addEventListener('click',startScan);
+btnScanStop?.addEventListener('click',stopScan);
+btnScanTorch?.addEventListener('click',async()=>{
+  if(!scanTrack) return;
+  const caps=scanTrack.getCapabilities?.()||{};
+  if(!caps.torch) return;
+  torchOn=!torchOn;
+  try{ await scanTrack.applyConstraints({advanced:[{torch:torchOn}]}); }catch(e){ torchOn=false; }
+});
+
 /* ---------- Init ---------- */
 (async function init(){
   $('#appVersion')&&( $('#appVersion').textContent=window.APP_VERSION||'' );
-  // alias rapide si dbSetSettings existe
   if(typeof window.dbSaveSettings!=='function' && typeof window.dbSetSettings==='function'){
     window.dbSaveSettings = window.dbSetSettings;
   }
