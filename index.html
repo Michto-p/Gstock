@@ -21,10 +21,13 @@
     .pill{padding:.2rem .5rem;border-radius:999px;background:var(--elev);font-size:.75rem}
     .muted{color:var(--muted)}
     .toggle{display:flex;align-items:center;gap:.35rem}
+
     nav{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.5rem}
-    nav button{display:inline-flex;align-items:center;gap:.4rem;padding:.45rem .6rem;border:1px solid var(--bd);background:var(--elev);border-radius:.6rem;cursor:pointer}
+    nav button{display:inline-flex;align-items:center;gap:.45rem;padding:.45rem .6rem;border:1px solid var(--bd);background:var(--elev);border-radius:.6rem;cursor:pointer}
+    nav button .icon{font-size:1rem;line-height:1}
     nav button.active{outline:2px solid var(--acc);outline-offset:1px}
     @media (max-width:640px){ nav .label{display:none} }
+
     main{padding:1rem;max-width:1100px;margin:0 auto}
     section[hidden]{display:none}
 
@@ -52,8 +55,8 @@
     @media (max-width:900px){ .cards{grid-template-columns:repeat(2,1fr)} }
     @media (max-width:520px){ .cards{grid-template-columns:1fr} }
 
-    /* Étiquettes (v2.2 déjà) */
-    .labels-layout{display:grid;grid-template-columns:280px 1fr;gap:12px}
+    /* Étiquettes – layout revu */
+    .labels-layout{display:grid;grid-template-columns:320px 1fr;gap:12px}
     .labels-side{border:1px solid var(--bd);border-radius:.6rem;padding:.6rem;background:var(--elev);display:flex;flex-direction:column;gap:.5rem;max-height:70vh}
     .labels-list{flex:1;overflow:auto;border:1px dashed var(--bd);border-radius:.5rem;padding:.4rem;background:color-mix(in oklab, var(--elev) 90%, transparent)}
     .labels-list .row{display:flex;align-items:center;justify-content:space-between;gap:.5rem;border-bottom:1px dashed var(--bd);padding:.25rem 0}
@@ -63,19 +66,22 @@
     .labels-page{display:none}
     .labels-page.active{display:block}
     .labels-pagination{display:flex;gap:.5rem;align-items:center;justify-content:flex-end}
-    .labels-sheet{display:grid;justify-content:center;margin:.5rem auto}
-    .label-card{box-sizing:border-box;border:1px dashed var(--bd);border-radius:2mm;padding:2mm;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1mm;background:#fff;color:#000}
+    .labels-sheet{display:grid;justify-content:center;margin:.5rem auto;max-width:210mm}
+    .label-card{box-sizing:border-box;border:1px dashed var(--bd);border-radius:2mm;padding:2mm;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1mm;background:#fff;color:#000;overflow:hidden}
     [data-theme="dark"] .label-card{background:#fff;color:#000}
-    .label-card .name{font-weight:700;line-height:1.1;text-align:center;max-width:100%}
+    .label-card .name{font-weight:700;line-height:1.1;text-align:center;max-width:100%;word-break:break-word}
     .label-card .hr{font-size:8pt}
     .label-card svg{width:100%}
 
+    @media (max-width:900px){ .labels-layout{grid-template-columns:1fr} .labels-side{max-height:none} }
+
+    /* Impression : uniquement la planche d’étiquettes */
     @media print{
       :root{--bg:#fff;--fg:#000;--bd:#000}
       @page{size:A4;margin:10mm}
       body{background:#fff;color:#000}
       .topbar,nav,.toolbar,#tab-home,#tab-scanner,#tab-journal,#tab-gear,#tab-settings,.labels-side,.labels-options,.labels-pagination{display:none!important}
-      #tab-labels,#tab-stock,#tab-atelier{display:block!important}
+      #tab-labels{display:block!important}
       .labels-pages{border:0;padding:0}
       .labels-page{display:block!important;break-after:page}
       .label-card{border:0}
@@ -83,7 +89,7 @@
     }
   </style>
   <script>
-    window.APP_VERSION='2.4.0.2';
+    window.APP_VERSION='2.5.0';
     (function(){
       const saved=localStorage.getItem('gstock.theme');
       const prefersDark=window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
@@ -99,7 +105,7 @@
         <div class="brand-left">
           <img src="icons/icon-192.png" alt="" width="28" height="28" style="border-radius:6px">
           <strong>Gstock</strong><span class="muted">— Gestion de stock</span>
-          <span class="pill muted">v<span id="appVersion">2.4.0</span></span>
+          <span class="pill muted">v<span id="appVersion">2.5.0</span></span>
         </div>
         <div class="toggle">
           <label for="themeToggle" class="muted">Thème</label>
@@ -112,14 +118,14 @@
       </div>
 
       <nav aria-label="Onglets">
-        <button data-tab="home" class="active"><span class="label">Accueil</span></button>
-        <button data-tab="stock"><span class="label">Stock</span></button>
-        <button data-tab="atelier"><span class="label">Matériel atelier</span></button>
-        <button data-tab="scanner"><span class="label">Scanner</span></button>
-        <button data-tab="labels"><span class="label">Étiquettes</span></button>
-        <button data-tab="journal"><span class="label">Journal</span></button>
-        <button data-tab="gear"><span class="label">Prêts</span></button>
-        <button data-tab="settings"><span class="label">Paramètres</span></button>
+        <button data-tab="home" class="active"><span class="icon">🏠</span><span class="label">Accueil</span></button>
+        <button data-tab="stock"><span class="icon">📦</span><span class="label">Stock</span></button>
+        <button data-tab="atelier"><span class="icon">🛠️</span><span class="label">Matériel atelier</span></button>
+        <button data-tab="scanner"><span class="icon">📷</span><span class="label">Scanner</span></button>
+        <button data-tab="labels"><span class="icon">🏷️</span><span class="label">Étiquettes</span></button>
+        <button data-tab="journal"><span class="icon">📜</span><span class="label">Journal</span></button>
+        <button data-tab="gear"><span class="icon">🤝</span><span class="label">Prêts</span></button>
+        <button data-tab="settings"><span class="icon">⚙️</span><span class="label">Paramètres</span></button>
       </nav>
     </div>
   </div>
@@ -154,7 +160,7 @@
         <select id="stockStatus" class="btn"><option value="">Tous statuts</option><option value="ok">OK</option><option value="low">Approche</option><option value="under">Sous seuil</option></select>
         <select id="stockTag" class="btn"><option value="">Tous tags</option></select>
         <select id="stockLoc" class="btn"><option value="">Tous emplacements</option></select>
-        <button id="stockClear" class="btn">Réinitialiser</button>
+        <button id="stockClear" class="btn">♻️ Réinitialiser</button>
       </div>
 
       <div id="stockBulk" class="toolbar" hidden>
@@ -170,7 +176,7 @@
         <thead>
           <tr>
             <th style="width:34px"><input type="checkbox" id="stockSelAll" aria-label="Tout sélectionner"></th>
-            <th>Nom</th><th>Code</th><th style="width:110px">Qté</th><th style="width:110px">Seuil</th><th>Tags</th><th>Emplacement</th><th style="width:120px">État</th><th style="width:220px">Actions</th>
+            <th>Nom</th><th>Code</th><th style="width:110px">Qté</th><th style="width:110px">Seuil</th><th>Tags</th><th>Emplacement</th><th style="width:90px">Liens</th><th style="width:220px">Actions</th>
           </tr>
         </thead>
         <tbody id="stockTbody"></tbody>
@@ -185,7 +191,7 @@
         <select id="atelierStatus" class="btn"><option value="">Tous statuts</option><option value="ok">OK</option><option value="low">Approche</option><option value="under">Sous seuil</option></select>
         <select id="atelierTag" class="btn"><option value="">Tous tags</option></select>
         <select id="atelierLoc" class="btn"><option value="">Tous emplacements</option></select>
-        <button id="atelierClear" class="btn">Réinitialiser</button>
+        <button id="atelierClear" class="btn">♻️ Réinitialiser</button>
       </div>
 
       <div id="atelierBulk" class="toolbar" hidden>
@@ -201,7 +207,7 @@
         <thead>
           <tr>
             <th style="width:34px"><input type="checkbox" id="atelierSelAll" aria-label="Tout sélectionner"></th>
-            <th>Nom</th><th>Code</th><th style="width:110px">Qté</th><th style="width:110px">Seuil</th><th>Tags</th><th>Emplacement</th><th style="width:120px">État</th><th style="width:220px">Actions</th>
+            <th>Nom</th><th>Code</th><th style="width:110px">Qté</th><th style="width:110px">Seuil</th><th>Tags</th><th>Emplacement</th><th style="width:90px">Liens</th><th style="width:220px">Actions</th>
           </tr>
         </thead>
         <tbody id="atelierTbody"></tbody>
@@ -211,15 +217,15 @@
     <!-- Scanner -->
     <section id="tab-scanner" hidden>
       <div class="toolbar">
-        <button id="btnScanStart" class="btn primary">Démarrer le scan</button>
-        <button id="btnScanStop" class="btn">Arrêter</button>
-        <button id="btnScanTorch" class="btn">Lampe</button>
+        <button id="btnScanStart" class="btn primary">📷 Démarrer</button>
+        <button id="btnScanStop" class="btn">⏹️ Arrêter</button>
+        <button id="btnScanTorch" class="btn">🔦 Lampe</button>
       </div>
       <video id="scanVideo" style="width:100%;max-height:60vh;background:#000;border-radius:8px" playsinline></video>
       <p id="scanHint" class="muted" style="margin:.5rem 0 0">Visez le code-barres. Bip uniquement si l’article est reconnu. Les codes inconnus ne ferment pas la caméra.</p>
     </section>
 
-    <!-- Étiquettes (v2.2.0 déjà) -->
+    <!-- Étiquettes -->
     <section id="tab-labels" hidden>
       <div class="labels-layout">
         <aside class="labels-side">
@@ -256,7 +262,7 @@
               </select>
             </label>
             <label style="display:flex;align-items:center;gap:.3rem"><input type="checkbox" id="lblShowText" class="btn"> Texte du code</label>
-            <button id="btnLabelsPrint" class="btn primary">Imprimer</button>
+            <button id="btnLabelsPrint" class="btn primary">🖨️ Imprimer</button>
           </div>
 
           <div class="labels-pages" id="labelsPages"></div>
@@ -276,8 +282,8 @@
         <input id="dateFrom" type="date" class="btn">
         <input id="dateTo" type="date" class="btn">
         <button id="btnFilterJournal" class="btn">Filtrer</button>
-        <button id="btnExportCSV" class="btn">Export CSV</button>
-        <button id="btnExportJSON" class="btn">Export JSON</button>
+        <button id="btnExportCSV" class="btn">⬇️ Export CSV</button>
+        <button id="btnExportJSON" class="btn">⬇️ Export JSON</button>
       </div>
       <table aria-label="Journal des mouvements"><thead><tr><th>Date/heure</th><th>Type</th><th>Code</th><th>Nom</th><th>Qté</th><th>Note</th></tr></thead><tbody id="journalTbody"></tbody></table>
     </section>
@@ -285,7 +291,9 @@
     <!-- Prêts -->
     <section id="tab-gear" hidden>
       <div class="toolbar">
-        <button id="btnNewLoan" class="btn primary">Nouvel emprunt</button>
+        <button id="btnNewLoan" class="btn primary">➕ Nouvel emprunt</button>
+        <button id="btnScanBorrow" class="btn">📥 Scanner emprunt</button>
+        <button id="btnScanReturn" class="btn">📤 Scanner retour</button>
         <input id="searchLoans" type="search" placeholder="Rechercher emprunts…" class="btn">
       </div>
       <table aria-label="Table des emprunts"><thead><tr><th>Article</th><th>Code</th><th>À</th><th>Prévu retour</th><th>État</th><th>Actions</th></tr></thead><tbody id="loansTbody"></tbody></table>
@@ -305,13 +313,25 @@
         <label>Buffer d’alerte :
           <input id="inputBuffer" type="number" min="0" value="0" class="btn" style="width:6rem">
         </label>
-        <label>Tags Stock (prédéfinis, virgules) :
+      </div>
+
+      <h4>Listes prédéfinies</h4>
+      <div class="toolbar">
+        <label>Tags Stock (virgules) :
           <input id="inputTagsStock" class="btn" placeholder="ex: TP, Éclairage, Câblage">
         </label>
-        <label>Tags Atelier (prédéfinis, virgules) :
+        <label>Tags Atelier (virgules) :
           <input id="inputTagsAtelier" class="btn" placeholder="ex: Mesure, Sécurité, Machines">
         </label>
-        <button id="btnSaveSettings" class="btn primary">Enregistrer</button>
+      </div>
+      <div class="toolbar">
+        <label>Emplacements Stock (virgules) :
+          <input id="inputLocsStock" class="btn" placeholder="ex: Atelier — Étagère 1, Dépôt — Bac A">
+        </label>
+        <label>Emplacements Atelier (virgules) :
+          <input id="inputLocsAtelier" class="btn" placeholder="ex: Banc de test, Armoire métrologie">
+        </label>
+        <button id="btnSaveSettings" class="btn primary">💾 Enregistrer</button>
       </div>
 
       <div class="toolbar">
@@ -328,7 +348,7 @@
 
   <!-- Dialog : Nouvel article/matériel -->
   <dialog id="newItemDialog">
-    <form method="dialog" style="min-width:330px">
+    <form method="dialog" style="min-width:340px;max-width:520px">
       <h3 style="margin:.2rem 0 1rem" id="niTitle">Nouvel élément</h3>
       <input type="hidden" id="niType" value="stock">
       <div style="display:grid;gap:.5rem">
@@ -339,14 +359,17 @@
             <button id="niGen" class="btn" type="button">Générer</button>
           </div>
         </label>
-        <div style="display:flex;gap:.5rem">
-          <label>Qté<br><input id="niQty" class="btn" type="number" min="0" value="0" required></label>
-          <label>Seuil<br><input id="niThr" class="btn" type="number" min="0" value="0" required></label>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+          <label style="flex:1 1 140px">Qté<br><input id="niQty" class="btn" type="number" min="0" value="0" required></label>
+          <label style="flex:1 1 140px">Seuil<br><input id="niThr" class="btn" type="number" min="0" value="0" required></label>
         </div>
+
         <label>Emplacement<br>
           <input id="niLoc" class="btn" list="locList" placeholder="ex: Stock atelier — Étagère 1">
           <datalist id="locList"></datalist>
         </label>
+        <div id="niLocChips" style="display:flex;gap:.4rem;flex-wrap:wrap"></div>
+
         <fieldset style="border:1px solid var(--bd);border-radius:.5rem;padding:.5rem">
           <legend style="padding:0 .4rem">Tags prédéfinis (<span id="niTagCategory">Stock</span>)</legend>
           <div id="niTagChecks" style="display:flex;flex-wrap:wrap;gap:.5rem"></div>
@@ -355,6 +378,10 @@
             <button id="niTagsClear" type="button" class="btn">Tout décocher</button>
           </div>
         </fieldset>
+
+        <label>Liens (un par ligne)<br>
+          <textarea id="niLinks" class="btn" rows="3" placeholder="https://…&#10;http://…"></textarea>
+        </label>
       </div>
       <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">
         <button class="btn" value="cancel">Annuler</button>
@@ -382,14 +409,45 @@
     </form>
   </dialog>
 
+  <!-- Dialog Scan Emprunt/Retour -->
+  <dialog id="loanScanDialog">
+    <form method="dialog" style="min-width:320px;max-width:520px">
+      <h3 id="loanScanTitle">Scan</h3>
+      <div class="toolbar">
+        <button id="btnLoanTorch" class="btn" type="button">🔦 Lampe</button>
+        <button id="btnLoanStop" class="btn" type="button">⏹️ Arrêter</button>
+      </div>
+      <video id="loanVideo" style="width:100%;max-height:60vh;background:#000;border-radius:8px" playsinline></video>
+      <p id="loanScanHint" class="muted" style="margin:.5rem 0 0">Visez le code-barres…</p>
+      <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.5rem">
+        <button class="btn" value="cancel">Fermer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Dialog Détails Emprunt (après scan) -->
+  <dialog id="borrowDialog">
+    <form method="dialog" style="min-width:320px">
+      <h3>Nouvel emprunt</h3>
+      <div id="borrowItem" class="muted"></div>
+      <label>Emprunteur<br><input id="brwPerson" class="btn" required></label>
+      <label>Date prévue retour<br><input id="brwDue" class="btn" type="date" required></label>
+      <label>Note<br><input id="brwNote" class="btn"></label>
+      <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.6rem">
+        <button class="btn" value="cancel">Annuler</button>
+        <button id="brwCreate" class="btn primary" value="default">Créer</button>
+      </div>
+    </form>
+  </dialog>
+
   <div id="sr" class="sr-only" aria-live="polite"></div>
 
   <!-- Scripts -->
-  <script src="js/db.js?v=2.1.7"></script>
-  <script src="js/barcode.js?v=2.1.7"></script>
-  <script src="js/code39.js?v=2.1.7"></script>
-  <script src="js/sync-github.js?v=2.1.7"></script>
-  <script src="js/app.js?v=2.4.2"></script>
+  <script src="js/db.js?v=2.1.8"></script>
+  <script src="js/barcode.js?v=2.1.8"></script>
+  <script src="js/code39.js?v=2.1.8"></script>
+  <script src="js/sync-github.js?v=2.1.8"></script>
+  <script src="js/app.js?v=2.5.0"></script>
 
   <script>
     if ('serviceWorker' in navigator) {
