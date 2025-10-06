@@ -1,4 +1,4 @@
-/* Gstock - app.js v2.4.2 (Stock/Atelier + tags/loc + Scanner relié) */
+/* Gstock - app.js v2.5.0 (emoji mobile + scan prêts + liens + labels + locations) */
 (()=>{'use strict';
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>Array.from(r.querySelectorAll(s)), sr=$('#sr');
 
@@ -12,16 +12,7 @@ if(themeToggle){ themeToggle.value=(localStorage.getItem('gstock.theme')||'auto'
 }
 
 /* ---------- Onglets ---------- */
-const sections={
-  home:$('#tab-home'),
-  stock:$('#tab-stock'),
-  atelier:$('#tab-atelier'),
-  scanner:$('#tab-scanner'),
-  labels:$('#tab-labels'),
-  journal:$('#tab-journal'),
-  gear:$('#tab-gear'),
-  settings:$('#tab-settings')
-};
+const sections={home:$('#tab-home'),stock:$('#tab-stock'),atelier:$('#tab-atelier'),scanner:$('#tab-scanner'),labels:$('#tab-labels'),journal:$('#tab-journal'),gear:$('#tab-gear'),settings:$('#tab-settings')};
 $$('nav button[data-tab]').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
 async function showTab(name){
   Object.entries(sections).forEach(([k,el])=>el&&(el.hidden=k!==name));
@@ -57,7 +48,8 @@ async function generateCodeFromName(name){ const base=nameToCode(name); let c=ba
 
 /* ---------- Accueil ---------- */
 async function refreshHome(){
-  const items=await dbList(); const set=await dbGetSettings(); const buf=(set?.buffer|0);
+  const items=await dbList();
+  const set=await dbGetSettings(); const buf=(set?.buffer|0);
   $('#kpiItems')&&( $('#kpiItems').textContent=String(items.length) );
   $('#kpiQty')&&( $('#kpiQty').textContent=String(items.reduce((s,i)=>s+(i.qty|0),0)) );
   $('#kpiUnder')&&( $('#kpiUnder').textContent=String(items.filter(i=>(i.qty|0)<=(i.threshold|0)).length) );
@@ -68,7 +60,7 @@ async function refreshHome(){
   const recent=await dbListMoves({from:0,to:Infinity,limit:8}); const ul=$('#recentMoves'); if(ul){ ul.innerHTML=(recent.map(m=>`<li>${new Date(m.ts).toLocaleString()} • <strong>${esc(m.type)}</strong> <code>${esc(m.code)}</code> ×${m.qty}</li>`).join(''))||'<li class="muted">Aucun mouvement</li>'; }
 }
 
-/* ---------- Etat & helpers ---------- */
+/* ---------- Helpers état ---------- */
 function statusBadge(it,buffer=0){
   const s=(it.qty|0)-(it.threshold|0);
   if((it.qty|0)<=(it.threshold|0))return `<span class="badge under">Sous seuil</span>`;
@@ -78,7 +70,7 @@ function statusBadge(it,buffer=0){
 function getTypeLabel(t){ return t==='atelier'?'Atelier':'Stock'; }
 function ensureType(it){ return it.type||'stock'; }
 
-/* ---------- Stock & Atelier (tables) ---------- */
+/* ---------- Tables Stock & Atelier ---------- */
 const state={
   stock:{ sel:new Set(), q:'', status:'', tag:'', loc:'' },
   atelier:{ sel:new Set(), q:'', status:'', tag:'', loc:'' }
@@ -102,7 +94,7 @@ Object.entries(els).forEach(([type, e])=>{
   e.btnClear?.addEventListener('click',()=>{ state[type]={...state[type], q:'',status:'',tag:'',loc:''}; if(e.search)e.search.value=''; if(e.status)e.status.value=''; if(e.tag)e.tag.value=''; if(e.loc)e.loc.value=''; refreshTable(type); });
   e.selAll?.addEventListener('change',()=>{ e.tbody?.querySelectorAll('input.rowSel').forEach(cb=>{ cb.checked=e.selAll.checked; cb.dispatchEvent(new Event('change')); }); });
   e.bulkDelete?.addEventListener('click',async()=>{ const s=state[type].sel; if(!s.size) return; if(!confirm(`Supprimer ${s.size} élément(s) ?`))return; for(const code of s){ await dbDelete(code); } s.clear(); await refreshTable(type); announce('Éléments supprimés'); });
-  e.bulkExport?.addEventListener('click',async()=>{ const s=state[type].sel; if(!s.size) return; const items=[]; for(const code of s){ const it=await dbGet(code); if(it&&ensureType(it)===type)items.push(it); } const header='type,name,code,qty,threshold,tags,location\n'; const rows=items.map(i=>[ensureType(i),i.name,i.code,(i.qty|0),(i.threshold|0),(i.tags||[]).join('|'),i.location||''].map(v=>String(v).replace(/"/g,'""')).map(v=>`"${v}"`).join(',')).join('\n'); downloadFile(`${type}-selection.csv`, header+rows+'\n', 'text/csv'); });
+  e.bulkExport?.addEventListener('click',async()=>{ const s=state[type].sel; if(!s.size) return; const items=[]; for(const code of s){ const it=await dbGet(code); if(it&&ensureType(it)===type)items.push(it); } const header='type,name,code,qty,threshold,tags,location,links\n'; const rows=items.map(i=>[ensureType(i),i.name,i.code,(i.qty|0),(i.threshold|0),(i.tags||[]).join('|'),i.location||'',(i.links||[]).join('|')].map(v=>String(v).replace(/"/g,'""')).map(v=>`"${v}"`).join(',')).join('\n'); downloadFile(`${type}-selection.csv`, header+rows+'\n', 'text/csv'); });
   e.bulkLabels?.addEventListener('click',async()=>{ const s=state[type].sel; if(!s.size) return; await labelsSelectCodes(Array.from(s)); showTab('labels'); });
   e.btnAdd?.addEventListener('click',()=>openNewDialog(type));
 });
@@ -113,17 +105,15 @@ async function refreshTable(type){
   const list=await dbList();
   const all = list.map(i=>({...i, type:ensureType(i)})).filter(i=>i.type===type);
 
-  // Fill filters
   const tagsSet=new Set(), locSet=new Set();
   all.forEach(i=>{ (i.tags||[]).forEach(t=>tagsSet.add(t)); if(i.location) locSet.add(i.location); });
   const curTag=e.tag?.value||''; const curLoc=e.loc?.value||'';
   if(e.tag) e.tag.innerHTML=`<option value="">Tous tags</option>`+[...tagsSet].sort().map(t=>`<option ${t===curTag?'selected':''}>${esc(t)}</option>`).join('');
   if(e.loc) e.loc.innerHTML=`<option value="">Tous emplacements</option>`+[...locSet].sort().map(l=>`<option ${l===curLoc?'selected':''}>${esc(l)}</option>`).join('');
 
-  // Filters apply
   const q=(state[type].q||'').toLowerCase(), st=state[type].status||'', tag=state[type].tag||'', loc=state[type].loc||'';
   const filtered=all.filter(it=>{
-    const inQ=!q||[it.name,it.code,(it.tags||[]).join(' '),it.location||''].join(' ').toLowerCase().includes(q);
+    const inQ=!q||[it.name,it.code,(it.tags||[]).join(' '),it.location||'',(it.links||[]).join(' ')].join(' ').toLowerCase().includes(q);
     const inTag=!tag||(it.tags||[]).includes(tag);
     const inLoc=!loc||(it.location||'')===loc;
     let stOK=true;
@@ -133,7 +123,6 @@ async function refreshTable(type){
     return inQ&&inTag&&inLoc&&stOK;
   });
 
-  // Rows
   const rows=filtered.map(it=>`<tr>
     <td><input type="checkbox" class="rowSel" data-code="${esc(it.code)}" ${state[type].sel.has(it.code)?'checked':''}></td>
     <td>${esc(it.name)}</td>
@@ -148,7 +137,7 @@ async function refreshTable(type){
     <td>${it.threshold|0}</td>
     <td>${(it.tags||[]).map(t=>`<span class="pill">${esc(t)}</span>`).join(' ')}</td>
     <td>${esc(it.location||'')}</td>
-    <td>${statusBadge(it,buffer)}</td>
+    <td>${(it.links&&it.links.length)?`<button class="btn" data-act="link" data-code="${esc(it.code)}">🔗 ${it.links.length}</button>`:'<span class="muted">—</span>'}</td>
     <td>
       <button class="btn" data-act="adj" data-code="${esc(it.code)}">Ajuster…</button>
       <button class="btn" data-act="hist" data-code="${esc(it.code)}">Historique</button>
@@ -156,13 +145,13 @@ async function refreshTable(type){
     </td>
   </tr>`).join('');
 
-  e.tbody.innerHTML=rows||`<tr><td colspan="9" class="muted">Aucun élément</td></tr>`;
+  e.tbody.innerHTML=rows||`<tr><td colspan="10" class="muted">Aucun élément</td></tr>`;
 
-  // binds
   e.tbody.querySelectorAll('button[data-act]').forEach(btn=>{
     const code=btn.dataset.code;
     if(btn.dataset.act==='adj') btn.onclick=()=>openAdjustDialog({code});
     if(btn.dataset.act==='hist') btn.onclick=()=>openHistory(code);
+    if(btn.dataset.act==='link') btn.onclick=()=>openLinks(code);
     if(btn.dataset.act==='del') btn.onclick=async()=>{ if(confirm('Supprimer cet élément ?')){ await dbDelete(code); state[type].sel.delete(code); await refreshTable(type); announce('Élément supprimé'); } };
   });
   e.tbody.querySelectorAll('button[data-qa]').forEach(btn=>{
@@ -183,11 +172,15 @@ async function refreshTable(type){
 function updateBulk(type){
   const e=els[type]; const n=state[type].sel.size; if(!e||!e.bulk)return; e.bulk.hidden=(n===0); if(e.bulkCount) e.bulkCount.textContent=`${n} sélection(s)`;
 }
-
-/* ---------- Historique ---------- */
 async function openHistory(code){ const item=(await dbGet(code))||(await dbGet(code.toUpperCase()))||(await dbGet(code.toLowerCase()));
   const moves=await dbListMoves({code:item?.code||code,limit:100}); const loans=await dbListLoansByCode?.(item?.code||code) || [];
   alert(`Historique "${item?.name||code}"\n\nMouvements: ${moves.length}\nEmprunts (actifs+clos): ${loans.length}`); }
+async function openLinks(code){
+  const it=await dbGet(code); const links=(it?.links||[]); if(!links.length) return;
+  if(links.length===1){ window.open(links[0],'_blank'); return; }
+  const s=prompt(`Ouvrir lien (1-${links.length}) :\n`+links.map((u,i)=>`${i+1}. ${u}`).join('\n')); const idx=(parseInt(s||'0',10)-1)|0;
+  if(links[idx]) window.open(links[idx],'_blank');
+}
 
 /* ---------- Dialog Ajustement ---------- */
 const dlg=$('#adjustDialog'), dlgType=$('#dlgType'), dlgQty=$('#dlgQty'), dlgNote=$('#dlgNote'), dlgItem=$('#dlgItem'); let dlgState={code:null};
@@ -199,7 +192,7 @@ async function openAdjustDialog({code=null,type='add'}={}){ if(!code)code=prompt
 async function onValidateAdjust(){ const type=dlgType.value; const qty=Math.max(1,parseInt(dlgQty.value||'1',10)); const note=dlgNote.value||''; const item=await dbGet(dlgState.code); if(!item)return dlg.close(); const delta=(type==='add')?qty:-qty; await dbAdjustQty(item.code,delta); await dbAddMove({ts:Date.now(),type:(type==='add'?'ENTRY':'EXIT'),code:item.code,name:item.name,qty,note}); announce(`${type==='add'?'Ajout':'Retrait'}: ${qty} → ${item.name}`); dlg.close(); await refreshTable(ensureType(item)); await refreshHome(); }
 
 /* ---------- Création (Stock / Atelier) ---------- */
-const newItemDialog=$('#newItemDialog'); const niTitle=$('#niTitle'), niType=$('#niType'), niName=$('#niName'), niCode=$('#niCode'), niQty=$('#niQty'), niThr=$('#niThr'), niLoc=$('#niLoc'), niTagChecks=$('#niTagChecks'), niTagsExtra=$('#niTagsExtra'), niTagCat=$('#niTagCategory');
+const newItemDialog=$('#newItemDialog'); const niTitle=$('#niTitle'), niType=$('#niType'), niName=$('#niName'), niCode=$('#niCode'), niQty=$('#niQty'), niThr=$('#niThr'), niLoc=$('#niLoc'), niLocChips=$('#niLocChips'), niTagChecks=$('#niTagChecks'), niTagsExtra=$('#niTagsExtra'), niTagCat=$('#niTagCategory'), niLinks=$('#niLinks');
 $('#niGen')?.addEventListener('click',async()=>{ const n=niName.value.trim(); if(!n)return; niCode.value=await generateCodeFromName(n); });
 niName?.addEventListener('blur',async()=>{ const n=niName.value.trim(); if(!niCode.value.trim() && n){ niCode.value=await generateCodeFromName(n);} });
 $('#niTagsClear')?.addEventListener('click',()=>{ niTagChecks.querySelectorAll('input[type="checkbox"]').forEach(cb=>cb.checked=false); });
@@ -209,17 +202,18 @@ async function openNewDialog(type='stock'){
   niTitle.textContent = (type==='atelier'?'Nouveau matériel (Atelier)':'Nouvel article (Stock)');
   niTagCat.textContent = (type==='atelier'?'Atelier':'Stock');
 
-  // suggestions d’emplacements
-  const items=await dbList(); const locs=[...new Set(items.map(i=>i.location).filter(Boolean))].sort();
-  const dl=$('#locList'); if(dl){ dl.innerHTML=locs.map(l=>`<option value="${esc(l)}">`).join(''); }
-
-  // tags prédéfinis
+  const items=await dbList(); const locsExisting=[...new Set(items.map(i=>i.location).filter(Boolean))].sort();
   const set=await dbGetSettings();
-  const defaults = (type==='atelier'?(set.defaultTagsAtelier||[]):(set.defaultTagsStock||[]));
-  niTagChecks.innerHTML = (defaults.length?defaults:[]).map(t=>`<label class="chip"><input type="checkbox" value="${esc(t)}"> ${esc(t)}</label>`).join('') || `<span class="muted">Aucun tag prédéfini (Paramètres)</span>`;
+  const defaultsTags = (type==='atelier'?(set.defaultTagsAtelier||[]):(set.defaultTagsStock||[]));
+  const defaultsLocs = (type==='atelier'?(set.defaultLocationsAtelier||[]):(set.defaultLocationsStock||[]));
 
-  // reset
-  niName.value=''; niCode.value=''; niQty.value='0'; niThr.value='0'; niLoc.value=''; niTagsExtra.value='';
+  const dl=$('#locList'); if(dl){ dl.innerHTML=[...new Set([...defaultsLocs,...locsExisting])].map(l=>`<option value="${esc(l)}">`).join(''); }
+  niLocChips.innerHTML = (defaultsLocs||[]).map(l=>`<button type="button" class="chip" data-loc="${esc(l)}">${esc(l)}</button>`).join('');
+  niLocChips.querySelectorAll('button[data-loc]')?.forEach(b=>b.addEventListener('click',()=>{ niLoc.value=b.dataset.loc||''; niLoc.focus(); }));
+
+  niTagChecks.innerHTML = (defaultsTags.length?defaultsTags:[]).map(t=>`<label class="chip"><input type="checkbox" value="${esc(t)}"> ${esc(t)}</label>`).join('') || `<span class="muted">Aucun tag prédéfini (Paramètres)</span>`;
+
+  niName.value=''; niCode.value=''; niQty.value='0'; niThr.value='0'; niLoc.value=''; niTagsExtra.value=''; niLinks.value='';
   newItemDialog.showModal(); setTimeout(()=>niName.focus(),0);
 }
 $('#btnAddStock')?.addEventListener('click',()=>openNewDialog('stock'));
@@ -234,7 +228,8 @@ $('#niSave')?.addEventListener('click',async(e)=>{
   const checked=[...niTagChecks.querySelectorAll('input[type="checkbox"]:checked')].map(cb=>cb.value);
   const extras=(niTagsExtra.value||'').split(',').map(t=>t.trim()).filter(Boolean);
   const tags=[...new Set([...checked, ...extras])];
-  await dbPut({id:code,code,name,qty,threshold,tags,location:loc,type,updated:Date.now()});
+  const links=(niLinks.value||'').split(/\n+/).map(s=>s.trim()).filter(Boolean);
+  await dbPut({id:code,code,name,qty,threshold,tags,location:loc,links,type,updated:Date.now()});
   newItemDialog.close(); announce(`Créé • ${name} (${code}) → ${getTypeLabel(type)}`);
   await refreshTable(type); await refreshHome();
 });
@@ -251,12 +246,7 @@ const labelSearch=$('#labelSearch'), labelsList=$('#labelsList'), lblSelInfo=$('
       labelsPages=$('#labelsPages'), btnLblAll=$('#lblAll'), btnLblNone=$('#lblNone'),
       btnLblPrev=$('#lblPrev'), btnLblNext=$('#lblNext'), lblPageInfo=$('#lblPageInfo'), btnLabelsPrint=$('#btnLabelsPrint');
 
-async function initLabelsPanel(){
-  if(!labelsInitDone){ bindLabelsUI(); labelsInitDone=true; }
-  await loadLabelsData();
-  await rebuildLabelsList();
-  await rebuildLabelsPreview(true);
-}
+async function initLabelsPanel(){ if(!labelsInitDone){ bindLabelsUI(); labelsInitDone=true; } await loadLabelsData(); await rebuildLabelsList(); await rebuildLabelsPreview(true); }
 async function loadLabelsData(){ labelsAllItems = await dbList(); if(labelsSelected.size===0){ labelsAllItems.forEach(i=>labelsSelected.add(i.code)); } }
 function bindLabelsUI(){
   labelSearch?.addEventListener('input',()=>rebuildLabelsList());
@@ -326,7 +316,7 @@ async function rebuildLabelsPreview(resetPage){
 function updatePaginationDisplay(){
   const pages=$$('.labels-page', labelsPages);
   pages.forEach((p,i)=>p.classList.toggle('active', i===lblPage));
-  lblPageInfo&&(lblPageInfo.textContent=`Page ${Math.min(lblPage+1,lblPagesCount)} / ${lblPagesCount}`);
+  $('#lblPageInfo')&&( $('#lblPageInfo').textContent=`Page ${Math.min(lblPage+1,lblPagesCount)} / ${lblPagesCount}` );
   $('#lblPrev')&&( $('#lblPrev').disabled = (lblPage<=0) );
   $('#lblNext')&&( $('#lblNext').disabled = (lblPage>=lblPagesCount-1) );
 }
@@ -359,10 +349,10 @@ $('#btnNewLoan')?.addEventListener('click',async()=>{ const code=prompt('Code ar
 });
 $('#searchLoans')?.addEventListener('input',refreshLoansTable);
 async function refreshLoansTable(){
-  if(!loansTbody)return; const q=($('#searchLoans')?.value||'').toLowerCase(); const loans=await dbListLoans(false);
+  if(!loansTbody)return; const q=($('#searchLoans')?.value||'').toLowerCase(); const loans=await dbListLoans(true);
   const rows=loans.filter(l=>!q||[l.person,l.code,l.name].join(' ').toLowerCase().includes(q)).map(l=>{
     const overdue=(l.returnedAt?false:(Date.now()>new Date(l.due).getTime()));
-    return `<tr><td>${esc(l.name||'')}</td><td><code>${esc(l.code)}</code></td><td>${esc(l.person)}</td><td>${esc(l.due)}</td><td>${overdue?'<span class="badge under">En retard</span>':'<span class="badge ok">Actif</span>'}</td><td>${l.returnedAt?'<span class="muted">Clos</span>':`<button class="btn" data-return="${l.id}">Retour</button>`}</td></tr>`;
+    return `<tr><td>${esc(l.name||'')}</td><td><code>${esc(l.code)}</code></td><td>${esc(l.person||'')}</td><td>${esc(l.due||'')}</td><td>${l.returnedAt?'<span class="badge low">Clos</span>':(overdue?'<span class="badge under">En retard</span>':'<span class="badge ok">Actif</span>')}</td><td>${l.returnedAt?'<span class="muted">—</span>':`<button class="btn" data-return="${l.id}">✅ Retour</button>`}</td></tr>`;
   }).join('');
   loansTbody.innerHTML=rows||`<tr><td colspan="6" class="muted">Aucun emprunt</td></tr>`;
   loansTbody.querySelectorAll('button[data-return]').forEach(btn=>{ btn.onclick=async()=>{ const id=btn.getAttribute('data-return'); await dbReturnLoan(id); announce('Matériel retourné'); await refreshLoansTable(); await refreshHome(); };});
@@ -370,7 +360,10 @@ async function refreshLoansTable(){
 
 /* ---------- Paramètres ---------- */
 $('#btnExportFull')?.addEventListener('click',async()=>{ const blob=await dbExportFull(); const text=JSON.stringify(blob,null,2); downloadFile('gstock-export.json',text,'application/json'); });
-$('#btnImportJSON')?.addEventListener('click',async()=>{ try{ const [h]=await window.showOpenFilePicker({types:[{description:'JSON',accept:{'application/json':['.json']}}]}); const f=await h.getFile(); const text=await f.text(); const data=JSON.parse(text); await dbImportFull(data); announce('Import terminé'); await refreshHome(); await refreshTable('stock'); await refreshTable('atelier'); }catch(e){ console.warn(e); alert('Import annulé / invalide'); }});
+$('#btnImportJSON')?.addEventListener('click',async()=>{
+  try{ const [h]=await window.showOpenFilePicker({types:[{description:'JSON',accept:{'application/json':['.json']}}]}); const f=await h.getFile(); const text=await f.text(); const data=JSON.parse(text); await dbImportFull(data); announce('Import terminé'); await refreshHome(); await refreshTable('stock'); await refreshTable('atelier'); }
+  catch(e){ console.warn(e); alert('Import annulé / invalide'); }
+});
 const sharedFileStatus=$('#sharedFileStatus');
 $('#btnLinkSharedFile')?.addEventListener('click',async()=>{ if(!('showSaveFilePicker' in window))return alert('File System Access API non supportée.');
   const handle=await showSaveFilePicker({suggestedName:'gstock-shared.json',types:[{description:'JSON',accept:{'application/json':['.json']}}]});
@@ -385,12 +378,11 @@ function initSettingsPanel(){ (async()=>{
   $('#inputBuffer')&&($('#inputBuffer').value=set.buffer|0);
   $('#inputTagsStock')&&($('#inputTagsStock').value=(set.defaultTagsStock||[]).join(', '));
   $('#inputTagsAtelier')&&($('#inputTagsAtelier').value=(set.defaultTagsAtelier||[]).join(', '));
+  $('#inputLocsStock')&&($('#inputLocsStock').value=(set.defaultLocationsStock||[]).join(', '));
+  $('#inputLocsAtelier')&&($('#inputLocsAtelier').value=(set.defaultLocationsAtelier||[]).join(', '));
   const chkDebug=$('#chkDebug'); if(chkDebug){ const apply=en=>{ window.GSTOCK_DEBUG=!!en; localStorage.setItem('gstock.debug',en?'1':'0'); window.dispatchEvent(new CustomEvent('gstock:debug-changed',{detail:{enabled:!!en}})); };
     chkDebug.checked=(localStorage.getItem('gstock.debug')==='1'); apply(chkDebug.checked); chkDebug.addEventListener('change',e=>apply(e.target.checked)); }
-})();
-}
-
-/* Sauvegarde paramètres (fallback) */
+})(); }
 async function saveSettingsUniversal(obj){
   if(typeof window.dbSaveSettings==='function') return await window.dbSaveSettings(obj);
   if(typeof window.dbSetSettings==='function') return await window.dbSetSettings(obj);
@@ -403,124 +395,141 @@ $('#btnSaveSettings')?.addEventListener('click',async()=>{
   const newSet={...s,
     buffer:Math.max(0,parseInt($('#inputBuffer').value||'0',10)),
     defaultTagsStock: ($('#inputTagsStock').value||'').split(',').map(t=>t.trim()).filter(Boolean),
-    defaultTagsAtelier: ($('#inputTagsAtelier').value||'').split(',').map(t=>t.trim()).filter(Boolean)
+    defaultTagsAtelier: ($('#inputTagsAtelier').value||'').split(',').map(t=>t.trim()).filter(Boolean),
+    defaultLocationsStock: ($('#inputLocsStock').value||'').split(',').map(t=>t.trim()).filter(Boolean),
+    defaultLocationsAtelier: ($('#inputLocsAtelier').value||'').split(',').map(t=>t.trim()).filter(Boolean)
   };
-  await saveSettingsUniversal(newSet);
-  announce('Paramètres enregistrés');
+  await saveSettingsUniversal(newSet); announce('Paramètres enregistrés');
 });
 
-/* ---------- Scanner ---------- */
+/* ---------- Scanner général (onglet Scanner) ---------- */
 const videoEl=$('#scanVideo'), btnScanStart=$('#btnScanStart'), btnScanStop=$('#btnScanStop'), btnScanTorch=$('#btnScanTorch'), scanHint=$('#scanHint');
 let scanStream=null, scanTrack=null, scanDetector=null, scanLoopId=0, torchOn=false;
-let lastCode='', lastReadTs=0;
-const DUP_MS=1200;
+let lastCode='', lastReadTs=0; const DUP_MS=1200;
 
-function beepKnown(ms=140, hz=880){
-  try{
-    const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
-    const ctx=new AC();
-    const o=ctx.createOscillator(), g=ctx.createGain();
-    o.frequency.value=hz; o.type='sine'; o.connect(g); g.connect(ctx.destination);
-    o.start();
-    g.gain.setValueAtTime(0.001, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime+0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+ms/1000);
-    setTimeout(()=>{ o.stop(); ctx.close(); }, ms+60);
-  }catch(_){}
-}
-
+function beepKnown(ms=140, hz=880){ try{ const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return; const ctx=new AC(); const o=ctx.createOscillator(), g=ctx.createGain(); o.frequency.value=hz; o.type='sine'; o.connect(g); g.connect(ctx.destination); o.start(); g.gain.setValueAtTime(0.001, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime+0.02); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+ms/1000); setTimeout(()=>{ o.stop(); ctx.close(); }, ms+60);}catch(_){ } }
 async function ensureDetector(){
   if(!('BarcodeDetector' in window)) throw new Error('BarcodeDetector non supporté');
   let fmts=['ean_13','code_128','code_39','qr_code','ean_8','upc_a','upc_e','itf','codabar','pdf417'];
-  try{
-    const supported = (await (window.BarcodeDetector.getSupportedFormats?.()||[]));
-    if(Array.isArray(supported) && supported.length) fmts = fmts.filter(f=>supported.includes(f));
-  }catch(_){}
+  try{ const supported = (await (window.BarcodeDetector.getSupportedFormats?.()||[])); if(Array.isArray(supported) && supported.length) fmts = fmts.filter(f=>supported.includes(f)); }catch(_){}
   scanDetector = new window.BarcodeDetector({formats: fmts});
 }
-
 async function startScan(){
   try{
-    // Permissions/flux caméra
     const constraints={ video:{ facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} }, audio:false };
     scanStream = await navigator.mediaDevices.getUserMedia(constraints);
     videoEl.srcObject=scanStream; await videoEl.play();
     scanTrack = scanStream.getVideoTracks()[0];
-    // Torche
     const caps = scanTrack.getCapabilities?.()||{};
-    if(caps.torch){ btnScanTorch.disabled=false; } else { btnScanTorch.disabled=true; torchOn=false; }
-
+    btnScanTorch.disabled=!caps.torch; torchOn=false;
     await ensureDetector();
-    lastCode=''; lastReadTs=0;
-    scanHint && (scanHint.textContent='Visez le code-barres… (les codes inconnus ne ferment pas la caméra)');
+    lastCode=''; lastReadTs=0; scanHint && (scanHint.textContent='Visez le code-barres…');
     runDetectLoop();
   }catch(err){
     console.warn('startScan error', err);
-    if(String(err).includes('BarcodeDetector')) scanHint && (scanHint.textContent='Scanner non supporté sur ce navigateur. Utilisez Chrome/Edge récents et HTTPS.');
-    else scanHint && (scanHint.textContent='Impossible d’accéder à la caméra. Vérifiez HTTPS et les autorisations.');
+    scanHint && (scanHint.textContent = String(err).includes('BarcodeDetector') ? 'Scanner non supporté (Chrome/Edge, HTTPS conseillé).' : 'Accès caméra impossible (HTTPS/permissions).');
     stopScan();
   }
 }
-function stopScan(){
-  if(scanLoopId){ cancelAnimationFrame(scanLoopId); scanLoopId=0; }
-  try{ videoEl.pause?.(); }catch(_){}
+function stopScan(){ if(scanLoopId){ cancelAnimationFrame(scanLoopId); scanLoopId=0; } try{ videoEl.pause?.(); }catch(_){}
   if(scanTrack){ try{ scanTrack.stop(); }catch(_){ } scanTrack=null; }
   if(scanStream){ try{ scanStream.getTracks().forEach(t=>t.stop()); }catch(_){ } scanStream=null; }
-  videoEl.srcObject=null;
-  btnScanTorch && (btnScanTorch.disabled=true); torchOn=false;
-}
-
+  videoEl.srcObject=null; btnScanTorch && (btnScanTorch.disabled=true); torchOn=false; }
 async function runDetectLoop(){
   const step = async ()=>{
     if(!scanDetector || !videoEl || !scanStream){ return; }
     try{
       const codes = await scanDetector.detect(videoEl);
       if(Array.isArray(codes) && codes.length){
-        // prend le plus “confiant”
-        const raw=(codes[0].rawValue||'').trim();
-        const now=Date.now();
+        const raw=(codes[0].rawValue||'').trim(); const now=Date.now();
         if(raw && (raw!==lastCode || (now-lastReadTs)>DUP_MS)){
           lastCode=raw; lastReadTs=now;
-          // recherche DB
           const item=(await dbGet(raw))||(await dbGet(raw.toUpperCase()))||(await dbGet(raw.toLowerCase()));
           if(item){
-            // BIP + arrêt + ajustement
-            beepKnown();
-            stopScan();
-            await openAdjustDialog({code:item.code, type:'add'});
-            return; // on sort, l’utilisateur gère l’ajustement
+            beepKnown(); stopScan(); await openAdjustDialog({code:item.code, type:'add'}); return;
           }else{
-            // inconnu → on continue le scan
             scanHint && (scanHint.textContent=`Code inconnu : ${raw} — on continue…`);
-            if(window.GSTOCK_DEBUG) console.debug('[scan] inconnu', raw);
           }
         }
       }
-    }catch(err){
-      if(window.GSTOCK_DEBUG) console.debug('detect error', err);
-    }
+    }catch(err){ if(window.GSTOCK_DEBUG) console.debug('detect error', err); }
     scanLoopId = requestAnimationFrame(step);
   };
   scanLoopId = requestAnimationFrame(step);
 }
-
-/* boutons scanner */
 btnScanStart?.addEventListener('click',startScan);
 btnScanStop?.addEventListener('click',stopScan);
-btnScanTorch?.addEventListener('click',async()=>{
-  if(!scanTrack) return;
-  const caps=scanTrack.getCapabilities?.()||{};
-  if(!caps.torch) return;
-  torchOn=!torchOn;
-  try{ await scanTrack.applyConstraints({advanced:[{torch:torchOn}]}); }catch(e){ torchOn=false; }
-});
+btnScanTorch?.addEventListener('click',async()=>{ if(!scanTrack) return; const caps=scanTrack.getCapabilities?.()||{}; if(!caps.torch) return; torchOn=!torchOn; try{ await scanTrack.applyConstraints({advanced:[{torch:torchOn}]}); }catch(e){ torchOn=false; } });
+
+/* ---------- Scan Emprunt/Retour (onglet Prêts) ---------- */
+const loanDlg=$('#loanScanDialog'), loanVideo=$('#loanVideo'), loanScanTitle=$('#loanScanTitle'), loanScanHint=$('#loanScanHint'), btnLoanTorch=$('#btnLoanTorch'), btnLoanStop=$('#btnLoanStop');
+let loanStream=null, loanTrack=null, loanLoop=0, loanMode='borrow';
+$('#btnScanBorrow')?.addEventListener('click',()=>startLoanScan('borrow'));
+$('#btnScanReturn')?.addEventListener('click',()=>startLoanScan('return'));
+btnLoanStop?.addEventListener('click',stopLoanScan);
+btnLoanTorch?.addEventListener('click',async()=>{ if(!loanTrack) return; const caps=loanTrack.getCapabilities?.()||{}; if(!caps.torch) return; const on=!(loanTrack._torchOn); try{ await loanTrack.applyConstraints({advanced:[{torch:on}]}); loanTrack._torchOn=on; }catch(_){ loanTrack._torchOn=false; } });
+
+async function startLoanScan(mode='borrow'){
+  loanMode=mode; loanScanTitle.textContent=(mode==='borrow'?'Scanner un emprunt':'Scanner un retour');
+  try{
+    const constraints={ video:{ facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} }, audio:false };
+    loanStream = await navigator.mediaDevices.getUserMedia(constraints);
+    loanVideo.srcObject=loanStream; await loanVideo.play();
+    loanTrack = loanStream.getVideoTracks()[0];
+    const caps=loanTrack.getCapabilities?.()||{}; btnLoanTorch.disabled=!caps.torch; loanTrack._torchOn=false;
+    await ensureDetector();
+    loanScanHint.textContent='Visez le code-barres…'; loanDlg.showModal();
+    runLoanLoop();
+  }catch(err){
+    console.warn('loan scan error', err); alert('Caméra indisponible ou navigateur non supporté.');
+  }
+}
+function stopLoanScan(){ if(loanLoop){ cancelAnimationFrame(loanLoop); loanLoop=0; } try{ loanVideo.pause?.(); }catch(_){}
+  if(loanTrack){ try{ loanTrack.stop(); }catch(_){ } loanTrack=null; }
+  if(loanStream){ try{ loanStream.getTracks().forEach(t=>t.stop()); }catch(_){ } loanStream=null; }
+  loanVideo.srcObject=null; try{ loanDlg.close(); }catch(_){}
+}
+async function runLoanLoop(){
+  const step = async ()=>{
+    if(!scanDetector || !loanVideo || !loanStream) return;
+    try{
+      const codes=await scanDetector.detect(loanVideo);
+      if(Array.isArray(codes) && codes.length){
+        const raw=(codes[0].rawValue||'').trim();
+        if(raw){
+          const it=(await dbGet(raw))||(await dbGet(raw.toUpperCase()))||(await dbGet(raw.toLowerCase()));
+          if(!it){ loanScanHint.textContent=`Code inconnu : ${raw}`; loanLoop=requestAnimationFrame(step); return; }
+          // connu
+          beepKnown();
+          if(loanMode==='borrow'){
+            stopLoanScan();
+            openBorrowDialog(it);
+            return;
+          }else{
+            // retour
+            const loans=await dbListLoans(true);
+            const active=loans.find(l=>l.code===it.code && !l.returnedAt);
+            if(active){ await dbReturnLoan(active.id); announce(`Retour enregistré • ${it.name}`); await refreshLoansTable(); await refreshHome(); stopLoanScan(); return; }
+            loanScanHint.textContent='Aucun prêt actif pour ce code — on continue…';
+          }
+        }
+      }
+    }catch(err){ if(window.GSTOCK_DEBUG) console.debug('loan detect err', err); }
+    loanLoop=requestAnimationFrame(step);
+  };
+  loanLoop=requestAnimationFrame(step);
+}
+
+/* Dialog emprunt (après scan) */
+const borrowDlg=$('#borrowDialog'), borrowItem=$('#borrowItem'), brwPerson=$('#brwPerson'), brwDue=$('#brwDue'), brwNote=$('#brwNote'), brwCreate=$('#brwCreate');
+let borrowCurrent=null;
+function openBorrowDialog(item){ borrowCurrent=item; borrowItem.textContent=`${item.name} (${item.code})`; brwPerson.value=''; brwDue.value=''; brwNote.value=''; borrowDlg.showModal(); }
+brwCreate?.addEventListener('click',async(e)=>{ e.preventDefault(); if(!borrowCurrent) return borrowDlg.close(); const person=brwPerson.value.trim(); const due=brwDue.value; const note=brwNote.value||''; if(!person||!due){ alert('Emprunteur et date de retour requis.'); return; } await dbCreateLoan({code:borrowCurrent.code,name:borrowCurrent.name,person,due,note}); announce('Prêt créé'); borrowDlg.close(); await refreshLoansTable(); await refreshHome(); });
 
 /* ---------- Init ---------- */
 (async function init(){
   $('#appVersion')&&( $('#appVersion').textContent=window.APP_VERSION||'' );
-  if(typeof window.dbSaveSettings!=='function' && typeof window.dbSetSettings==='function'){
-    window.dbSaveSettings = window.dbSetSettings;
-  }
+  if(typeof window.dbSaveSettings!=='function' && typeof window.dbSetSettings==='function'){ window.dbSaveSettings = window.dbSetSettings; }
   await dbInit();
   await refreshHome();
   showTab('home');
