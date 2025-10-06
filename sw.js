@@ -1,15 +1,14 @@
-/* Gstock - sw.js v2.4.0 */
-const CACHE='gstock-2.4.0.2';
+/* Gstock - sw.js v2.5.0 */
+const CACHE='gstock-2.5.0';
 const APP_SHELL=[
   './',
   'index.html',
-  'js/app.js?v=2.4.2',
-  'js/barcode.js?v=2.1.7',
-  'js/code39.js?v=2.1.7',
-  'js/db.js?v=2.1.7',
-  'js/sync-github.js?v=2.1.7',
+  'js/app.js?v=2.5.0',
+  'js/barcode.js?v=2.1.8',
+  'js/code39.js?v=2.1.8',
+  'js/db.js?v=2.1.8',
+  'js/sync-github.js?v=2.1.8',
   'manifest.json',
-  'data/demo.json',
   'icons/icon-192.png',
   'icons/icon-512.png'
 ];
@@ -22,7 +21,12 @@ self.addEventListener('activate',e=>{
 });
 self.addEventListener('fetch',e=>{
   const url=new URL(e.request.url);
-  const isApp = url.pathname.endsWith('/') || /index\.html$/.test(url.pathname) || /(?:app|db|barcode|code39|sync-github)\.js/.test(url.pathname) || /manifest\.json$/.test(url.pathname);
+  const isApp = url.origin===location.origin && (
+    url.pathname.endsWith('/') ||
+    /index\.html$/.test(url.pathname) ||
+    /(?:app|db|barcode|code39|sync-github)\.js/.test(url.pathname) ||
+    /manifest\.json$/.test(url.pathname)
+  );
   if(isApp){
     e.respondWith((async()=>{
       try{
