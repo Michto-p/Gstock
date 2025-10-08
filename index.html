@@ -55,7 +55,7 @@
     @media (max-width:900px){ .cards{grid-template-columns:repeat(2,1fr)} }
     @media (max-width:520px){ .cards{grid-template-columns:1fr} }
 
-    /* Étiquettes */
+    /* Étiquettes – layout revu */
     .labels-layout{display:grid;grid-template-columns:320px 1fr;gap:12px}
     .labels-side{border:1px solid var(--bd);border-radius:.6rem;padding:.6rem;background:var(--elev);display:flex;flex-direction:column;gap:.5rem;max-height:70vh}
     .labels-list{flex:1;overflow:auto;border:1px dashed var(--bd);border-radius:.5rem;padding:.4rem;background:color-mix(in oklab, var(--elev) 90%, transparent)}
@@ -368,10 +368,11 @@
         <label>Emplacement<br>
           <select id="niLocSelect" class="btn"></select>
         </label>
-        <div style="display:flex;gap:.4rem;align-items:center">
-          <input id="niLocCustom" class="btn" placeholder="Nouveau lieu… (facultatif)" style="flex:1">
-          <button id="niLocAdd" type="button" class="btn">➕ Ajouter</button>
+        <div id="niLocCustomWrap" style="display:flex;gap:.4rem;align-items:center" hidden>
+          <span class="muted">Autre :</span>
+          <input id="niLocCustom" class="btn" placeholder="Saisir un emplacement">
         </div>
+        <div id="niLocChips" style="display:flex;gap:.4rem;flex-wrap:wrap"></div>
 
         <fieldset style="border:1px solid var(--bd);border-radius:.5rem;padding:.5rem">
           <legend style="padding:0 .4rem">Tags prédéfinis (<span id="niTagCategory">Stock</span>)</legend>
