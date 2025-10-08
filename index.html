@@ -42,7 +42,7 @@
     .btn{padding:.5rem .8rem;border:1px solid var(--bd);background:var(--elev);border-radius:.5rem;cursor:pointer}
     .btn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
     .btn.danger{background:var(--danger);border-color:var(--danger);color:#fff}
-    input.btn,select.btn{appearance:none}
+    input.btn,select.btn,textarea.btn{appearance:none}
     code{background:rgba(0,0,0,.06);padding:.1rem .3rem;border-radius:.3rem}
     .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
     .chip{display:inline-flex;align-items:center;gap:.3rem;border:1px solid var(--bd);border-radius:999px;padding:.15rem .5rem;background:var(--bg);font-size:.8rem}
@@ -55,7 +55,7 @@
     @media (max-width:900px){ .cards{grid-template-columns:repeat(2,1fr)} }
     @media (max-width:520px){ .cards{grid-template-columns:1fr} }
 
-    /* Étiquettes – layout revu */
+    /* Étiquettes */
     .labels-layout{display:grid;grid-template-columns:320px 1fr;gap:12px}
     .labels-side{border:1px solid var(--bd);border-radius:.6rem;padding:.6rem;background:var(--elev);display:flex;flex-direction:column;gap:.5rem;max-height:70vh}
     .labels-list{flex:1;overflow:auto;border:1px dashed var(--bd);border-radius:.5rem;padding:.4rem;background:color-mix(in oklab, var(--elev) 90%, transparent)}
@@ -89,7 +89,7 @@
     }
   </style>
   <script>
-    window.APP_VERSION='2.5.0';
+    window.APP_VERSION='2.5.1';
     (function(){
       const saved=localStorage.getItem('gstock.theme');
       const prefersDark=window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
@@ -105,7 +105,7 @@
         <div class="brand-left">
           <img src="icons/icon-192.png" alt="" width="28" height="28" style="border-radius:6px">
           <strong>Gstock</strong><span class="muted">— Gestion de stock</span>
-          <span class="pill muted">v<span id="appVersion">2.5.0</span></span>
+          <span class="pill muted">v<span id="appVersion">2.5.1</span></span>
         </div>
         <div class="toggle">
           <label for="themeToggle" class="muted">Thème</label>
@@ -364,11 +364,14 @@
           <label style="flex:1 1 140px">Seuil<br><input id="niThr" class="btn" type="number" min="0" value="0" required></label>
         </div>
 
+        <!-- Sélecteur rapide d’emplacement -->
         <label>Emplacement<br>
-          <input id="niLoc" class="btn" list="locList" placeholder="ex: Stock atelier — Étagère 1">
-          <datalist id="locList"></datalist>
+          <select id="niLocSelect" class="btn"></select>
         </label>
-        <div id="niLocChips" style="display:flex;gap:.4rem;flex-wrap:wrap"></div>
+        <div style="display:flex;gap:.4rem;align-items:center">
+          <input id="niLocCustom" class="btn" placeholder="Nouveau lieu… (facultatif)" style="flex:1">
+          <button id="niLocAdd" type="button" class="btn">➕ Ajouter</button>
+        </div>
 
         <fieldset style="border:1px solid var(--bd);border-radius:.5rem;padding:.5rem">
           <legend style="padding:0 .4rem">Tags prédéfinis (<span id="niTagCategory">Stock</span>)</legend>
@@ -447,7 +450,7 @@
   <script src="js/barcode.js?v=2.1.8"></script>
   <script src="js/code39.js?v=2.1.8"></script>
   <script src="js/sync-github.js?v=2.1.8"></script>
-  <script src="js/app.js?v=2.5.0"></script>
+  <script src="js/app.js?v=2.5.1"></script>
 
   <script>
     if ('serviceWorker' in navigator) {
