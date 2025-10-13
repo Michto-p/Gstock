@@ -1,4 +1,4 @@
-/* Gstock - app.js v2.8.1 */
+/* Gstock - app.js v2.8.3 */
 (function(){'use strict';
 function $(s,r){return (r||document).querySelector(s);}
 function $$(s,r){return Array.from((r||document).querySelectorAll(s));}
@@ -10,7 +10,7 @@ function announce(msg){ if(sr){ sr.textContent=''; setTimeout(()=>{ sr.textConte
 function downloadFile(name,data,type){ var blob=new Blob([data],{type:type}); var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),3000); }
 function debounced(fn,ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; }
 
-/* thème */
+/* Thème */
 var themeToggle=$('#themeToggle');
 if(themeToggle){
   themeToggle.value=(localStorage.getItem('gstock.theme')||'auto');
@@ -22,7 +22,7 @@ if(themeToggle){
   themeToggle.addEventListener('change',applyTheme); applyTheme();
 }
 
-/* onglets */
+/* Onglets */
 var sections={home:$('#tab-home'),stock:$('#tab-stock'),atelier:$('#tab-atelier'),scanner:$('#tab-scanner'),labels:$('#tab-labels'),journal:$('#tab-journal'),gear:$('#tab-gear'),settings:$('#tab-settings')};
 $$('nav button[data-tab]').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
 function showTab(name){
@@ -37,7 +37,7 @@ function showTab(name){
   if(name==='settings') initSettingsPanel();
 }
 
-/* helpers code/ref */
+/* Helpers code/ref */
 function deaccent(s){ try{return s.normalize('NFD').replace(/\p{Diacritic}/gu,'');}catch(_){return s;} }
 function nameToCode(name){
   var stop=new Set(['le','la','les','des','du','de','d','l','un','une','pour','et','sur','avec','en','à','au','aux','the','of','for']);
@@ -51,7 +51,7 @@ function nameToCode(name){
 }
 async function generateCodeFromName(name){ var base=nameToCode(name); var c=base, n=2; while(await dbGet(c)||await dbGet(c.toUpperCase())||await dbGet(c.toLowerCase())) c=base+'-'+(n++); return c; }
 
-/* accueil */
+/* Accueil */
 async function refreshHome(){
   var items=await dbList();
   var set=await dbGetSettings(); var buf=(set&&set.buffer|0);
@@ -67,7 +67,7 @@ async function refreshHome(){
   ul.innerHTML=(recent.map(m=>`<li>${new Date(m.ts).toLocaleString()} • <strong>${esc(m.type)}</strong> <code>${esc(m.code)}</code> ×${m.qty}</li>`).join(''))||'<li class="muted">Aucun mouvement</li>';
 }
 
-/* badge statut */
+/* Badges statut */
 function ensureType(it){ return it.type||'stock'; }
 function statusBadge(it, buffer){
   var qty=(it.qty|0), thr=(it.threshold|0), diff=qty-thr;
@@ -77,7 +77,7 @@ function statusBadge(it, buffer){
   return '<span class="badge ok" title="OK">OK</span>';
 }
 
-/* tables */
+/* Tables Stock/Atelier */
 var state={ stock:{q:'',status:'',tag:'',loc:''}, atelier:{q:'',status:'',tag:'',loc:''} };
 var els={
   stock:{ tbody:$('#stockTbody'), search:$('#stockSearch'), status:$('#stockStatus'), tag:$('#stockTag'), loc:$('#stockLoc'), btnAdd:$('#btnAddStock'), btnClear:$('#stockClear') },
@@ -183,7 +183,7 @@ async function openLinks(code){
   var idx=((parseInt(s||'0',10)-1)|0); if(links[idx]) window.open(links[idx],'_blank');
 }
 
-/* ajustement */
+/* Ajustement */
 var dlg=$('#adjustDialog'), dlgType=$('#dlgType'), dlgQty=$('#dlgQty'), dlgNote=$('#dlgNote'), dlgItem=$('#dlgItem');
 var dlgState={code:null};
 $('#dlgClose')?.addEventListener('click',()=>dlg?.close());
@@ -205,7 +205,7 @@ async function onValidateAdjust(){
   dlg?.close(); await refreshTable(ensureType(item)); await refreshHome();
 }
 
-/* création */
+/* Création */
 var newItemDialog=$('#newItemDialog');
 var niTitle=$('#niTitle'), niType=$('#niType'), niName=$('#niName'), niRef=$('#niRef'), niCode=$('#niCode'),
     niQty=$('#niQty'), niThr=$('#niThr'), niLocSelect=$('#niLocSelect'), niLocCustom=$('#niLocCustom'),
@@ -284,7 +284,7 @@ $('#niSave')?.addEventListener('click',async e=>{
   newItemDialog?.close(); announce('Créé • '+name+' ('+(ref||code)+')'); await refreshTable(type); await refreshHome();
 });
 
-/* étiquettes */
+/* Étiquettes */
 var LABEL_TEMPLATES={ 'avery-l7160':{cols:3,rows:7,cellW:63.5,cellH:38.1,gapX:2.5,gapY:0,marginX:7.5,marginY:12.0},
   'avery-l7159':{cols:3,rows:7,cellW:63.5,cellH:38.1,gapX:2.5,gapY:0,marginX:7.5,marginY:12.0},
   'avery-l7163':{cols:2,rows:7,cellW:99.1,cellH:38.1,gapX:2.0,gapY:0,marginX:5.0,marginY:13.5},
@@ -381,7 +381,7 @@ function updatePaginationDisplay(){
   show(info,!one);
 }
 
-/* journal */
+/* Journal */
 var journalTbody=$('#journalTbody');
 $('#btnFilterJournal')?.addEventListener('click',refreshJournal);
 $('#btnExportCSV')?.addEventListener('click',async()=>{ var data=await dbExport('csv'); downloadFile('journal.csv',data,'text/csv'); });
@@ -394,7 +394,7 @@ async function refreshJournal(){
     || '<tr><td colspan="6" class="muted">Aucun mouvement</td></tr>';
 }
 
-/* prêts */
+/* Emprunts */
 var loansTbody=$('#loansTbody');
 $('#btnNewLoan')?.addEventListener('click',async ()=>{
   var code=prompt('Code article ?'); if(!code) return;
@@ -421,7 +421,7 @@ async function refreshLoansTable(){
   if(sReturn){ sReturn.hidden=false; sReturn.disabled=!supported; if(!supported) sReturn.title='Scanner non supporté sur ce navigateur'; }
 }
 
-/* paramètres */
+/* Paramètres */
 function makeSortable(listEl, onUpdate){
   var dragEl=null;
   listEl.addEventListener('dragstart',e=>{ var li=e.target.closest('li'); if(!li) return; dragEl=li; e.dataTransfer.effectAllowed='move'; try{ e.dataTransfer.setData('text/plain', li.dataset.value||''); }catch(_){ } li.style.opacity='0.5'; });
@@ -463,10 +463,11 @@ $('#btnLinkSharedFile')?.addEventListener('click',async()=>{
   await dbLinkSharedFile(handle); $('#sharedFileStatus').textContent='Fichier partagé lié (autosave activé)';
 });
 $('#btnResetCache')?.addEventListener('click',async()=>{
-  if(!confirm('Réinitialiser cache PWA et recharger ?')) return;
+  if(!confirm('Réinitialiser cache + base locale (IDB) + SW et recharger ?')) return;
+  try { await dbNuke(false); } catch(e){}
   try{ var regs=await (navigator.serviceWorker?.getRegistrations?.()||[]); await Promise.all(regs.map(r=>r.unregister())); }catch(e){}
   try{ var keys=await (window.caches?.keys?.()||[]); await Promise.all(keys.map(k=>caches.delete(k))); }catch(e){}
-  location.reload();
+  location.href = location.pathname + '?bust=' + Date.now();
 });
 function initSettingsPanel(){
   (async ()=>{
@@ -504,14 +505,14 @@ function initSettingsPanel(){
   })();
 }
 
-/* scanner articles */
+/* Scanner articles */
 var videoEl=$('#scanVideo'), btnScanStart=$('#btnScanStart'), btnScanStop=$('#btnScanStop'), btnScanTorch=$('#btnScanTorch'), scanHint=$('#scanHint');
 var scanStream=null, scanTrack=null, scanDetector=null, scanLoopId=0, torchOn=false;
 var lastCode='', lastReadTs=0; var DUP_MS=1200;
 var HAS_DETECTOR=('BarcodeDetector' in window);
 btnScanStop && (btnScanStop.hidden=true);
 btnScanTorch && (btnScanTorch.hidden=true);
-!HAS_DETECTOR && scanHint && (scanHint.textContent='Scanner natif indisponible (essayez Chrome/Edge Android). Vous pouvez ouvrir la caméra; si la détection échoue, ajoutez manuellement.');
+!HAS_DETECTOR && scanHint && (scanHint.textContent='Scanner natif indisponible (essayez Chrome/Edge Android). Si la détection échoue, ajoutez manuellement.');
 
 function beepKnown(ms,hz){
   ms=ms||140; hz=hz||880;
@@ -589,7 +590,7 @@ btnScanTorch?.addEventListener('click',async ()=>{
   torchOn=!torchOn; try{ await scanTrack.applyConstraints({advanced:[{torch:torchOn}]}); }catch(e){ torchOn=false; }
 });
 
-/* scan emprunt/retour */
+/* Scan emprunt/retour (dialog + détection) */
 var loanDlg=$('#loanScanDialog'), loanVideo=$('#loanVideo'), loanScanTitle=$('#loanScanTitle'), loanScanHint=$('#loanScanHint'), btnLoanTorch=$('#btnLoanTorch'), btnLoanStop=$('#btnLoanStop');
 var loanStream=null, loanTrack=null, loanLoop=0, loanMode='borrow';
 $('#btnScanBorrow')?.addEventListener('click',()=>startLoanScan('borrow'));
@@ -645,7 +646,7 @@ async function runLoanLoop(){
   };
   loanLoop=requestAnimationFrame(step);
 }
-/* dialog emprunt */
+/* Dialog emprunt */
 var borrowDlg=$('#borrowDialog'), borrowItem=$('#borrowItem'), brwPerson=$('#brwPerson'), brwDue=$('#brwDue'), brwNote=$('#brwNote'), brwCreate=$('#brwCreate');
 var borrowCurrent=null;
 function openBorrowDialog(item){
@@ -661,10 +662,31 @@ brwCreate?.addEventListener('click',async e=>{
   announce('Prêt créé'); borrowDlg?.close(); await refreshLoansTable(); await refreshHome();
 });
 
-/* init */
+/* INIT avec rattrapage IDB corrompu */
 (async function init(){
   $('#appVersion') && ($('#appVersion').textContent=window.APP_VERSION||'');
-  await dbInit();
+  try {
+    if (typeof window.dbInit !== 'function') throw new Error('db.js non chargé');
+    await dbInit();
+  } catch (e) {
+    console.error('Init DB error:', e);
+    var msg = String(e && (e.message || e.name) || '');
+    if ((e && (e.name === 'UnknownError' || e.name === 'InvalidStateError')) || /Internal error/i.test(msg)) {
+      var ok = confirm('Le stockage local semble corrompu.\nTenter une réparation ?\n(La base locale sera réinitialisée)');
+      if (ok) {
+        try { await dbNuke(false); } catch(_) {}
+        try {
+          if ('caches' in window) { const ks = await caches.keys(); await Promise.all(ks.map(k=>caches.delete(k))); }
+          if (navigator.serviceWorker?.getRegistrations) { const regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map(r=>r.unregister())); }
+        } catch(_) {}
+        location.href = location.pathname + '?bust=' + Date.now();
+        return;
+      }
+    }
+    alert('Impossible d’initialiser le stockage.\nDétail: '+ msg);
+    return;
+  }
+
   await refreshHome();
   showTab('home');
   await refreshLoansTable();
