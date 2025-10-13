@@ -1,4 +1,4 @@
-/* Gstock - app.js v2.6.0 (Aide intégrée + tri Tags/Emplacements) */
+/* Gstock - app.js v2.7.0 (A4 Avery + offsets, aide intégrée, tri tags/loc, scanner/prêts, statuts couleur) */
 (function(){'use strict';
 /* ---------- helpers DOM ---------- */
 function $(s,r){return (r||document).querySelector(s);}
@@ -343,15 +343,22 @@ var _niSave=$('#niSave'); if(_niSave) _niSave.addEventListener('click',async fun
   await refreshTable(type); await refreshHome();
 });
 
-/* ---------- Étiquettes ---------- */
-var LABEL_TEMPLATES={
-  'avery-l7159': { cols:3, rows:7, cellW:63.5, cellH:38.1, gapX:7, gapY:2.5 },
-  'mm50x25':    { cols:4, rows:10, cellW:50,  cellH:25,   gapX:5, gapY:5   },
-  'mm70x35':    { cols:3, rows:8,  cellW:70,  cellH:35,   gapX:5, gapY:5   }
+/* ---------- Étiquettes (A4 Avery + offsets X/Y) ---------- */
+var LABEL_TEMPLATES = {
+  // A4 210×297 mm — marges approximées pour le rendu navigateur
+  'avery-l7160': { cols:3, rows:7,  cellW:63.5, cellH:38.1, gapX:2.5, gapY:0,   marginX:7.5,  marginY:12.0 },
+  'avery-l7159': { cols:3, rows:7,  cellW:63.5, cellH:38.1, gapX:2.5, gapY:0,   marginX:7.5,  marginY:12.0 },
+  'avery-l7163': { cols:2, rows:7,  cellW:99.1, cellH:38.1, gapX:2.0, gapY:0,   marginX:5.0,  marginY:13.5 },
+  'avery-l7162': { cols:2, rows:8,  cellW:99.1, cellH:33.9, gapX:2.0, gapY:2.0, marginX:5.0,  marginY:10.7 },
+  'avery-l7165': { cols:2, rows:4,  cellW:99.1, cellH:67.7, gapX:2.0, gapY:0,   marginX:5.0,  marginY:13.5 },
+  // libres
+  'mm50x25':     { cols:4, rows:10, cellW:50,   cellH:25,   gapX:5,   gapY:5,   marginX:10,   marginY:10  },
+  'mm70x35':     { cols:3, rows:8,  cellW:70,   cellH:35,   gapX:5,   gapY:5,   marginX:10,   marginY:10  }
 };
 var labelsInitDone=false, labelsAllItems=[], labelsSelected=new Set(), lblPage=0, lblPagesCount=1;
 var labelSearch=$('#labelSearch'), labelsList=$('#labelsList'), lblSelInfo=$('#lblSelInfo'),
     lblTemplate=$('#lblTemplate'), lblDensity=$('#lblDensity'), lblNameSize=$('#lblNameSize'), lblShowText=$('#lblShowText'),
+    lblOffsetX=$('#lblOffsetX'), lblOffsetY=$('#lblOffsetY'),
     labelsPages=$('#labelsPages'), btnLblAll=$('#lblAll'), btnLblNone=$('#lblNone'),
     btnLblPrev=$('#lblPrev'), btnLblNext=$('#lblNext'), lblPageInfo=$('#lblPageInfo'), btnLabelsPrint=$('#btnLabelsPrint');
 
@@ -361,10 +368,30 @@ function bindLabelsUI(){
   if(labelSearch) labelSearch.addEventListener('input',function(){ rebuildLabelsList(); });
   if(btnLblAll) btnLblAll.addEventListener('click',function(){ labelsAllItems.forEach(function(i){ labelsSelected.add(i.code); }); rebuildLabelsList(); rebuildLabelsPreview(true); });
   if(btnLblNone) btnLblNone.addEventListener('click',function(){ labelsSelected.clear(); rebuildLabelsList(); rebuildLabelsPreview(true); });
-  if(lblTemplate) lblTemplate.addEventListener('change',function(){ rebuildLabelsPreview(true); });
-  if(lblDensity) lblDensity.addEventListener('change',function(){ rebuildLabelsPreview(false); });
-  if(lblNameSize) lblNameSize.addEventListener('change',function(){ rebuildLabelsPreview(false); });
-  if(lblShowText) lblShowText.addEventListener('change',function(){ rebuildLabelsPreview(false); });
+  if(lblTemplate){
+    var tmplSaved=localStorage.getItem('gstock.lblTemplate'); if(tmplSaved) lblTemplate.value=tmplSaved;
+    lblTemplate.addEventListener('change',function(){ localStorage.setItem('gstock.lblTemplate', lblTemplate.value); rebuildLabelsPreview(true); });
+  }
+  if(lblDensity){
+    var d=localStorage.getItem('gstock.lblDensity'); if(d) lblDensity.value=d;
+    lblDensity.addEventListener('change',function(){ localStorage.setItem('gstock.lblDensity', lblDensity.value); rebuildLabelsPreview(false); });
+  }
+  if(lblNameSize){
+    var ns=localStorage.getItem('gstock.lblNameSize'); if(ns) lblNameSize.value=ns;
+    lblNameSize.addEventListener('change',function(){ localStorage.setItem('gstock.lblNameSize', lblNameSize.value); rebuildLabelsPreview(false); });
+  }
+  if(lblShowText){
+    var st=localStorage.getItem('gstock.lblShowText')==='1'; lblShowText.checked=st;
+    lblShowText.addEventListener('change',function(){ localStorage.setItem('gstock.lblShowText', lblShowText.checked?'1':'0'); rebuildLabelsPreview(false); });
+  }
+  if(lblOffsetX){
+    var ox=parseFloat(localStorage.getItem('gstock.lblOffsetX')||'0')||0; lblOffsetX.value=ox;
+    lblOffsetX.addEventListener('change',function(){ localStorage.setItem('gstock.lblOffsetX', String(lblOffsetX.value||0)); rebuildLabelsPreview(false); });
+  }
+  if(lblOffsetY){
+    var oy=parseFloat(localStorage.getItem('gstock.lblOffsetY')||'0')||0; lblOffsetY.value=oy;
+    lblOffsetY.addEventListener('change',function(){ localStorage.setItem('gstock.lblOffsetY', String(lblOffsetY.value||0)); rebuildLabelsPreview(false); });
+  }
   if(btnLblPrev) btnLblPrev.addEventListener('click',function(){ if(lblPage>0){ lblPage--; updatePaginationDisplay(); } });
   if(btnLblNext) btnLblNext.addEventListener('click',function(){ if(lblPage<lblPagesCount-1){ lblPage++; updatePaginationDisplay(); } });
   if(btnLabelsPrint) btnLabelsPrint.addEventListener('click',function(){ window.print(); });
@@ -384,10 +411,13 @@ function updateLblSelInfo(){ if(lblSelInfo) lblSelInfo.textContent=labelsSelecte
 function chunkArray(arr, size){ var out=[]; for(var i=0;i<arr.length;i+=size) out.push(arr.slice(i,i+size)); return out; }
 function mm(n){ return n+'mm'; }
 function rebuildLabelsPreview(resetPage){
-  var tmpl=LABEL_TEMPLATES[(lblTemplate&&lblTemplate.value)||'avery-l7159'];
+  var key=(lblTemplate&&lblTemplate.value)||'avery-l7160';
+  var tmpl=LABEL_TEMPLATES[key]||LABEL_TEMPLATES['avery-l7160'];
   var module=parseFloat((lblDensity&&lblDensity.value)||'2');
   var namePt=parseInt((lblNameSize&&lblNameSize.value)||'11',10);
   var showText=!!(lblShowText&&lblShowText.checked);
+  var offX=parseFloat((lblOffsetX&&lblOffsetX.value)||'0')||0;
+  var offY=parseFloat((lblOffsetY&&lblOffsetY.value)||'0')||0;
 
   var selectedItems=labelsAllItems.filter(function(i){ return labelsSelected.has(i.code); });
   var perPage=(tmpl.cols|0)*(tmpl.rows|0);
@@ -396,11 +426,16 @@ function rebuildLabelsPreview(resetPage){
   if(labelsPages) labelsPages.innerHTML='';
   pages.forEach(function(items,pageIndex){
     var page=document.createElement('div'); page.className='labels-page'; page.dataset.index=String(pageIndex);
+
     var sheet=document.createElement('div'); sheet.className='labels-sheet';
+    sheet.style.width='210mm';
+    sheet.style.height='297mm';
+    sheet.style.paddingLeft=mm((tmpl.marginX||0)+offX);
+    sheet.style.paddingTop=mm((tmpl.marginY||0)+offY);
     sheet.style.gridTemplateColumns='repeat('+tmpl.cols+', '+mm(tmpl.cellW)+')';
     sheet.style.gridAutoRows=mm(tmpl.cellH);
-    sheet.style.columnGap=mm(tmpl.gapX);
-    sheet.style.rowGap=mm(tmpl.gapY);
+    sheet.style.columnGap=mm(tmpl.gapX||0);
+    sheet.style.rowGap=mm(tmpl.gapY||0);
 
     items.forEach(function(it){
       var card=document.createElement('div'); card.className='label-card';
@@ -491,7 +526,7 @@ function makeSortable(listEl, onUpdate){
   });
   listEl.addEventListener('drop',function(e){ e.preventDefault(); if(typeof onUpdate==='function') onUpdate(); });
 }
-function renderList(listId, items, kind){
+function renderList(listId, items){
   var ul=$(listId); if(!ul) return;
   ul.innerHTML = (items||[]).map(function(v,i){
     return '<li draggable="true" data-value="'+esc(v)+'">'
@@ -503,7 +538,7 @@ function renderList(listId, items, kind){
   ul.querySelectorAll('button[data-del]').forEach(function(b){
     b.addEventListener('click',function(){
       var idx=parseInt(b.getAttribute('data-del'),10)|0;
-      items.splice(idx,1); renderList(listId, items, kind); updateCounts();
+      items.splice(idx,1); renderList(listId, items); updateCounts();
     });
   });
   makeSortable(ul, function(){ updateCounts(); });
@@ -556,16 +591,15 @@ var _btnResetCache=$('#btnResetCache'); if(_btnResetCache) _btnResetCache.addEve
 function initSettingsPanel(){
   (async function(){
     var set=await dbGetSettings(); set=set||{};
-    /* Lists initiales */
     var tagsStock = (set.defaultTagsStock||[]).slice();
     var tagsAtelier = (set.defaultTagsAtelier||[]).slice();
     var locsStock = (set.defaultLocationsStock||[]).slice();
     var locsAtelier = (set.defaultLocationsAtelier||[]).slice();
 
-    renderList('#listTagsStock', tagsStock, 'tag');
-    renderList('#listTagsAtelier', tagsAtelier, 'tag');
-    renderList('#listLocsStock', locsStock, 'loc');
-    renderList('#listLocsAtelier', locsAtelier, 'loc');
+    renderList('#listTagsStock', tagsStock);
+    renderList('#listTagsAtelier', tagsAtelier);
+    renderList('#listLocsStock', locsStock);
+    renderList('#listLocsAtelier', locsAtelier);
     updateCounts();
 
     attachAdd('#addTagStock','#btnAddTagStock','#listTagsStock',tagsStock);
