@@ -1,13 +1,11 @@
-/* Gstock - app.js v2.7.0 (A4 Avery + offsets, aide intégrée, tri tags/loc, scanner/prêts, statuts couleur) */
+/* Gstock - app.js v2.7.1 (UI allégée: cache auto des boutons non pertinents) */
 (function(){'use strict';
 /* ---------- helpers DOM ---------- */
 function $(s,r){return (r||document).querySelector(s);}
 function $$(s,r){return Array.from((r||document).querySelectorAll(s));}
+function show(el,on){ if(!el) return; el.hidden = !on; }
 var sr=$('#sr');
-function cssEscapeCompat(v){
-  if(window.CSS && typeof CSS.escape==='function') return CSS.escape(v);
-  return String(v).replace(/[^a-zA-Z0-9_\-]/g,function(s){return '\\'+s.codePointAt(0).toString(16)+' ';});
-}
+function cssEscapeCompat(v){ if(window.CSS && typeof CSS.escape==='function') return CSS.escape(v); return String(v).replace(/[^a-zA-Z0-9_\-]/g,function(s){return '\\'+s.codePointAt(0).toString(16)+' ';}); }
 function esc(s){return String(s).replace(/[&<>"']/g,function(m){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]);});}
 function announce(msg){ if(sr){ sr.textContent=''; setTimeout(function(){ sr.textContent=msg; },10);} }
 function downloadFile(name,data,type){ var blob=new Blob([data],{type:type}); var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(url); },3000); }
@@ -149,6 +147,10 @@ async function refreshTable(type){
   if(e.tag) e.tag.innerHTML='<option value="">Tous tags</option>'+Array.from(tagsSet).sort().map(function(t){return '<option '+(t===curTag?'selected':'')+'>'+esc(t)+'</option>';}).join('');
   if(e.loc) e.loc.innerHTML='<option value="">Tous emplacements</option>'+Array.from(locSet).sort().map(function(l){return '<option '+(l===curLoc?'selected':'')+'>'+esc(l)+'</option>';}).join('');
 
+  /* NEW: masquer les filtres si inutiles */
+  show(e.tag, tagsSet.size>0);
+  show(e.loc, locSet.size>0);
+
   var q=(state[type].q||'').toLowerCase(), st=state[type].status||'', tag=state[type].tag||'', loc=state[type].loc||'';
   var filtered=all.filter(function(it){
     var inQ=!q||[it.name,it.code,(it.tags||[]).join(' '),it.location||'',(it.links||[]).join(' ')].join(' ').toLowerCase().includes(q);
@@ -251,7 +253,7 @@ async function onValidateAdjust(){
   if(dlg) dlg.close(); await refreshTable(ensureType(item)); await refreshHome();
 }
 
-/* ---------- Création (Stock / Atelier) ---------- */
+/* ---------- Création ---------- */
 var newItemDialog=$('#newItemDialog');
 var niTitle=$('#niTitle'), niType=$('#niType'), niName=$('#niName'), niCode=$('#niCode'),
     niQty=$('#niQty'), niThr=$('#niThr'),
@@ -343,15 +345,13 @@ var _niSave=$('#niSave'); if(_niSave) _niSave.addEventListener('click',async fun
   await refreshTable(type); await refreshHome();
 });
 
-/* ---------- Étiquettes (A4 Avery + offsets X/Y) ---------- */
+/* ---------- Étiquettes ---------- */
 var LABEL_TEMPLATES = {
-  // A4 210×297 mm — marges approximées pour le rendu navigateur
   'avery-l7160': { cols:3, rows:7,  cellW:63.5, cellH:38.1, gapX:2.5, gapY:0,   marginX:7.5,  marginY:12.0 },
   'avery-l7159': { cols:3, rows:7,  cellW:63.5, cellH:38.1, gapX:2.5, gapY:0,   marginX:7.5,  marginY:12.0 },
   'avery-l7163': { cols:2, rows:7,  cellW:99.1, cellH:38.1, gapX:2.0, gapY:0,   marginX:5.0,  marginY:13.5 },
   'avery-l7162': { cols:2, rows:8,  cellW:99.1, cellH:33.9, gapX:2.0, gapY:2.0, marginX:5.0,  marginY:10.7 },
   'avery-l7165': { cols:2, rows:4,  cellW:99.1, cellH:67.7, gapX:2.0, gapY:0,   marginX:5.0,  marginY:13.5 },
-  // libres
   'mm50x25':     { cols:4, rows:10, cellW:50,   cellH:25,   gapX:5,   gapY:5,   marginX:10,   marginY:10  },
   'mm70x35':     { cols:3, rows:8,  cellW:70,   cellH:35,   gapX:5,   gapY:5,   marginX:10,   marginY:10  }
 };
@@ -460,8 +460,11 @@ function updatePaginationDisplay(){
   var pages=$$('.labels-page', labelsPages);
   pages.forEach(function(p,i){ p.classList.toggle('active', i===lblPage); });
   var el=$('#lblPageInfo'); if(el) el.textContent='Page '+Math.min(lblPage+1,lblPagesCount)+' / '+lblPagesCount;
-  var prev=$('#lblPrev'); if(prev) prev.disabled=(lblPage<=0);
-  var next=$('#lblNext'); if(next) next.disabled=(lblPage>=lblPagesCount-1);
+  var prev=$('#lblPrev'), next=$('#lblNext');
+  var one = lblPagesCount<=1;
+  if(prev) { prev.disabled=(lblPage<=0); show(prev, !one); }
+  if(next) { next.disabled=(lblPage>=lblPagesCount-1); show(next, !one); }
+  show(el, !one);
 }
 async function labelsSelectCodes(codes){
   await loadLabelsData();
@@ -483,6 +486,10 @@ async function refreshJournal(){
     journalTbody.innerHTML = list.map(function(m){ return '<tr><td>'+new Date(m.ts).toLocaleString()+'</td><td>'+m.type+'</td><td><code>'+esc(m.code)+'</code></td><td>'+esc(m.name||'')+'</td><td>'+m.qty+'</td><td>'+esc(m.note||'')+'</td></tr>'; }).join('')
       || '<tr><td colspan="6" class="muted">Aucun mouvement</td></tr>';
   }
+  /* NEW: masquer export si vide */
+  var has=list && list.length>0;
+  show(_btnExportCSV, has);
+  show(_btnExportJSON, has);
 }
 
 /* ---------- Prêts ---------- */
@@ -507,16 +514,19 @@ async function refreshLoansTable(){
   loansTbody.querySelectorAll('button[data-return]').forEach(function(btn){
     btn.onclick=async function(){ var id=btn.getAttribute('data-return'); await dbReturnLoan(id); announce('Matériel retourné'); await refreshLoansTable(); await refreshHome(); };
   });
+
+  /* NEW: cacher scan emprunt/retour si pas de BarcodeDetector */
+  var sBorrow=$('#btnScanBorrow'), sReturn=$('#btnScanReturn');
+  var supported=('BarcodeDetector' in window);
+  show(sBorrow, supported);
+  show(sReturn, supported);
 }
 
 /* ---------- Paramètres : Listes triables Tags/Emplacements ---------- */
 function makeSortable(listEl, onUpdate){
-  var dragEl=null, startIndex=-1;
+  var dragEl=null;
   listEl.addEventListener('dragstart',function(e){
-    var li=e.target.closest('li'); if(!li) return;
-    dragEl=li; startIndex=[].indexOf.call(listEl.children, li);
-    e.dataTransfer.effectAllowed='move';
-    try{ e.dataTransfer.setData('text/plain', li.dataset.value||''); }catch(_){}
+    var li=e.target.closest('li'); if(!li) return; dragEl=li; e.dataTransfer.effectAllowed='move'; try{ e.dataTransfer.setData('text/plain', li.dataset.value||''); }catch(_){}
     li.style.opacity='0.5';
   });
   listEl.addEventListener('dragend',function(){ if(dragEl){ dragEl.style.opacity=''; dragEl=null; } });
@@ -628,6 +638,10 @@ function initSettingsPanel(){
       await saveSettingsUniversal(Object.assign({}, set, newSet));
       announce('Paramètres enregistrés');
     };
+
+    /* NEW: cacher boutons non supportés dans Paramètres */
+    show(_btnLinkSharedFile, ('showSaveFilePicker' in window));
+    show(_btnResetCache, ('serviceWorker' in navigator));
   })();
 }
 async function saveSettingsUniversal(obj){
@@ -638,10 +652,22 @@ async function saveSettingsUniversal(obj){
   alert('Mise à jour de js/db.js requise : fonction de sauvegarde des paramètres absente.');
 }
 
-/* ---------- Scanner (onglet Scanner) ---------- */
+/* ---------- Scanner ---------- */
 var videoEl=$('#scanVideo'), btnScanStart=$('#btnScanStart'), btnScanStop=$('#btnScanStop'), btnScanTorch=$('#btnScanTorch'), scanHint=$('#scanHint');
 var scanStream=null, scanTrack=null, scanDetector=null, scanLoopId=0, torchOn=false;
 var lastCode='', lastReadTs=0; var DUP_MS=1200;
+var HAS_DETECTOR = ('BarcodeDetector' in window);
+
+/* NEW: état initial du bandeau scanner */
+if(btnScanStop) btnScanStop.hidden=true;
+if(btnScanTorch) btnScanTorch.hidden=true;
+if(!HAS_DETECTOR){
+  show(btnScanStart, false);
+  show(btnScanStop, false);
+  show(btnScanTorch, false);
+  if(scanHint) scanHint.textContent='Scanner non supporté sur ce navigateur.';
+}
+
 function beepKnown(ms,hz){
   ms = ms||140; hz=hz||880;
   try{
@@ -673,7 +699,13 @@ async function startScan(){
     if(videoEl){ videoEl.srcObject=scanStream; await videoEl.play(); }
     scanTrack = scanStream.getVideoTracks()[0];
     var caps = (scanTrack && typeof scanTrack.getCapabilities==='function') ? scanTrack.getCapabilities() : {};
-    if(btnScanTorch) btnScanTorch.disabled=!caps.torch; torchOn=false;
+
+    /* NEW: bandeau épuré pendant le scan */
+    show(btnScanStart,false);
+    show(btnScanStop,true);
+    show(btnScanTorch, !!caps.torch);
+    torchOn=false;
+
     await ensureDetector();
     lastCode=''; lastReadTs=0; if(scanHint) scanHint.textContent='Visez le code-barres...';
     runDetectLoop();
@@ -689,7 +721,11 @@ function stopScan(){
   if(scanTrack){ try{ scanTrack.stop(); }catch(_){} scanTrack=null; }
   if(scanStream){ try{ scanStream.getTracks().forEach(function(t){ t.stop(); }); }catch(_){} scanStream=null; }
   if(videoEl) videoEl.srcObject=null;
-  if(btnScanTorch) btnScanTorch.disabled=true; torchOn=false;
+  /* NEW: retour à l’état repos */
+  show(btnScanStart, HAS_DETECTOR);
+  show(btnScanStop,false);
+  show(btnScanTorch,false);
+  torchOn=false;
 }
 async function runDetectLoop(){
   var step=async function(){
@@ -802,5 +838,8 @@ if(brwCreate) brwCreate.addEventListener('click',async function(e){
   await dbInit();
   await refreshHome();
   showTab('home');
+  /* NEW: appliquer masquage initial côté Prêts/Paramètres selon capacités */
+  await refreshLoansTable();
+  if($('#tab-settings')) initSettingsPanel();
 })();
 })();
