@@ -1,4 +1,37 @@
 /* Gstock - app.js v2.8.3 */
+
+// --- SAFE MODE: ajoute ?safe=1 à l'URL pour tout remettre à zéro proprement
+(async () => {
+  try {
+    const qs = new URLSearchParams(location.search);
+    if (qs.has('safe')) {
+      // 1) Efface la base IndexedDB
+      if (typeof window.dbNuke === 'function') {
+        try { await window.dbNuke(false); } catch (e) {}
+      } else {
+        try {
+          const req = indexedDB.deleteDatabase('gstock');
+          await new Promise(res => { req.onsuccess = req.onerror = req.onblocked = () => res(); });
+        } catch (e) {}
+      }
+      // 2) Désenregistre tous les Service Workers
+      try {
+        const regs = await (navigator.serviceWorker?.getRegistrations?.() || []);
+        await Promise.all(regs.map(r => r.unregister()));
+      } catch (e) {}
+      // 3) Vide tous les caches
+      try {
+        const keys = await (caches?.keys?.() || []);
+        await Promise.all(keys.map(k => caches.delete(k)));
+      } catch (e) {}
+      // 4) Recharge “propre”
+      location.replace(location.pathname + '?bust=' + Date.now());
+      return; // stoppe l'exécution du reste d'app.js dans ce tour
+    }
+  } catch (e) { /* noop */ }
+})();
+
+
 (function(){'use strict';
 function $(s,r){return (r||document).querySelector(s);}
 function $$(s,r){return Array.from((r||document).querySelectorAll(s));}
@@ -669,23 +702,43 @@ brwCreate?.addEventListener('click',async e=>{
     if (typeof window.dbInit !== 'function') throw new Error('db.js non chargé');
     await dbInit();
   } catch (e) {
-    console.error('Init DB error:', e);
-    var msg = String(e && (e.message || e.name) || '');
-    if ((e && (e.name === 'UnknownError' || e.name === 'InvalidStateError')) || /Internal error/i.test(msg)) {
-      var ok = confirm('Le stockage local semble corrompu.\nTenter une réparation ?\n(La base locale sera réinitialisée)');
-      if (ok) {
-        try { await dbNuke(false); } catch(_) {}
-        try {
-          if ('caches' in window) { const ks = await caches.keys(); await Promise.all(ks.map(k=>caches.delete(k))); }
-          if (navigator.serviceWorker?.getRegistrations) { const regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map(r=>r.unregister())); }
-        } catch(_) {}
-        location.href = location.pathname + '?bust=' + Date.now();
-        return;
-      }
+  // LOG verbeux pour voir la vraie cause
+  console.error('Init DB error (verbose):', {
+    name: e && e.name,
+    message: e && e.message,
+    stack: e && e.stack
+  }, e);
+
+  const msg = String((e && (e.message || e.name)) || 'Unknown');
+  // Cas IDB corrompue / quota / internal error
+  if ((e && (e.name === 'UnknownError' || e.name === 'InvalidStateError' || e.name === 'QuotaExceededError')) ||
+      /Internal error/i.test(msg)) {
+    const ok = confirm('Le stockage local semble corrompu/bloqué.\nVoulez-vous lancer la réparation ?\n(La base locale sera réinitialisée)');
+    if (ok) {
+      try { await (window.dbNuke ? window.dbNuke(false) : Promise.resolve()); } catch(_) {}
+      try {
+        if ('caches' in window) { const ks = await caches.keys(); await Promise.all(ks.map(k=>caches.delete(k))); }
+        if (navigator.serviceWorker?.getRegistrations) { const regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map(r=>r.unregister())); }
+      } catch(_) {}
+      location.href = location.pathname + '?bust=' + Date.now();
+      return;
     }
-    alert('Impossible d’initialiser le stockage.\nDétail: '+ msg);
+  }
+  // Cas navigateur qui bloque IDB (ex: navigation privée Safari)
+  if (e && (e.name === 'SecurityError' || e.name === 'NotAllowedError')) {
+    alert('IndexedDB est bloqué par le navigateur (mode privé / politique sécurité). Essayez un autre navigateur ou désactive le mode privé.');
     return;
   }
+  // db.js non chargé
+  if (!window.dbInit) {
+    alert('db.js non chargé (cache SW ?).\nOn va recharger la page.');
+    location.href = location.pathname + '?bust=' + Date.now();
+    return;
+  }
+  alert('Impossible d’initialiser le stockage.\nDétail: ' + msg);
+  return;
+}
+
 
   await refreshHome();
   showTab('home');
