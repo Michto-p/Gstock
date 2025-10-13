@@ -8,18 +8,19 @@
 
   <!-- Favicon inline pour éviter le 404 -->
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23111827'/%3E%3Ctext x='7' y='22' font-size='16' fill='%23fff'%3EG%3C/text%3E%3C/svg%3E">
+
   <!-- PWA -->
   <link rel="manifest" href="manifest.json">
 
   <!-- Styles -->
-  <link rel="stylesheet" href="css/styles.css?v=2.8.2">
+  <link rel="stylesheet" href="css/styles.css?v=2.8.3">
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
       <span class="logo">📦</span>
       <strong>Gstock</strong>
-      <small class="muted">v<span id="appVersion">2.8.2</span></small>
+      <small class="muted">v<span id="appVersion">2.8.3</span></small>
     </div>
     <div class="grow"></div>
     <div class="theme">
@@ -322,152 +323,30 @@
         <div class="grow"></div>
         <button id="btnExportFull" class="btn">Exporter toutes les données</button>
         <button id="btnImportJSON" class="btn">Importer un JSON</button>
-        <button id="btnResetCache" class="btn danger">Réinitialiser le cache PWA</button>
+        <button id="btnResetCache" class="btn danger">Réinitialiser (IDB+SW+cache)</button>
         <button id="btnSaveSettings" class="btn primary">💾 Enregistrer</button>
       </div>
     </section>
   </main>
 
-  <!-- Dialog: Ajustement -->
-  <dialog id="adjustDialog" class="dialog">
-    <h3 id="dlgItem">Ajuster</h3>
-    <div class="grid-2">
-      <label>Type
-        <select id="dlgType">
-          <option value="add">Entrée</option>
-          <option value="remove">Sortie</option>
-        </select>
-      </label>
-      <label>Quantité
-        <input id="dlgQty" type="number" min="1" value="1">
-      </label>
-    </div>
-    <label>Note (optionnel)
-      <input id="dlgNote" placeholder="Commentaire…">
-    </label>
-    <footer class="dialog-actions">
-      <button id="dlgClose" class="btn">Annuler</button>
-      <button id="dlgValidate" class="btn primary">Valider</button>
-    </footer>
-  </dialog>
-
-  <!-- Dialog: Création article/matériel -->
-  <dialog id="newItemDialog" class="dialog">
-    <h3 id="niTitle">Nouvel article</h3>
-
-    <label>Type
-      <select id="niType">
-        <option value="stock">Stock</option>
-        <option value="atelier">Atelier</option>
-      </select>
-    </label>
-
-    <label>Designation
-      <input id="niName" required placeholder="ex. Disjoncteur 20 A XP Legrand">
-    </label>
-
-    <div class="grid-2">
-      <label>Référence (facultatif)
-        <input id="niRef" placeholder="ex. disj20xpLeg">
-      </label>
-      <label>Code-barres
-        <div class="inline">
-          <input id="niCode" placeholder="Valeur scannée ou générée">
-          <button id="niCopyRefToCode" class="btn">⮕ Copier la référence</button>
-          <button id="niGen" class="btn">✨ Générer</button>
-        </div>
-      </label>
-    </div>
-
-    <div class="grid-2">
-      <label>Quantité
-        <input id="niQty" type="number" min="0" value="0">
-      </label>
-      <label>Seuil
-        <input id="niThr" type="number" min="0" value="0">
-      </label>
-    </div>
-
-    <fieldset>
-      <legend>Emplacement</legend>
-      <div class="inline">
-        <select id="niLocSelect"></select>
-        <div id="niLocCustomWrap">
-          <input id="niLocCustom" placeholder="Saisir un emplacement…">
-        </div>
-      </div>
-      <div id="niLocChips" class="chips"></div>
-    </fieldset>
-
-    <fieldset>
-      <legend>Tags <small class="muted">catégorie: <span id="niTagCategory">Stock</span></small></legend>
-      <div id="niTagChecks" class="chips"></div>
-      <div class="inline">
-        <input id="niTagsExtra" placeholder="Tags supplémentaires (séparés par des virgules)">
-        <button id="niTagsClear" class="btn">Effacer sélection</button>
-      </div>
-    </fieldset>
-
-    <label>Liens (un par ligne)
-      <textarea id="niLinks" rows="3" placeholder="https://…"></textarea>
-    </label>
-
-    <footer class="dialog-actions">
-      <button class="btn" onclick="document.getElementById('newItemDialog').close()">Annuler</button>
-      <button id="niSave" class="btn primary">Créer</button>
-    </footer>
-  </dialog>
-
-  <!-- Dialog: Scan Emprunt/Retour -->
-  <dialog id="loanScanDialog" class="dialog">
-    <h3 id="loanScanTitle">Scanner</h3>
-    <video id="loanVideo" playsinline></video>
-    <div class="scan-actions">
-      <button id="btnLoanTorch" class="btn">🔦 Lampe</button>
-      <button id="btnLoanStop" class="btn">⏹️ Stop</button>
-    </div>
-    <p id="loanScanHint" class="muted"></p>
-  </dialog>
-
-  <!-- Dialog: Créer un emprunt -->
-  <dialog id="borrowDialog" class="dialog">
-    <h3>Nouvel emprunt</h3>
-    <p id="borrowItem" class="muted"></p>
-    <div class="grid-2">
-      <label>Emprunteur
-        <input id="brwPerson" placeholder="Nom de l'emprunteur">
-      </label>
-      <label>Retour prévu
-        <input id="brwDue" type="date">
-      </label>
-    </div>
-    <label>Note
-      <input id="brwNote" placeholder="Commentaire (optionnel)">
-    </label>
-    <footer class="dialog-actions">
-      <button class="btn" onclick="document.getElementById('borrowDialog').close()">Annuler</button>
-      <button id="brwCreate" class="btn primary">Créer</button>
-    </footer>
-  </dialog>
-
-  <!-- Live region pour annonces -->
+  <!-- Dialogs (ajustement, création, scan, emprunt) + live region -->
+  <dialog id="adjustDialog" class="dialog">…</dialog>
+  <dialog id="newItemDialog" class="dialog">…</dialog>
+  <dialog id="loanScanDialog" class="dialog">…</dialog>
+  <dialog id="borrowDialog" class="dialog">…</dialog>
   <div id="sr" class="sr-only" aria-live="polite"></div>
 
   <!-- Scripts (ordre important) -->
-  <script>window.APP_VERSION="2.8.2";</script>
+  <script>window.APP_VERSION="2.8.3";</script>
   <script src="js/code39.js?v=2.8.2"></script>
-  <script src="js/db.js?v=2.8.2"></script>
-  <script src="js/app.js?v=2.8.2"></script>
+  <script src="js/db.js?v=2.8.3"></script>
+  <script src="js/app.js?v=2.8.3"></script>
 
-  <!-- Enregistrement SW -->
+  <!-- Service Worker -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', async () => {
-        try {
-          await navigator.serviceWorker.register('sw.js?v=2.8.2', { scope: './' });
-        } catch (e) {
-          console.warn('SW non enregistré:', e);
-        }
+        try { await navigator.serviceWorker.register('sw.js?v=2.8.3', { scope: './' }); } catch (e) { console.warn('SW non enregistré:', e); }
       });
     }
   </script>
