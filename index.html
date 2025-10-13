@@ -55,7 +55,7 @@
     @media (max-width:900px){ .cards{grid-template-columns:repeat(2,1fr)} }
     @media (max-width:520px){ .cards{grid-template-columns:1fr} }
 
-    /* Étiquettes – layout revu */
+    /* Étiquettes */
     .labels-layout{display:grid;grid-template-columns:320px 1fr;gap:12px}
     .labels-side{border:1px solid var(--bd);border-radius:.6rem;padding:.6rem;background:var(--elev);display:flex;flex-direction:column;gap:.5rem;max-height:70vh}
     .labels-list{flex:1;overflow:auto;border:1px dashed var(--bd);border-radius:.5rem;padding:.4rem;background:color-mix(in oklab, var(--elev) 90%, transparent)}
@@ -73,7 +73,19 @@
     .label-card .hr{font-size:8pt}
     .label-card svg{width:100%}
 
-    @media (max-width:900px){ .labels-layout{grid-template-columns:1fr} .labels-side{max-height:none} }
+    /* Paramètres – listes triables */
+    .settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    @media (max-width:900px){ .settings-grid{grid-template-columns:1fr} }
+    .section-card{border:1px solid var(--bd);border-radius:.6rem;padding:.8rem;background:var(--elev)}
+    .sort-wrap{display:flex;flex-direction:column;gap:.5rem}
+    .sort-add{display:flex;gap:.4rem}
+    .sort-add input{flex:1}
+    .sort-list{list-style:none;margin:0;padding:.4rem;border:1px dashed var(--bd);border-radius:.5rem;background:color-mix(in oklab, var(--elev) 90%, transparent);max-height:260px;overflow:auto}
+    .sort-list li{display:flex;align-items:center;gap:.5rem;border:1px solid var(--bd);background:var(--bg);border-radius:.5rem;padding:.35rem .5rem;margin:.3rem 0}
+    .drag{cursor:grab;user-select:none}
+    .pill-mini{font-size:.75rem;padding:.1rem .35rem;border-radius:999px;border:1px solid var(--bd);background:var(--bg);color:var(--muted)}
+    .help-card{border:1px solid var(--bd);border-radius:.6rem;background:var(--elev);padding:.8rem}
+    details.help>summary{cursor:pointer;font-weight:600}
 
     /* Impression : uniquement la planche d’étiquettes */
     @media print{
@@ -89,7 +101,7 @@
     }
   </style>
   <script>
-    window.APP_VERSION='2.5.1';
+    window.APP_VERSION='2.6.0';
     (function(){
       const saved=localStorage.getItem('gstock.theme');
       const prefersDark=window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
@@ -105,7 +117,7 @@
         <div class="brand-left">
           <img src="icons/icon-192.png" alt="" width="28" height="28" style="border-radius:6px">
           <strong>Gstock</strong><span class="muted">— Gestion de stock</span>
-          <span class="pill muted">v<span id="appVersion">2.5.1</span></span>
+          <span class="pill muted">v<span id="appVersion">2.6.0</span></span>
         </div>
         <div class="toggle">
           <label for="themeToggle" class="muted">Thème</label>
@@ -176,7 +188,7 @@
         <thead>
           <tr>
             <th style="width:34px"><input type="checkbox" id="stockSelAll" aria-label="Tout sélectionner"></th>
-            <th>Nom</th><th>Code</th><th style="width:110px">Qté</th><th style="width:110px">Seuil</th><th>Tags</th><th>Emplacement</th><th style="width:90px">Liens</th><th style="width:220px">Actions</th>
+            <th>Nom</th><th>Code</th><th style="width:220px">Quantité</th><th style="width:110px">Seuil</th><th>Tags</th><th>Emplacement</th><th style="width:90px">Liens</th><th style="width:220px">Actions</th>
           </tr>
         </thead>
         <tbody id="stockTbody"></tbody>
@@ -207,7 +219,7 @@
         <thead>
           <tr>
             <th style="width:34px"><input type="checkbox" id="atelierSelAll" aria-label="Tout sélectionner"></th>
-            <th>Nom</th><th>Code</th><th style="width:110px">Qté</th><th style="width:110px">Seuil</th><th>Tags</th><th>Emplacement</th><th style="width:90px">Liens</th><th style="width:220px">Actions</th>
+            <th>Nom</th><th>Code</th><th style="width:220px">Quantité</th><th style="width:110px">Seuil</th><th>Tags</th><th>Emplacement</th><th style="width:90px">Liens</th><th style="width:220px">Actions</th>
           </tr>
         </thead>
         <tbody id="atelierTbody"></tbody>
@@ -222,7 +234,7 @@
         <button id="btnScanTorch" class="btn">🔦 Lampe</button>
       </div>
       <video id="scanVideo" style="width:100%;max-height:60vh;background:#000;border-radius:8px" playsinline></video>
-      <p id="scanHint" class="muted" style="margin:.5rem 0 0">Visez le code-barres. Bip uniquement si l’article est reconnu. Les codes inconnus ne ferment pas la caméra.</p>
+      <p id="scanHint" class="muted" style="margin:.5rem 0 0">Visez le code-barres. Bip uniquement si l’article est reconnu.</p>
     </section>
 
     <!-- Étiquettes -->
@@ -301,7 +313,18 @@
 
     <!-- Paramètres -->
     <section id="tab-settings" hidden>
-      <h3>Paramètres généraux</h3>
+      <h3>Paramètres & Aide</h3>
+
+      <div class="section-card help-card" style="margin-bottom:12px">
+        <details class="help" open>
+          <summary>📘 Aide rapide</summary>
+          <p><strong>Scanner</strong> : Démarre la caméra, bip uniquement si le code correspond à un article. Codes inconnus : le flux reste ouvert pour vous laisser continuer, avec un message discret.</p>
+          <p><strong>Ajuster</strong> : Sur la ligne d’un article, utilisez <em>+1 / −1</em> pour corriger vite. Le bouton <em>Ajuster…</em> ouvre une fenêtre pour une entrée/sortie avec note.</p>
+          <p><strong>Étiquettes</strong> : Sélectionnez à gauche (Tout/Aucun), choisissez le gabarit (A4) et imprimez. Seule la planche est imprimée.</p>
+          <p><strong>Prêts</strong> : Scanner l’emprunt/retour, créer un prêt avec le nom et la date prévue. Les retards sont marqués en rouge.</p>
+        </details>
+      </div>
+
       <div class="toolbar">
         <button id="btnImportJSON" class="btn">Importer JSON</button>
         <button id="btnExportFull" class="btn">Exporter JSON</button>
@@ -313,40 +336,62 @@
         <label>Buffer d’alerte :
           <input id="inputBuffer" type="number" min="0" value="0" class="btn" style="width:6rem">
         </label>
-      </div>
-
-      <h4>Listes prédéfinies</h4>
-      <div class="toolbar">
-        <label>Tags Stock (virgules) :
-          <input id="inputTagsStock" class="btn" placeholder="ex: TP, Éclairage, Câblage">
-        </label>
-        <label>Tags Atelier (virgules) :
-          <input id="inputTagsAtelier" class="btn" placeholder="ex: Mesure, Sécurité, Machines">
-        </label>
-      </div>
-      <div class="toolbar">
-        <label>Emplacements Stock (virgules) :
-          <input id="inputLocsStock" class="btn" placeholder="ex: Atelier — Étagère 1, Dépôt — Bac A">
-        </label>
-        <label>Emplacements Atelier (virgules) :
-          <input id="inputLocsAtelier" class="btn" placeholder="ex: Banc de test, Armoire métrologie">
-        </label>
-        <button id="btnSaveSettings" class="btn primary">💾 Enregistrer</button>
-      </div>
-
-      <div class="toolbar">
         <label style="display:flex;align-items:center;gap:.5rem">
           <input type="checkbox" id="chkDebug" class="btn"> Mode développeur (overlay scanner)
         </label>
+        <button id="btnResetCache" class="btn danger">Réinitialiser cache PWA</button>
       </div>
 
-      <div class="toolbar">
-        <button id="btnResetCache" class="btn danger">Réinitialiser cache PWA</button>
+      <div class="settings-grid">
+        <div class="section-card">
+          <h4>Tags — Stock <span class="pill-mini" id="countTagsStock">0</span></h4>
+          <div class="sort-wrap">
+            <div class="sort-add">
+              <input id="addTagStock" class="btn" placeholder="Ajouter un tag (Entrée pour valider)">
+              <button id="btnAddTagStock" class="btn">Ajouter</button>
+            </div>
+            <ul id="listTagsStock" class="sort-list" aria-label="Tags Stock (triables)"></ul>
+          </div>
+        </div>
+        <div class="section-card">
+          <h4>Tags — Atelier <span class="pill-mini" id="countTagsAtelier">0</span></h4>
+          <div class="sort-wrap">
+            <div class="sort-add">
+              <input id="addTagAtelier" class="btn" placeholder="Ajouter un tag (Entrée pour valider)">
+              <button id="btnAddTagAtelier" class="btn">Ajouter</button>
+            </div>
+            <ul id="listTagsAtelier" class="sort-list" aria-label="Tags Atelier (triables)"></ul>
+          </div>
+        </div>
+        <div class="section-card">
+          <h4>Emplacements — Stock <span class="pill-mini" id="countLocsStock">0</span></h4>
+          <div class="sort-wrap">
+            <div class="sort-add">
+              <input id="addLocStock" class="btn" placeholder="Ajouter un emplacement (Entrée pour valider)">
+              <button id="btnAddLocStock" class="btn">Ajouter</button>
+            </div>
+            <ul id="listLocsStock" class="sort-list" aria-label="Emplacements Stock (triables)"></ul>
+          </div>
+        </div>
+        <div class="section-card">
+          <h4>Emplacements — Atelier <span class="pill-mini" id="countLocsAtelier">0</span></h4>
+          <div class="sort-wrap">
+            <div class="sort-add">
+              <input id="addLocAtelier" class="btn" placeholder="Ajouter un emplacement (Entrée pour valider)">
+              <button id="btnAddLocAtelier" class="btn">Ajouter</button>
+            </div>
+            <ul id="listLocsAtelier" class="sort-list" aria-label="Emplacements Atelier (triables)"></ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="toolbar" style="justify-content:flex-end">
+        <button id="btnSaveSettings" class="btn primary">💾 Enregistrer</button>
       </div>
     </section>
   </main>
 
-  <!-- Dialog : Nouvel article/matériel -->
+  <!-- Dialogs (création, ajustement, scan prêts) -->
   <dialog id="newItemDialog">
     <form method="dialog" style="min-width:340px;max-width:520px">
       <h3 style="margin:.2rem 0 1rem" id="niTitle">Nouvel élément</h3>
@@ -394,7 +439,6 @@
     </form>
   </dialog>
 
-  <!-- Dialog Ajustement -->
   <dialog id="adjustDialog" aria-labelledby="adjTitle">
     <form method="dialog" style="min-width:320px">
       <h3 id="adjTitle" style="margin:.2rem 0 1rem">Ajuster le stock</h3>
@@ -413,7 +457,6 @@
     </form>
   </dialog>
 
-  <!-- Dialog Scan Emprunt/Retour -->
   <dialog id="loanScanDialog">
     <form method="dialog" style="min-width:320px;max-width:520px">
       <h3 id="loanScanTitle">Scan</h3>
@@ -429,7 +472,6 @@
     </form>
   </dialog>
 
-  <!-- Dialog Détails Emprunt (après scan) -->
   <dialog id="borrowDialog">
     <form method="dialog" style="min-width:320px">
       <h3>Nouvel emprunt</h3>
@@ -451,7 +493,7 @@
   <script src="js/barcode.js?v=2.1.8"></script>
   <script src="js/code39.js?v=2.1.8"></script>
   <script src="js/sync-github.js?v=2.1.8"></script>
-  <script src="js/app.js?v=2.5.1"></script>
+  <script src="js/app.js?v=2.6.0"></script>
 
   <script>
     if ('serviceWorker' in navigator) {
