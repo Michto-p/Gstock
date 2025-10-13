@@ -1,4 +1,4 @@
-/* Gstock - db.js v2.8.2 (IndexedDB + export/import + fichier partagé optionnel) */
+/* Gstock - db.js v2.8.3 (IndexedDB + auto-réparation + export/import + fichier partagé) */
 (function () {
   'use strict';
 
@@ -6,53 +6,59 @@
   var DB_VER = 5;
   var STORES = { items: 'items', moves: 'moves', loans: 'loans', meta: 'meta' };
   var db = null;
-  var sharedFileHandle = null; // File System Access API (optionnel)
+  var sharedFileHandle = null;
 
   function openDB() {
     return new Promise(function (resolve, reject) {
-      var req = indexedDB.open(DB_NAME, DB_VER);
+      function openOnce(retry) {
+        var req = indexedDB.open(DB_NAME, DB_VER);
 
-      req.onupgradeneeded = function () {
-        var d = req.result;
+        req.onupgradeneeded = function () {
+          var d = req.result;
+          if (!d.objectStoreNames.contains(STORES.items)) {
+            var s1 = d.createObjectStore(STORES.items, { keyPath: 'code' });
+            s1.createIndex('by_name', 'name', { unique: false });
+            s1.createIndex('by_type', 'type', { unique: false });
+          }
+          if (!d.objectStoreNames.contains(STORES.moves)) {
+            var s2 = d.createObjectStore(STORES.moves, { keyPath: 'id', autoIncrement: true });
+            s2.createIndex('by_ts', 'ts', { unique: false });
+            s2.createIndex('by_code', 'code', { unique: false });
+          }
+          if (!d.objectStoreNames.contains(STORES.loans)) {
+            var s3 = d.createObjectStore(STORES.loans, { keyPath: 'id', autoIncrement: true });
+            s3.createIndex('by_code', 'code', { unique: false });
+            s3.createIndex('by_active', ['code', 'returnedAt'], { unique: false });
+          }
+          if (!d.objectStoreNames.contains(STORES.meta)) {
+            d.createObjectStore(STORES.meta, { keyPath: 'key' });
+          }
+        };
 
-        if (!d.objectStoreNames.contains(STORES.items)) {
-          var s1 = d.createObjectStore(STORES.items, { keyPath: 'code' });
-          s1.createIndex('by_name', 'name', { unique: false });
-          s1.createIndex('by_type', 'type', { unique: false });
-        }
-        if (!d.objectStoreNames.contains(STORES.moves)) {
-          var s2 = d.createObjectStore(STORES.moves, { keyPath: 'id', autoIncrement: true });
-          s2.createIndex('by_ts', 'ts', { unique: false });
-          s2.createIndex('by_code', 'code', { unique: false });
-        }
-        if (!d.objectStoreNames.contains(STORES.loans)) {
-          var s3 = d.createObjectStore(STORES.loans, { keyPath: 'id', autoIncrement: true });
-          s3.createIndex('by_code', 'code', { unique: false });
-          s3.createIndex('by_active', ['code', 'returnedAt'], { unique: false });
-        }
-        if (!d.objectStoreNames.contains(STORES.meta)) {
-          d.createObjectStore(STORES.meta, { keyPath: 'key' });
-        }
-      };
+        req.onsuccess = function () { resolve(req.result); };
 
-      req.onsuccess = function () { resolve(req.result); };
-      req.onerror = function () { reject(req.error); };
+        req.onerror = function () {
+          var err = req.error || {};
+          var name = err.name || '';
+          if (!retry && (name === 'UnknownError' || name === 'InvalidStateError' || /Internal error/i.test(err.message || ''))) {
+            var del = indexedDB.deleteDatabase(DB_NAME);
+            del.onsuccess = function () { openOnce(true); };
+            del.onerror = function () { reject(err); };
+          } else {
+            reject(err);
+          }
+        };
+      }
+      openOnce(false);
     });
   }
 
   function tx(storeName, mode) {
-    return new Promise(function (resolve, reject) {
-      (db ? Promise.resolve(db) : openDB()).then(function (conn) {
-        db = conn;
-        try {
-          var store = db.transaction(storeName, mode).objectStore(storeName);
-          resolve(store);
-        } catch (e) { reject(e); }
-      }, reject);
+    return (db ? Promise.resolve(db) : openDB()).then(function (conn) {
+      db = conn;
+      return db.transaction(storeName, mode).objectStore(storeName);
     });
   }
-
-  /* ---------- Defaults / Init ---------- */
 
   function ensureDefaultSettings() {
     return dbGetSettings().then(function (s) {
@@ -89,8 +95,7 @@
     });
   }
 
-  /* ---------- Items ---------- */
-
+  /* Items */
   function dbList() {
     return tx(STORES.items, 'readonly').then(function (store) {
       return new Promise(function (resolve, reject) {
@@ -100,7 +105,6 @@
       });
     });
   }
-
   function dbGet(code) {
     if (!code) return Promise.resolve(null);
     return tx(STORES.items, 'readonly').then(function (store) {
@@ -111,7 +115,6 @@
       });
     });
   }
-
   function autosaveShared() {
     if (!sharedFileHandle || !sharedFileHandle.createWritable) return Promise.resolve();
     return dbExportFull().then(function (data) {
@@ -121,33 +124,24 @@
       });
     });
   }
-
   function dbPut(item) {
     return tx(STORES.items, 'readwrite').then(function (store) {
       return new Promise(function (resolve, reject) {
         var req = store.put(item);
-        req.onsuccess = function () {
-          resolve(req.result);
-          autosaveShared()["catch"](function () { /* ignore */ });
-        };
+        req.onsuccess = function () { resolve(req.result); autosaveShared()["catch"](function () {}); };
         req.onerror = function () { reject(req.error); };
       });
     });
   }
-
   function dbDelete(code) {
     return tx(STORES.items, 'readwrite').then(function (store) {
       return new Promise(function (resolve, reject) {
         var req = store.delete(code);
-        req.onsuccess = function () {
-          resolve();
-          autosaveShared()["catch"](function () { /* ignore */ });
-        };
+        req.onsuccess = function () { resolve(); autosaveShared()["catch"](function () {}); };
         req.onerror = function () { reject(req.error); };
       });
     });
   }
-
   function dbAdjustQty(code, delta) {
     return dbGet(code).then(function (item) {
       if (!item) return;
@@ -157,8 +151,7 @@
     });
   }
 
-  /* ---------- Moves ---------- */
-
+  /* Moves */
   function dbAddMove(m) {
     return tx(STORES.moves, 'readwrite').then(function (store) {
       return new Promise(function (resolve, reject) {
@@ -168,7 +161,6 @@
       });
     });
   }
-
   function dbListMoves(opts) {
     opts = opts || {};
     var from = (typeof opts.from === 'number') ? opts.from : 0;
@@ -193,7 +185,6 @@
       });
     });
   }
-
   function dbExport(fmt) {
     return dbListMoves({ from: 0, to: Infinity, limit: 100000 }).then(function (moves) {
       if (fmt === 'json') return JSON.stringify(moves);
@@ -207,7 +198,6 @@
       return header + rows + '\n';
     });
   }
-
   function dbExportFull() {
     return Promise.all([
       dbList(),
@@ -215,15 +205,18 @@
       dbListLoans(true),
       dbGetSettings()
     ]).then(function (arr) {
-      var items = arr[0], moves = arr[1], loans = arr[2], settings = arr[3];
-      return { version: DB_VER, exportedAt: Date.now(), items: items, moves: moves, loans: loans, settings: settings };
+      return { version: DB_VER, exportedAt: Date.now(), items: arr[0], moves: arr[1], loans: arr[2], settings: arr[3] };
     });
   }
-
   function dbImportFull(payload) {
     if (!payload || typeof payload !== 'object') return Promise.reject(new Error('payload invalide'));
 
     var sItems, sMoves, sLoans, sMeta;
+    function clear(store) {
+      return new Promise(function (res, rej) {
+        var r = store.clear(); r.onsuccess = res; r.onerror = function () { rej(r.error); };
+      });
+    }
     return tx(STORES.items, 'readwrite').then(function (st) {
       sItems = st; return tx(STORES.moves, 'readwrite');
     }).then(function (st) {
@@ -232,59 +225,28 @@
       sLoans = st; return tx(STORES.meta, 'readwrite');
     }).then(function (st) {
       sMeta = st;
-
-      function clear(store) {
-        return new Promise(function (res, rej) {
-          var r = store.clear(); r.onsuccess = res; r.onerror = function () { rej(r.error); };
-        });
-      }
-
       return Promise.all([clear(sItems), clear(sMoves), clear(sLoans)]).then(function () {
         var p = [];
-
-        (payload.items || []).forEach(function (it) {
-          p.push(new Promise(function (res, rej) {
-            var r = sItems.add(it); r.onsuccess = res; r.onerror = function () { rej(r.error); };
-          }));
-        });
-        (payload.moves || []).forEach(function (m) {
-          p.push(new Promise(function (res, rej) {
-            var r = sMoves.add(m); r.onsuccess = res; r.onerror = function () { rej(r.error); };
-          }));
-        });
-        (payload.loans || []).forEach(function (l) {
-          p.push(new Promise(function (res, rej) {
-            var r = sLoans.add(l); r.onsuccess = res; r.onerror = function () { rej(r.error); };
-          }));
-        });
-
-        if (payload.settings) {
-          p.push(new Promise(function (res, rej) {
-            var r = sMeta.put({ key: 'settings', value: payload.settings });
-            r.onsuccess = res; r.onerror = function () { rej(r.error); };
-          }));
-        }
+        (payload.items || []).forEach(function (it) { p.push(new Promise(function (res, rej) { var r = sItems.add(it); r.onsuccess = res; r.onerror = function () { rej(r.error); }; })); });
+        (payload.moves || []).forEach(function (m) { p.push(new Promise(function (res, rej) { var r = sMoves.add(m); r.onsuccess = res; r.onerror = function () { rej(r.error); }; })); });
+        (payload.loans || []).forEach(function (l) { p.push(new Promise(function (res, rej) { var r = sLoans.add(l); r.onsuccess = res; r.onerror = function () { rej(r.error); }; })); });
+        if (payload.settings) { p.push(new Promise(function (res, rej) { var r = sMeta.put({ key: 'settings', value: payload.settings }); r.onsuccess = res; r.onerror = function () { rej(r.error); }; })); }
         return Promise.all(p);
       });
     });
   }
 
-  /* ---------- Loans ---------- */
-
+  /* Loans */
   function dbCreateLoan(obj) {
     return tx(STORES.loans, 'readwrite').then(function (store) {
       return new Promise(function (resolve, reject) {
-        var v = {
-          code: obj.code, name: obj.name, person: obj.person, due: obj.due,
-          note: obj.note ? obj.note : '', createdAt: Date.now(), returnedAt: null
-        };
+        var v = { code: obj.code, name: obj.name, person: obj.person, due: obj.due, note: obj.note ? obj.note : '', createdAt: Date.now(), returnedAt: null };
         var req = store.add(v);
         req.onsuccess = function () { resolve(req.result); };
         req.onerror = function () { reject(req.error); };
       });
     });
   }
-
   function dbReturnLoan(id) {
     return tx(STORES.loans, 'readwrite').then(function (store) {
       return new Promise(function (resolve, reject) {
@@ -301,7 +263,6 @@
       });
     });
   }
-
   function dbListLoans(includeReturned) {
     return tx(STORES.loans, 'readonly').then(function (store) {
       return new Promise(function (resolve, reject) {
@@ -314,7 +275,6 @@
       });
     });
   }
-
   function dbListLoansByCode(code) {
     return tx(STORES.loans, 'readonly').then(function (store) {
       return new Promise(function (resolve, reject) {
@@ -333,39 +293,49 @@
     });
   }
 
-  /* ---------- Settings / Meta ---------- */
-
+  /* Settings / Meta */
   function dbGetSettings() {
     return tx(STORES.meta, 'readonly').then(function (store) {
       return new Promise(function (resolve, reject) {
         var req = store.get('settings');
-        req.onsuccess = function () {
-          resolve(req.result ? req.result.value : null);
-        };
+        req.onsuccess = function () { resolve(req.result ? req.result.value : null); };
         req.onerror = function () { reject(req.error); };
       });
     });
   }
-
   function dbSaveSettings(obj) {
     return tx(STORES.meta, 'readwrite').then(function (store) {
       return new Promise(function (resolve, reject) {
         var req = store.put({ key: 'settings', value: obj });
-        req.onsuccess = function () {
-          resolve();
-          autosaveShared()["catch"](function () { /* ignore */ });
-        };
+        req.onsuccess = function () { resolve(); autosaveShared()["catch"](function () {}); };
         req.onerror = function () { reject(req.error); };
       });
     });
   }
 
-  function dbLinkSharedFile(handle) {
-    sharedFileHandle = handle;
-    return autosaveShared();
-  }
+  /* Fichier partagé (optionnel) */
+  function dbLinkSharedFile(handle) { sharedFileHandle = handle; return autosaveShared(); }
 
-  /* ---------- Expose globals ---------- */
+  /* Nuke database (exposé pour app et console) */
+  function nukeDatabase() {
+    return new Promise(function (resolve) {
+      try {
+        var req = indexedDB.deleteDatabase(DB_NAME);
+        req.onsuccess = function () { resolve(); };
+        req.onerror = function () { resolve(); };
+        req.onblocked = function () { resolve(); };
+      } catch (e) { resolve(); }
+    });
+  }
+  window.dbNuke = function (ask) {
+    if (ask !== false) {
+      var ok = typeof confirm === 'function' ? confirm('Effacer la base locale ? (perte de données non exportées)') : true;
+      if (!ok) return Promise.resolve();
+    }
+    return nukeDatabase();
+  };
+
+  /* Expose */
   window.dbInit = dbInit;
   window.dbList = dbList;
   window.dbGet = dbGet;
