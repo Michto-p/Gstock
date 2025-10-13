@@ -6,19 +6,20 @@
   <meta name="theme-color" content="#111827">
   <title>Gstock – Gestion de stock</title>
 
+  <!-- Favicon inline pour éviter le 404 -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23111827'/%3E%3Ctext x='7' y='22' font-size='16' fill='%23fff'%3EG%3C/text%3E%3C/svg%3E">
   <!-- PWA -->
   <link rel="manifest" href="manifest.json">
-  <link rel="apple-touch-icon" href="icons/icon-192.png">
 
   <!-- Styles -->
-  <link rel="stylesheet" href="css/styles.css?v=2.8.1">
+  <link rel="stylesheet" href="css/styles.css?v=2.8.2">
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
       <span class="logo">📦</span>
       <strong>Gstock</strong>
-      <small class="muted">v<span id="appVersion">2.8.1</span></small>
+      <small class="muted">v<span id="appVersion">2.8.2</span></small>
     </div>
     <div class="grow"></div>
     <div class="theme">
@@ -262,7 +263,7 @@
         <summary>Guide rapide</summary>
         <div class="help">
           <p>Bienvenue dans <strong>Gstock</strong> : scannez un article, ajustez les quantités, imprimez des étiquettes, et suivez les emprunts.</p>
-          <p><strong>Scanner</strong> : bouton “Démarrer” → biper si l’article est reconnu → fenêtre d’ajustement.</p>
+          <p><strong>Scanner</strong> : bouton “Démarrer” → bip si l’article est reconnu → fenêtre d’ajustement.</p>
           <p><strong>Étiquettes</strong> : sélection multi, choix du modèle, aperçu paginé A4, impression sans l’UI.</p>
           <p><strong>Tags / Emplacements</strong> : gérez des listes triables (glisser/déposer), réutilisées à la création.</p>
         </div>
@@ -452,19 +453,19 @@
   <!-- Live region pour annonces -->
   <div id="sr" class="sr-only" aria-live="polite"></div>
 
-  <!-- Scripts -->
-  <script>window.APP_VERSION="2.8.1";</script>
-  <script src="js/code39.js?v=2.8.1"></script>
-  <script src="js/db.js?v=2.8.1"></script>
-  <script src="js/app.js?v=2.8.1"></script>
+  <!-- Scripts (ordre important) -->
+  <script>window.APP_VERSION="2.8.2";</script>
+  <script src="js/code39.js?v=2.8.2"></script>
+  <script src="js/db.js?v=2.8.2"></script>
+  <script src="js/app.js?v=2.8.2"></script>
 
+  <!-- Enregistrement SW -->
   <script>
-    // Enregistrement SW (safe)
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', async () => {
         try {
-          await navigator.serviceWorker.register('sw.js?v=2.8.1', {scope:'./'});
-        } catch(e) {
+          await navigator.serviceWorker.register('sw.js?v=2.8.2', { scope: './' });
+        } catch (e) {
           console.warn('SW non enregistré:', e);
         }
       });
