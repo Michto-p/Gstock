@@ -1,66 +1,61 @@
-/* Gstock - code39.js v2.1.7 (renderer Code 39 en SVG) */
-'use strict';
+/* Minimal Code39 SVG generator v1.0 – public domain */
 (function(){
-  const MAP = {
-    '0':'nnnwwnwnn','1':'wnnwnnnnw','2':'nnwwnnnnw','3':'wnwwnnnnn','4':'nnnwwnnnw',
-    '5':'wnnwwnnnn','6':'nnwwwnnnn','7':'nnnwnnwnw','8':'wnnwnnwnn','9':'nnwwnnwnn',
-    'A':'wnnnnwnnw','B':'nnwnnwnnw','C':'wnwnnwnnn','D':'nnnnwwnnw','E':'wnnnwwnnn',
-    'F':'nnwnwwnnn','G':'nnnnnwwnw','H':'wnnnnwwnn','I':'nnwnnwwnn','J':'nnnnwwwnn',
-    'K':'wnnnnnnww','L':'nnwnnnnww','M':'wnwnnnnwn','N':'nnnnwnnww','O':'wnnnwnnwn',
-    'P':'nnwnwnnwn','Q':'nnnnnnwww','R':'wnnnnnwwn','S':'nnwnnnwwn','T':'nnnnwnwwn',
-    'U':'wwnnnnnnw','V':'nwwnnnnnw','W':'wwwnnnnnn','X':'nwnnwnnnw','Y':'wwnnwnnnn',
-    'Z':'nwwnwnnnn','-':'nwnnnnwnw','.':'wwnnnnwnn',' ':'nwwnnnwnn','*':'nwnnwnwnn',
-    '$':'nwnwnwnnn','/':'nwnwnnnwn','+':'nwnnnwnwn','%':'nnnwnwnwn'
+  const ALPHABET = {
+    '0':'101001101101', '1':'110100101011', '2':'101100101011','3':'110110010101',
+    '4':'101001101011', '5':'110100110101', '6':'101100110101','7':'101001011011',
+    '8':'110100101101', '9':'101100101101',
+    'A':'110101001011','B':'101101001011','C':'110110100101','D':'101011001011',
+    'E':'110101100101','F':'101101100101','G':'101010011011','H':'110101001101',
+    'I':'101101001101','J':'101011001101','K':'110101010011','L':'101101010011',
+    'M':'110110101001','N':'101011010011','O':'110101101001','P':'101101101001',
+    'Q':'101010110011','R':'110101011001','S':'101101011001','T':'101011011001',
+    'U':'110010101011','V':'100110101011','W':'110011010101','X':'100101101011',
+    'Y':'110010110101','Z':'100110110101','-':'100101011011','.' :'110010101101',
+    ' ' :'100110101101','$':'100100100101','/':'100100101001','+':'100101001001',
+    '%':'101001001001','*':'100101101101' /* start/stop */
   };
+  function encode(text){
+    const t = '*'+String(text).toUpperCase().replace(/[^0-9A-Z\-\.\ \$\/\+\%]/g,'')+'*';
+    return t.split('').map(ch=>ALPHABET[ch]||'').join('0'); // narrow inter-char space
+  }
+  function svg(code, opts){
+    opts = opts || {};
+    const module = Math.max(0.6, +opts.module || 1.2);
+    const height = Math.max(16, +opts.height || 48);
+    const margin = Math.max(0, +opts.margin || 2);
+    const showText = !!opts.showText;
+    const fontSize = +opts.fontSize || 12;
 
-  function svg(value, opts={}){
-    const {module=2, height=40, margin=10, showText=true, fontSize=12} = opts;
-    const data = `*${String(value).toUpperCase()}*`;
-    const inter = module;
-    let total = margin*2 + inter*(data.length-1);
-    for(const ch of data){
-      const p = MAP[ch];
-      if(!p) throw new Error('Caractère non supporté: '+ch);
-      for(const c of p) total += (c==='w'?3:1)*module;
-    }
-    const w = total, h = height + (showText?(fontSize+6):0);
-    let x = margin;
-    const svgns='http://www.w3.org/2000/svg';
-    const s=document.createElementNS(svgns,'svg');
-    s.setAttribute('width', String(w));
-    s.setAttribute('height', String(h));
-    s.setAttribute('viewBox', `0 0 ${w} ${h}`);
-    const g=document.createElementNS(svgns,'g'); s.appendChild(g);
-    for(const ch of data){
-      const pat = MAP[ch];
-      for(let i=0;i<9;i++){
-        const wide = pat[i]==='w';
-        const ww = (wide?3:1)*module;
-        if(i%2===0){ // barre
-          const r=document.createElementNS(svgns,'rect');
-          r.setAttribute('x', String(x));
-          r.setAttribute('y', '0');
-          r.setAttribute('width', String(ww));
-          r.setAttribute('height', String(height));
-          r.setAttribute('fill', '#111827');
-          g.appendChild(r);
-        }
-        x += ww;
+    const bits = encode(code);
+    const width = Math.round(bits.length * module) + margin*2;
+    const svgns = 'http://www.w3.org/2000/svg';
+    const el = document.createElementNS(svgns, 'svg');
+    el.setAttribute('width', width);
+    el.setAttribute('height', height + (showText? (fontSize+6):0));
+    el.setAttribute('viewBox', `0 0 ${width} ${height + (showText?(fontSize+6):0)}`);
+    let x = margin, y = margin, h = height - margin*2;
+
+    // bars
+    for (let i=0;i<bits.length;i++){
+      if(bits[i]==='1'){
+        const r = document.createElementNS(svgns, 'rect');
+        r.setAttribute('x', x); r.setAttribute('y', y);
+        r.setAttribute('width', module); r.setAttribute('height', h);
+        r.setAttribute('fill', '#000');
+        el.appendChild(r);
       }
-      x += inter;
+      x += module;
     }
     if(showText){
-      const t=document.createElementNS(svgns,'text');
-      t.setAttribute('x', String(w/2));
-      t.setAttribute('y', String(height+fontSize));
-      t.setAttribute('text-anchor','middle');
-      t.setAttribute('font-family','ui-monospace, SFMono-Regular, Menlo, Consolas, monospace');
-      t.setAttribute('font-size', String(fontSize));
-      t.textContent = String(value);
-      s.appendChild(t);
+      const txt = document.createElementNS(svgns, 'text');
+      txt.setAttribute('x', width/2);
+      txt.setAttribute('y', height + fontSize);
+      txt.setAttribute('text-anchor','middle');
+      txt.setAttribute('font-size', fontSize);
+      txt.textContent = code;
+      el.appendChild(txt);
     }
-    return s;
+    return el;
   }
-
   window.code39 = { svg };
 })();
