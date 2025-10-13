@@ -1,9 +1,9 @@
-/* Gstock - sw.js v2.6.0 (cache shell only + safe puts) */
-const CACHE='gstock-2.6.0';
+/* Gstock - sw.js v2.7.0 (cache shell only + safe puts) */
+const CACHE='gstock-2.7.0';
 const SHELL=[
   './',
   'index.html',
-  'js/app.js?v=2.6.0',
+  'js/app.js?v=2.7.0',
   'js/db.js?v=2.1.8',
   'js/barcode.js?v=2.1.8',
   'js/code39.js?v=2.1.8',
