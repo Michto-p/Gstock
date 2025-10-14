@@ -1,47 +1,27 @@
-/* Gstock - app.js v2.8.3 */
-
-// --- SAFE MODE: ajoute ?safe=1 à l'URL pour tout remettre à zéro proprement
-(async () => {
-  try {
-    const qs = new URLSearchParams(location.search);
-    if (qs.has('safe')) {
-      // 1) Efface la base IndexedDB
-      if (typeof window.dbNuke === 'function') {
-        try { await window.dbNuke(false); } catch (e) {}
-      } else {
-        try {
-          const req = indexedDB.deleteDatabase('gstock');
-          await new Promise(res => { req.onsuccess = req.onerror = req.onblocked = () => res(); });
-        } catch (e) {}
-      }
-      // 2) Désenregistre tous les Service Workers
-      try {
-        const regs = await (navigator.serviceWorker?.getRegistrations?.() || []);
-        await Promise.all(regs.map(r => r.unregister()));
-      } catch (e) {}
-      // 3) Vide tous les caches
-      try {
-        const keys = await (caches?.keys?.() || []);
-        await Promise.all(keys.map(k => caches.delete(k)));
-      } catch (e) {}
-      // 4) Recharge “propre”
-      location.replace(location.pathname + '?bust=' + Date.now());
-      return; // stoppe l'exécution du reste d'app.js dans ce tour
-    }
-  } catch (e) { /* noop */ }
-})();
-
-
+/* Gstock - app.js v2.9.0 */
 (function(){'use strict';
 function $(s,r){return (r||document).querySelector(s);}
 function $$(s,r){return Array.from((r||document).querySelectorAll(s));}
 function show(el,on){ if(!el) return; el.hidden = !on; }
 var sr=$('#sr');
-function cssEscapeCompat(v){ if(window.CSS && typeof CSS.escape==='function') return CSS.escape(v); return String(v).replace(/[^a-zA-Z0-9_\-]/g,function(s){return '\\'+s.codePointAt(0).toString(16)+' ';}); }
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
 function announce(msg){ if(sr){ sr.textContent=''; setTimeout(()=>{ sr.textContent=msg; },10);} }
 function downloadFile(name,data,type){ var blob=new Blob([data],{type:type}); var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),3000); }
 function debounced(fn,ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; }
+
+/* SAFE MODE via ?safe=1 */
+(async () => {
+  try {
+    const qs = new URLSearchParams(location.search);
+    if (qs.has('safe')) {
+      try { await (window.dbNuke ? window.dbNuke(false) : Promise.resolve()); } catch(e){}
+      try { const regs = await (navigator.serviceWorker?.getRegistrations?.() || []); await Promise.all(regs.map(r => r.unregister())); } catch(e){}
+      try { const keys = await (caches?.keys?.() || []); await Promise.all(keys.map(k => caches.delete(k))); } catch(e){}
+      location.replace(location.pathname + '?bust=' + Date.now());
+      return;
+    }
+  } catch (e) {}
+})();
 
 /* Thème */
 var themeToggle=$('#themeToggle');
@@ -82,7 +62,7 @@ function nameToCode(name){
   var base=[]; for(let i=0;i<parts.length-(brand?1:0);i++){ let t=parts[i], low=t.toLowerCase(); if(stop.has(low))continue; if(/^\d+$/.test(t)){base.push(t);continue;} base.push((t.length>=4?t.slice(0,4):t).toLowerCase()); }
   return base.join('')+brandShort;
 }
-async function generateCodeFromName(name){ var base=nameToCode(name); var c=base, n=2; while(await dbGet(c)||await dbGet(c.toUpperCase())||await dbGet(c.toLowerCase())) c=base+'-'+(n++); return c; }
+async function generateCodeFromName(name){ var base=nameToCode(name); var c=base, n=2; while(await dbGet(c)) c=base+'-'+(n++); return c; }
 
 /* Accueil */
 async function refreshHome(){
@@ -93,7 +73,7 @@ async function refreshHome(){
   $('#kpiUnder').textContent=String(items.filter(i=>(i.qty|0)<=(i.threshold|0)).length);
   $('#kpiLow').textContent=String(items.filter(i=> (i.qty|0)>(i.threshold|0) && ((i.qty|0)-(i.threshold|0))<=buf ).length);
   var loans=await dbListLoans(true); var overdue=loans.filter(l=>!l.returnedAt && Date.now()>new Date(l.due).getTime()).length;
-  $('#kpiLoansActive').textContent=String(loans.length);
+  $('#kpiLoansActive').textContent=String(loans.filter(l=>!l.returnedAt).length);
   $('#kpiLoansOverdue').textContent=String(overdue);
   var recent=await dbListMoves({from:0,to:Infinity,limit:8});
   var ul=$('#recentMoves');
@@ -125,11 +105,10 @@ Object.keys(els).forEach(type=>{
   e.btnClear && e.btnClear.addEventListener('click',()=>{ state[type]={q:'',status:'',tag:'',loc:''}; ['search','status','tag','loc'].forEach(k=>e[k]&&(e[k].value='')); refreshTable(type); });
   e.btnAdd && e.btnAdd.addEventListener('click',()=>openNewDialog(type));
 });
-function barcodeInline(code, module, height, showText){
-  module=module||1.6; height=height||32; showText=!!showText;
+function barcodeInline(code){
   try{
     if(window.code39 && typeof window.code39.svg==='function'){
-      var svg = window.code39.svg(code, {module, height, margin:0, showText, fontSize:9});
+      var svg = window.code39.svg(code, {module:1.6, height:34, margin:0, showText:false, fontSize:9});
       return svg && (svg.outerHTML || new XMLSerializer().serializeToString(svg));
     }
   }catch(_){}
@@ -172,7 +151,7 @@ async function refreshTable(type){
     return `<tr>
       <td>${esc(it.name)}</td>
       <td><code>${esc(it.ref||it.code)}</code></td>
-      <td class="barcode">${barcodeInline(it.code, 1.5, 34, false)}</td>
+      <td class="barcode">${barcodeInline(it.code)}</td>
       <td>${qtyCell}</td>
       <td>${(it.threshold|0)}</td>
       <td>${tags}</td>
@@ -196,7 +175,7 @@ async function refreshTable(type){
   e.tbody.querySelectorAll('button[data-qa]').forEach(btn=>{
     btn.onclick=async()=>{
       var code=btn.dataset.code; var delta=(btn.dataset.qa==='+1')?+1:-1;
-      var it=(await dbGet(code))||(await dbGet(code.toUpperCase()))||(await dbGet(code.toLowerCase())); if(!it) return;
+      var it=(await dbGet(code)); if(!it) return;
       await dbAdjustQty(it.code,delta);
       await dbAddMove({ts:Date.now(),type:(delta>0?'ENTRY':'EXIT'),code:it.code,name:it.name,qty:Math.abs(delta),note:'ajustement rapide ('+ensureType(it)+')'});
       announce((delta>0?'+1':'-1')+' → '+it.name); await refreshTable(type); await refreshHome();
@@ -204,7 +183,7 @@ async function refreshTable(type){
   });
 }
 async function openHistory(code){
-  var item=(await dbGet(code))||(await dbGet(code.toUpperCase()))||(await dbGet(code.toLowerCase()));
+  var item=(await dbGet(code));
   var moves=await dbListMoves({code:(item&&item.code)||code,limit:100});
   var loans=(typeof dbListLoansByCode==='function') ? (await dbListLoansByCode((item&&item.code)||code)) : [];
   alert('Historique "'+((item&&item.name)||code)+'"\n\nMouvements: '+moves.length+'\nEmprunts (actifs+clos): '+loans.length);
@@ -224,7 +203,7 @@ $('#dlgValidate')?.addEventListener('click',onValidateAdjust);
 async function openAdjustDialog(opts){
   opts=opts||{}; var code=opts.code||null, type=opts.type||'add';
   if(!code){ code=prompt('Code ?'); if(!code) return; }
-  var item=(await dbGet(code))||(await dbGet(code.toUpperCase()))||(await dbGet(code.toLowerCase())); if(!item){ alert('Introuvable'); return; }
+  var item=(await dbGet(code)); if(!item){ alert('Introuvable'); return; }
   dlgState.code=item.code; dlgType && (dlgType.value=type); dlgQty && (dlgQty.value=1); dlgNote && (dlgNote.value=''); dlgItem && (dlgItem.textContent=`${item.name} (${item.ref||item.code}) — Stock actuel: ${item.qty}`);
   dlg && dlg.showModal && dlg.showModal();
 }
@@ -288,7 +267,7 @@ async function openNewDialog(type){
     niLocChips.querySelectorAll('button[data-loc]').forEach(b=>{
       b.addEventListener('click',()=>{
         var val=b.getAttribute('data-loc')||'';
-        var opt=niLocSelect?niLocSelect.querySelector('option[value="'+cssEscapeCompat(val)+'"]'):null;
+        var opt=niLocSelect?niLocSelect.querySelector('option[value="'+val.replace(/"/g,'&quot;')+'"]'):null;
         if(niLocSelect && opt){ niLocSelect.value=val; niLocCustomWrap && (niLocCustomWrap.hidden=true); }
         else { niLocSelect && (niLocSelect.value='__custom__'); niLocCustomWrap && (niLocCustomWrap.hidden=false); niLocCustom && (niLocCustom.value=val); niLocCustom?.focus(); }
       });
@@ -431,7 +410,7 @@ async function refreshJournal(){
 var loansTbody=$('#loansTbody');
 $('#btnNewLoan')?.addEventListener('click',async ()=>{
   var code=prompt('Code article ?'); if(!code) return;
-  var it=(await dbGet(code))||(await dbGet(code.toUpperCase()))||(await dbGet(code.toLowerCase())); if(!it) return alert('Article introuvable');
+  var it=(await dbGet(code)); if(!it) return alert('Article introuvable');
   var person=prompt('Nom emprunteur ?'); if(!person) return;
   var due=prompt('Date prévue retour (YYYY-MM-DD) ?'); if(!due) return;
   var note=prompt('Note (optionnel)')||''; await dbCreateLoan({code:it.code,name:it.name,person,due,note});
@@ -450,8 +429,8 @@ async function refreshLoansTable(){
     btn.onclick=async()=>{ var id=btn.getAttribute('data-return'); await dbReturnLoan(id); announce('Matériel retourné'); await refreshLoansTable(); await refreshHome(); };
   });
   var sBorrow=$('#btnScanBorrow'), sReturn=$('#btnScanReturn'); var supported=('BarcodeDetector' in window);
-  if(sBorrow){ sBorrow.hidden=false; sBorrow.disabled=!supported; if(!supported) sBorrow.title='Scanner non supporté sur ce navigateur'; }
-  if(sReturn){ sReturn.hidden=false; sReturn.disabled=!supported; if(!supported) sReturn.title='Scanner non supporté sur ce navigateur'; }
+  if(sBorrow){ sBorrow.hidden=false; sBorrow.disabled=!supported; if(!supported) sBorrow.title='Scanner non supporté'; }
+  if(sReturn){ sReturn.hidden=false; sReturn.disabled=!supported; if(!supported) sReturn.title='Scanner non supporté'; }
 }
 
 /* Paramètres */
@@ -539,13 +518,17 @@ function initSettingsPanel(){
 }
 
 /* Scanner articles */
-var videoEl=$('#scanVideo'), btnScanStart=$('#btnScanStart'), btnScanStop=$('#btnScanStop'), btnScanTorch=$('#btnScanTorch'), scanHint=$('#scanHint');
+var videoEl=$('#scanVideo'), btnScanStart=$('#btnScanStart'), btnScanStop=$('#btnScanStop'), btnScanTorch=$('#btnScanTorch'), scanHint=$('#scanHint'), scanFallback=$('#scanFallback'), scanManual=$('#scanManual');
 var scanStream=null, scanTrack=null, scanDetector=null, scanLoopId=0, torchOn=false;
 var lastCode='', lastReadTs=0; var DUP_MS=1200;
 var HAS_DETECTOR=('BarcodeDetector' in window);
 btnScanStop && (btnScanStop.hidden=true);
 btnScanTorch && (btnScanTorch.hidden=true);
-!HAS_DETECTOR && scanHint && (scanHint.textContent='Scanner natif indisponible (essayez Chrome/Edge Android). Si la détection échoue, ajoutez manuellement.');
+if(!HAS_DETECTOR){ show(scanFallback,true); scanHint && (scanHint.textContent='Scanner natif indisponible sur ce navigateur'); }
+$('#btnScanManual')?.addEventListener('click',async ()=>{
+  var raw=(scanManual&&scanManual.value.trim())||''; if(!raw) return;
+  var item=(await dbGet(raw)); if(item){ beepKnown(); await openAdjustDialog({code:item.code, type:'add'}); } else { alert('Code inconnu'); }
+});
 
 function beepKnown(ms,hz){
   ms=ms||140; hz=hz||880;
@@ -582,7 +565,7 @@ async function startScan(){
     runDetectLoop();
   }catch(err){
     console.warn('startScan error', err);
-    scanHint && (scanHint.textContent=String(err).includes('BarcodeDetector')?'Détection non supportée. Caméra OK, mais pas de lecture automatique.':'Accès caméra impossible (HTTPS/permissions).');
+    scanHint && (scanHint.textContent=String(err).includes('BarcodeDetector')?'Détection non supportée. Utilisez la saisie manuelle.':'Accès caméra impossible (HTTPS/permissions).');
     if(!scanStream){ stopScan(); }
   }
 }
@@ -606,7 +589,7 @@ async function runDetectLoop(){
         var raw=(codes[0].rawValue||'').trim(); var now=Date.now();
         if(raw && (raw!==lastCode || (now-lastReadTs)>DUP_MS)){
           lastCode=raw; lastReadTs=now;
-          var item=(await dbGet(raw))||(await dbGet(raw.toUpperCase()))||(await dbGet(raw.toLowerCase()));
+          var item=(await dbGet(raw));
           if(item){ beepKnown(); stopScan(); await openAdjustDialog({code:item.code, type:'add'}); return; }
           else{ scanHint && (scanHint.textContent='Code inconnu : '+raw+' — on continue...'); }
         }
@@ -623,7 +606,7 @@ btnScanTorch?.addEventListener('click',async ()=>{
   torchOn=!torchOn; try{ await scanTrack.applyConstraints({advanced:[{torch:torchOn}]}); }catch(e){ torchOn=false; }
 });
 
-/* Scan emprunt/retour (dialog + détection) */
+/* Scan emprunt/retour */
 var loanDlg=$('#loanScanDialog'), loanVideo=$('#loanVideo'), loanScanTitle=$('#loanScanTitle'), loanScanHint=$('#loanScanHint'), btnLoanTorch=$('#btnLoanTorch'), btnLoanStop=$('#btnLoanStop');
 var loanStream=null, loanTrack=null, loanLoop=0, loanMode='borrow';
 $('#btnScanBorrow')?.addEventListener('click',()=>startLoanScan('borrow'));
@@ -645,7 +628,7 @@ async function startLoanScan(mode){
     loanScanHint && (loanScanHint.textContent='Visez le code-barres...');
     loanDlg && loanDlg.showModal && loanDlg.showModal();
     runLoanLoop();
-  }catch(err){ console.warn('loan scan error', err); alert('Caméra ou détection indisponible sur ce navigateur.'); }
+  }catch(err){ console.warn('loan scan error', err); alert('Caméra ou détection indisponible. Utilisez la saisie manuelle sur la fiche.'); }
 }
 function stopLoanScan(){
   if(loanLoop){ cancelAnimationFrame(loanLoop); loanLoop=0; }
@@ -662,7 +645,7 @@ async function runLoanLoop(){
       if(Array.isArray(codes) && codes.length){
         var raw=(codes[0].rawValue||'').trim();
         if(raw){
-          var it=(await dbGet(raw))||(await dbGet(raw.toUpperCase()))||(await dbGet(raw.toLowerCase()));
+          var it=(await dbGet(raw));
           if(!it){ loanScanHint && (loanScanHint.textContent='Code inconnu : '+raw); loanLoop=requestAnimationFrame(step); return; }
           beepKnown();
           if(loanMode==='borrow'){ stopLoanScan(); openBorrowDialog(it); return; }
@@ -679,7 +662,6 @@ async function runLoanLoop(){
   };
   loanLoop=requestAnimationFrame(step);
 }
-/* Dialog emprunt */
 var borrowDlg=$('#borrowDialog'), borrowItem=$('#borrowItem'), brwPerson=$('#brwPerson'), brwDue=$('#brwDue'), brwNote=$('#brwNote'), brwCreate=$('#brwCreate');
 var borrowCurrent=null;
 function openBorrowDialog(item){
@@ -695,50 +677,36 @@ brwCreate?.addEventListener('click',async e=>{
   announce('Prêt créé'); borrowDlg?.close(); await refreshLoansTable(); await refreshHome();
 });
 
-/* INIT avec rattrapage IDB corrompu */
+/* INIT */
 (async function init(){
   $('#appVersion') && ($('#appVersion').textContent=window.APP_VERSION||'');
   try {
     if (typeof window.dbInit !== 'function') throw new Error('db.js non chargé');
-    await dbInit();
+    await dbInit(); // IDB ou fallback LS
   } catch (e) {
-  // LOG verbeux pour voir la vraie cause
-  console.error('Init DB error (verbose):', {
-    name: e && e.name,
-    message: e && e.message,
-    stack: e && e.stack
-  }, e);
-
-  const msg = String((e && (e.message || e.name)) || 'Unknown');
-  // Cas IDB corrompue / quota / internal error
-  if ((e && (e.name === 'UnknownError' || e.name === 'InvalidStateError' || e.name === 'QuotaExceededError')) ||
-      /Internal error/i.test(msg)) {
-    const ok = confirm('Le stockage local semble corrompu/bloqué.\nVoulez-vous lancer la réparation ?\n(La base locale sera réinitialisée)');
-    if (ok) {
-      try { await (window.dbNuke ? window.dbNuke(false) : Promise.resolve()); } catch(_) {}
-      try {
-        if ('caches' in window) { const ks = await caches.keys(); await Promise.all(ks.map(k=>caches.delete(k))); }
-        if (navigator.serviceWorker?.getRegistrations) { const regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map(r=>r.unregister())); }
-      } catch(_) {}
+    console.error('Init DB error (verbose):', { name: e && e.name, message: e && e.message, stack: e && e.stack }, e);
+    const msg = String((e && (e.message || e.name)) || 'Unknown');
+    if ((e && (e.name === 'UnknownError' || e.name === 'InvalidStateError' || e.name === 'QuotaExceededError')) || /Internal error/i.test(msg)) {
+      const ok = confirm('Le stockage local semble corrompu/bloqué.\nLancer la réparation ?\n(La base locale sera réinitialisée)');
+      if (ok) {
+        try { await (window.dbNuke ? window.dbNuke(false) : Promise.resolve()); } catch(_) {}
+        try {
+          if ('caches' in window) { const ks = await caches.keys(); await Promise.all(ks.map(k=>caches.delete(k))); }
+          if (navigator.serviceWorker?.getRegistrations) { const regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map(r=>r.unregister())); }
+        } catch(_) {}
+        location.href = location.pathname + '?bust=' + Date.now();
+        return;
+      }
+    }
+    if (e && (e.name === 'SecurityError' || e.name === 'NotAllowedError')) {
+      alert('IndexedDB est bloqué (navigation privée / politique). Fallback mémoire activé.');
+    }
+    if (!window.dbInit) {
+      alert('db.js non chargé (cache SW ?). Rechargement.');
       location.href = location.pathname + '?bust=' + Date.now();
       return;
     }
   }
-  // Cas navigateur qui bloque IDB (ex: navigation privée Safari)
-  if (e && (e.name === 'SecurityError' || e.name === 'NotAllowedError')) {
-    alert('IndexedDB est bloqué par le navigateur (mode privé / politique sécurité). Essayez un autre navigateur ou désactive le mode privé.');
-    return;
-  }
-  // db.js non chargé
-  if (!window.dbInit) {
-    alert('db.js non chargé (cache SW ?).\nOn va recharger la page.');
-    location.href = location.pathname + '?bust=' + Date.now();
-    return;
-  }
-  alert('Impossible d’initialiser le stockage.\nDétail: ' + msg);
-  return;
-}
-
 
   await refreshHome();
   showTab('home');
