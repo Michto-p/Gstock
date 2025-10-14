@@ -1,13 +1,13 @@
-/* Gstock SW v2.8.3 – purge + stratégie mixte */
-const VERSION = 'v2.8.3';
+/* Gstock SW v2.9.0 – stratégie mixte + purge */
+const VERSION = 'v2.9.0';
 const CORE = [
   './',
   './index.html',
-  './css/styles.css?v=2.8.3',
-  './js/app.js?v=2.8.3',
-  './js/db.js?v=2.8.3',
-  './js/code39.js?v=2.8.2',
-  './manifest.json'
+  './css/styles.css?v=2.9.0',
+  './js/app.js?v=2.9.0',
+  './js/db.js?v=2.9.0',
+  './js/code39.js?v=2.9.0',
+  './manifest.json?v=2.9.0'
 ];
 
 self.addEventListener('install', (e)=>{
