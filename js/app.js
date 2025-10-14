@@ -474,7 +474,7 @@ $('#niSave')?.addEventListener('click', async e=>{
 });
 
 /* --- Étiquettes --- */
-var LABEL_TEMPLATES={ 'avery-l7160testset':{cols:3,rows:7,cellW:63.5,cellH:38.1,gapX:2.5,gapY:0,marginX:7.5,marginY:12.0},
+var LABEL_TEMPLATES={ 'avery-l7160':{cols:3,rows:7,cellW:63.5,cellH:38.1,gapX:2.5,gapY:0,marginX:7.5,marginY:12.0},
   'avery-l7159':{cols:3,rows:7,cellW:63.5,cellH:38.1,gapX:2.5,gapY:0,marginX:7.5,marginY:12.0},
   'avery-l7163':{cols:2,rows:7,cellW:99.1,cellH:38.1,gapX:2.0,gapY:0,marginX:5.0,marginY:13.5},
   'avery-l7162':{cols:2,rows:8,cellW:99.1,cellH:33.9,gapX:2.0,gapY:2.0,marginX:5.0,marginY:10.7},
