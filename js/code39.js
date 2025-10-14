@@ -1,61 +1,62 @@
-/* Minimal Code39 SVG generator v1.0 – public domain */
+/* Gstock Code39 v2.9.0 – rendu SVG minimal */
 (function(){
-  const ALPHABET = {
-    '0':'101001101101', '1':'110100101011', '2':'101100101011','3':'110110010101',
-    '4':'101001101011', '5':'110100110101', '6':'101100110101','7':'101001011011',
-    '8':'110100101101', '9':'101100101101',
-    'A':'110101001011','B':'101101001011','C':'110110100101','D':'101011001011',
-    'E':'110101100101','F':'101101100101','G':'101010011011','H':'110101001101',
-    'I':'101101001101','J':'101011001101','K':'110101010011','L':'101101010011',
-    'M':'110110101001','N':'101011010011','O':'110101101001','P':'101101101001',
-    'Q':'101010110011','R':'110101011001','S':'101101011001','T':'101011011001',
-    'U':'110010101011','V':'100110101011','W':'110011010101','X':'100101101011',
-    'Y':'110010110101','Z':'100110110101','-':'100101011011','.' :'110010101101',
-    ' ' :'100110101101','$':'100100100101','/':'100100101001','+':'100101001001',
-    '%':'101001001001','*':'100101101101' /* start/stop */
+  'use strict';
+  // Table Code39 (narrow=1, wide=2, intercaracter=1 narrow)
+  const C39 = {
+    '0':'nnnwwnwnn','1':'wnnwnnnnw','2':'nnwwnnnnw','3':'wnwwnnnnn','4':'nnnwwnnnw','5':'wnnwwnnnn','6':'nnwwwnnnn','7':'nnnwnnwnw','8':'wnnwnnwnn','9':'nnwwnnwnn',
+    'A':'wnnnnwnnw','B':'nnwnnwnnw','C':'wnwnnwnnn','D':'nnnnwwnnw','E':'wnnnwwnnn','F':'nnwnwwnnn','G':'nnnnnwwnw','H':'wnnnnwwnn','I':'nnwnnwwnn','J':'nnnnwwwnn',
+    'K':'wnnnnnnww','L':'nnwnnnnww','M':'wnwnnnnwn','N':'nnnnwnnww','O':'wnnnwnnwn','P':'nnwnwnnwn','Q':'nnnnnnwww','R':'wnnnnnwwn','S':'nnwnnnwwn','T':'nnnnwnwwn',
+    'U':'wwnnnnnnw','V':'nwwnnnnnw','W':'wwwnnnnnn','X':'nwnnwnnnw','Y':'wwnnwnnnn','Z':'nwwnwnnnn','-':'nwnnnnwnw','.' :'wwnnnnwnn',' ' :'nwwnnnwnn','$':'nwnwnwnnn',
+    '/' :'nwnwnnnwn','+' :'nwnnnwnwn','%' :'nnnwnwnwn','*':'nwnnwnwnn'
   };
-  function encode(text){
-    const t = '*'+String(text).toUpperCase().replace(/[^0-9A-Z\-\.\ \$\/\+\%]/g,'')+'*';
-    return t.split('').map(ch=>ALPHABET[ch]||'').join('0'); // narrow inter-char space
-  }
-  function svg(code, opts){
-    opts = opts || {};
-    const module = Math.max(0.6, +opts.module || 1.2);
+  function patternFor(ch){ return C39[ch] || C39['*']; }
+  function validText(s){ return String(s).toUpperCase().replace(/[^0-9A-Z\-\.\ \$\/\+\%]/g,''); }
+  function encode(txt){ txt='*'+validText(txt)+'*'; let out=[]; for(let i=0;i<txt.length;i++){ out.push(patternFor(txt[i])); } return out.join('n'); }
+  function svg(text, opts){
+    opts=opts||{};
+    const module = Math.max(0.6, +opts.module || 1.6);
     const height = Math.max(16, +opts.height || 48);
-    const margin = Math.max(0, +opts.margin || 2);
+    const margin = Math.max(0, +opts.margin || 0);
     const showText = !!opts.showText;
-    const fontSize = +opts.fontSize || 12;
+    const fontSize = +opts.fontSize || 10;
 
-    const bits = encode(code);
-    const width = Math.round(bits.length * module) + margin*2;
-    const svgns = 'http://www.w3.org/2000/svg';
-    const el = document.createElementNS(svgns, 'svg');
-    el.setAttribute('width', width);
-    el.setAttribute('height', height + (showText? (fontSize+6):0));
-    el.setAttribute('viewBox', `0 0 ${width} ${height + (showText?(fontSize+6):0)}`);
-    let x = margin, y = margin, h = height - margin*2;
+    const patt = encode(text);
+    let width = 0;
+    for(let i=0;i<patt.length;i++){ width += (patt[i]==='w'? (module*3) : module); }
+    width += margin*2;
 
-    // bars
-    for (let i=0;i<bits.length;i++){
-      if(bits[i]==='1'){
-        const r = document.createElementNS(svgns, 'rect');
-        r.setAttribute('x', x); r.setAttribute('y', y);
-        r.setAttribute('width', module); r.setAttribute('height', h);
+    const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.setAttribute('xmlns','http://www.w3.org/2000/svg');
+    svg.setAttribute('width', Math.ceil(width));
+    svg.setAttribute('height', height + (showText? fontSize+4 : 0));
+    svg.setAttribute('viewBox', `0 0 ${width} ${height + (showText? fontSize+4 : 0)}`);
+
+    let x = margin;
+    let bar = true;
+    for(let i=0;i<patt.length;i++){
+      let w = (patt[i]==='w'? (module*3) : module);
+      if(bar){
+        const r = document.createElementNS(svg.namespaceURI,'rect');
+        r.setAttribute('x', x);
+        r.setAttribute('y', 0);
+        r.setAttribute('width', w);
+        r.setAttribute('height', height);
         r.setAttribute('fill', '#000');
-        el.appendChild(r);
+        svg.appendChild(r);
       }
-      x += module;
+      x += w;
+      bar = !bar;
     }
     if(showText){
-      const txt = document.createElementNS(svgns, 'text');
-      txt.setAttribute('x', width/2);
-      txt.setAttribute('y', height + fontSize);
-      txt.setAttribute('text-anchor','middle');
-      txt.setAttribute('font-size', fontSize);
-      txt.textContent = code;
-      el.appendChild(txt);
+      const t = document.createElementNS(svg.namespaceURI,'text');
+      t.setAttribute('x', width/2);
+      t.setAttribute('y', height + fontSize);
+      t.setAttribute('text-anchor','middle');
+      t.setAttribute('font-size', fontSize);
+      t.textContent = text;
+      svg.appendChild(t);
     }
-    return el;
+    return svg;
   }
   window.code39 = { svg };
 })();
