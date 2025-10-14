@@ -1,13 +1,31 @@
-/* Gstock - db.js v2.8.3 (IndexedDB + auto-réparation + export/import + fichier partagé) */
+/* Gstock - db.js v2.9.0 (IndexedDB + auto-réparation + fallback LocalStorage) */
 (function () {
   'use strict';
 
   var DB_NAME = 'gstock';
-  var DB_VER = 5;
+  var DB_VER = 6;
   var STORES = { items: 'items', moves: 'moves', loans: 'loans', meta: 'meta' };
   var db = null;
   var sharedFileHandle = null;
+  var BACKEND = 'idb'; // 'idb' | 'ls' (localStorage fallback)
 
+  /* ---------- LocalStorage fallback ---------- */
+  function lsGet(key, def){ try{ var s=localStorage.getItem('gstock:'+key); return s?JSON.parse(s):def; }catch(_){ return def; } }
+  function lsSet(key, val){ try{ localStorage.setItem('gstock:'+key, JSON.stringify(val)); }catch(_){ /* quota */ } }
+  function ensureLSDefaults(){
+    if(!lsGet('items')) lsSet('items', []);
+    if(!lsGet('moves')) lsSet('moves', []);
+    if(!lsGet('loans')) lsSet('loans', []);
+    if(!lsGet('settings')) lsSet('settings', {
+      buffer: 2,
+      defaultTagsStock: ['élec','plomberie','consommable'],
+      defaultTagsAtelier: ['outillage','mesure','sécurité'],
+      defaultLocationsStock: ['Atelier · Etagère 1','Atelier · Etagère 2'],
+      defaultLocationsAtelier: ['Chariot 1','Armoire atelier']
+    });
+  }
+
+  /* ---------- IndexedDB ---------- */
   function openDB() {
     return new Promise(function (resolve, reject) {
       function openOnce(retry) {
@@ -35,12 +53,12 @@
           }
         };
 
+        req.onblocked = function(){ console.warn('IndexedDB open blocked'); };
         req.onsuccess = function () { resolve(req.result); };
-
         req.onerror = function () {
           var err = req.error || {};
           var name = err.name || '';
-          if (!retry && (name === 'UnknownError' || name === 'InvalidStateError' || /Internal error/i.test(err.message || ''))) {
+          if (!retry && (name === 'UnknownError' || name === 'InvalidStateError' || name === 'QuotaExceededError' || /Internal error/i.test(err.message || ''))) {
             var del = indexedDB.deleteDatabase(DB_NAME);
             del.onsuccess = function () { openOnce(true); };
             del.onerror = function () { reject(err); };
@@ -54,13 +72,16 @@
   }
 
   function tx(storeName, mode) {
+    if (BACKEND === 'ls') return Promise.resolve(null);
     return (db ? Promise.resolve(db) : openDB()).then(function (conn) {
       db = conn;
       return db.transaction(storeName, mode).objectStore(storeName);
     });
   }
 
+  /* ---------- Init ---------- */
   function ensureDefaultSettings() {
+    if (BACKEND === 'ls') { ensureLSDefaults(); return Promise.resolve(); }
     return dbGetSettings().then(function (s) {
       if (s) return;
       return dbSaveSettings({
@@ -74,8 +95,12 @@
   }
 
   function dbInit() {
-    return openDB().then(function (conn) {
-      db = conn;
+    // Essaie IDB d’abord, sinon fallback LS
+    return openDB().then(function(conn){
+      db = conn; BACKEND='idb';
+    }).catch(function(){
+      BACKEND='ls'; ensureLSDefaults();
+    }).then(function(){
       return ensureDefaultSettings();
     }).then(function () {
       return dbList();
@@ -95,8 +120,9 @@
     });
   }
 
-  /* Items */
+  /* ---------- Items (IDB + LS) ---------- */
   function dbList() {
+    if (BACKEND==='ls') return Promise.resolve(lsGet('items', []));
     return tx(STORES.items, 'readonly').then(function (store) {
       return new Promise(function (resolve, reject) {
         var req = store.getAll();
@@ -107,6 +133,10 @@
   }
   function dbGet(code) {
     if (!code) return Promise.resolve(null);
+    if (BACKEND==='ls'){
+      var it=lsGet('items', []).find(i=>i.code===code);
+      return Promise.resolve(it||null);
+    }
     return tx(STORES.items, 'readonly').then(function (store) {
       return new Promise(function (resolve, reject) {
         var req = store.get(code);
@@ -125,19 +155,31 @@
     });
   }
   function dbPut(item) {
+    if (BACKEND==='ls'){
+      var arr=lsGet('items', []);
+      var idx=arr.findIndex(i=>i.code===item.code);
+      if(idx>=0) arr[idx]=item; else arr.push(item);
+      lsSet('items', arr); autosaveShared()["catch"](function(){});
+      return Promise.resolve(item.code);
+    }
     return tx(STORES.items, 'readwrite').then(function (store) {
       return new Promise(function (resolve, reject) {
         var req = store.put(item);
-        req.onsuccess = function () { resolve(req.result); autosaveShared()["catch"](function () {}); };
+        req.onsuccess = function () { resolve(req.result); autosaveShared()["catch"](function(){}); };
         req.onerror = function () { reject(req.error); };
       });
     });
   }
   function dbDelete(code) {
+    if (BACKEND==='ls'){
+      var arr=lsGet('items', []).filter(i=>i.code!==code);
+      lsSet('items', arr); autosaveShared()["catch"](function(){});
+      return Promise.resolve();
+    }
     return tx(STORES.items, 'readwrite').then(function (store) {
       return new Promise(function (resolve, reject) {
         var req = store.delete(code);
-        req.onsuccess = function () { resolve(); autosaveShared()["catch"](function () {}); };
+        req.onsuccess = function () { resolve(); autosaveShared()["catch"](function(){}); };
         req.onerror = function () { reject(req.error); };
       });
     });
@@ -151,8 +193,14 @@
     });
   }
 
-  /* Moves */
+  /* ---------- Moves ---------- */
   function dbAddMove(m) {
+    if (BACKEND==='ls'){
+      var arr=lsGet('moves', []);
+      m.id = (arr.length? (arr[arr.length-1].id|0)+1 : 1);
+      arr.push(m); lsSet('moves', arr);
+      return Promise.resolve(m.id);
+    }
     return tx(STORES.moves, 'readwrite').then(function (store) {
       return new Promise(function (resolve, reject) {
         var req = store.add(m);
@@ -168,6 +216,10 @@
     var code = (typeof opts.code === 'string') ? opts.code : null;
     var limit = (typeof opts.limit === 'number') ? opts.limit : 1000;
 
+    if (BACKEND==='ls'){
+      var out=lsGet('moves', []).filter(m=>m.ts>=from && m.ts<=to && (!code || m.code===code)).sort((a,b)=>b.ts-a.ts);
+      return Promise.resolve(out.slice(0,limit));
+    }
     return tx(STORES.moves, 'readonly').then(function (store) {
       return new Promise(function (resolve, reject) {
         var out = [];
@@ -205,12 +257,18 @@
       dbListLoans(true),
       dbGetSettings()
     ]).then(function (arr) {
-      return { version: DB_VER, exportedAt: Date.now(), items: arr[0], moves: arr[1], loans: arr[2], settings: arr[3] };
+      return { version: DB_VER, exportedAt: Date.now(), items: arr[0], moves: arr[1], loans: arr[2], settings: arr[3], backend: BACKEND };
     });
   }
   function dbImportFull(payload) {
     if (!payload || typeof payload !== 'object') return Promise.reject(new Error('payload invalide'));
-
+    if (BACKEND==='ls'){
+      lsSet('items', payload.items||[]);
+      lsSet('moves', payload.moves||[]);
+      lsSet('loans', payload.loans||[]);
+      if(payload.settings) lsSet('settings', payload.settings);
+      return Promise.resolve();
+    }
     var sItems, sMoves, sLoans, sMeta;
     function clear(store) {
       return new Promise(function (res, rej) {
@@ -236,8 +294,13 @@
     });
   }
 
-  /* Loans */
+  /* ---------- Loans ---------- */
   function dbCreateLoan(obj) {
+    if (BACKEND==='ls'){
+      var arr=lsGet('loans', []); var id=(arr.length? (arr[arr.length-1].id|0)+1 : 1);
+      arr.push({ id, code:obj.code, name:obj.name, person:obj.person, due:obj.due, note:obj.note||'', createdAt:Date.now(), returnedAt:null });
+      lsSet('loans', arr); return Promise.resolve(id);
+    }
     return tx(STORES.loans, 'readwrite').then(function (store) {
       return new Promise(function (resolve, reject) {
         var v = { code: obj.code, name: obj.name, person: obj.person, due: obj.due, note: obj.note ? obj.note : '', createdAt: Date.now(), returnedAt: null };
@@ -248,6 +311,10 @@
     });
   }
   function dbReturnLoan(id) {
+    if (BACKEND==='ls'){
+      var arr=lsGet('loans', []); var it=arr.find(l=>l.id==id); if(it){ it.returnedAt=Date.now(); lsSet('loans', arr); }
+      return Promise.resolve();
+    }
     return tx(STORES.loans, 'readwrite').then(function (store) {
       return new Promise(function (resolve, reject) {
         var getReq = store.get(id);
@@ -264,6 +331,9 @@
     });
   }
   function dbListLoans(includeReturned) {
+    if (BACKEND==='ls'){
+      var all=lsGet('loans', []); return Promise.resolve(includeReturned? all : all.filter(l=>!l.returnedAt));
+    }
     return tx(STORES.loans, 'readonly').then(function (store) {
       return new Promise(function (resolve, reject) {
         var req = store.getAll();
@@ -276,6 +346,10 @@
     });
   }
   function dbListLoansByCode(code) {
+    if (BACKEND==='ls'){
+      var arr=lsGet('loans', []).filter(l=>l.code===code).sort((a,b)=>b.createdAt-a.createdAt);
+      return Promise.resolve(arr);
+    }
     return tx(STORES.loans, 'readonly').then(function (store) {
       return new Promise(function (resolve, reject) {
         var idx = store.index('by_code');
@@ -293,8 +367,9 @@
     });
   }
 
-  /* Settings / Meta */
+  /* ---------- Settings / Meta ---------- */
   function dbGetSettings() {
+    if (BACKEND==='ls') return Promise.resolve(lsGet('settings', null));
     return tx(STORES.meta, 'readonly').then(function (store) {
       return new Promise(function (resolve, reject) {
         var req = store.get('settings');
@@ -304,27 +379,24 @@
     });
   }
   function dbSaveSettings(obj) {
+    if (BACKEND==='ls'){ lsSet('settings', obj); autosaveShared()["catch"](function(){}); return Promise.resolve(); }
     return tx(STORES.meta, 'readwrite').then(function (store) {
       return new Promise(function (resolve, reject) {
         var req = store.put({ key: 'settings', value: obj });
-        req.onsuccess = function () { resolve(); autosaveShared()["catch"](function () {}); };
+        req.onsuccess = function () { resolve(); autosaveShared()["catch"](function(){}); };
         req.onerror = function () { reject(req.error); };
       });
     });
   }
 
-  /* Fichier partagé (optionnel) */
   function dbLinkSharedFile(handle) { sharedFileHandle = handle; return autosaveShared(); }
 
-  /* Nuke database (exposé pour app et console) */
+  /* ---------- Reset total ---------- */
   function nukeDatabase() {
     return new Promise(function (resolve) {
-      try {
-        var req = indexedDB.deleteDatabase(DB_NAME);
-        req.onsuccess = function () { resolve(); };
-        req.onerror = function () { resolve(); };
-        req.onblocked = function () { resolve(); };
-      } catch (e) { resolve(); }
+      try { var req = indexedDB.deleteDatabase(DB_NAME); req.onsuccess = req.onerror = req.onblocked = function(){ resolve(); }; }
+      catch(e){ resolve(); }
+      try { lsSet('items', []); lsSet('moves', []); lsSet('loans', []); lsSet('settings', null); } catch(_){}
     });
   }
   window.dbNuke = function (ask) {
@@ -334,8 +406,9 @@
     }
     return nukeDatabase();
   };
+  window.dbBackend = function(){ return BACKEND; };
 
-  /* Expose */
+  /* ---------- Expose ---------- */
   window.dbInit = dbInit;
   window.dbList = dbList;
   window.dbGet = dbGet;
