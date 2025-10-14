@@ -479,6 +479,7 @@ var LABEL_TEMPLATES={ 'avery-l7160':{cols:3,rows:7,cellW:63.5,cellH:38.1,gapX:2.
   'avery-l7163':{cols:2,rows:7,cellW:99.1,cellH:38.1,gapX:2.0,gapY:0,marginX:5.0,marginY:13.5},
   'avery-l7162':{cols:2,rows:8,cellW:99.1,cellH:33.9,gapX:2.0,gapY:2.0,marginX:5.0,marginY:10.7},
   'avery-l7165':{cols:2,rows:4,cellW:99.1,cellH:67.7,gapX:2.0,gapY:0,marginX:5.0,marginY:13.5},
+  'a4-3x8-63x34':{cols:3,rows:8,cellW:63.5,cellH:33.9,gapX:2.5,gapY:2.0,marginX:7.5,marginY:10.7},// 3 colonnes x 8 lignes – approx Avery 63.5×33.9 mm
   'mm50x25':{cols:4,rows:10,cellW:50,cellH:25,gapX:5,gapY:5,marginX:10,marginY:10},
   'mm70x35':{cols:3,rows:8,cellW:70,cellH:35,gapX:5,gapY:5,marginX:10,marginY:10} };
 var labelsInitDone=false, labelsAllItems=[], labelsSelected=new Set(), lblPage=0, lblPagesCount=1;
@@ -542,12 +543,46 @@ function rebuildLabelsPreview(resetPage){
     sheet.style.rowGap=mm((tmpl.gapY||0));
 
     items.forEach(it=>{
-      var card=document.createElement('div'); card.className='label-card';
-      var name=document.createElement('div'); name.className='name'; name.textContent=it.name; name.style.fontSize=namePt+'pt'; card.appendChild(name);
-      var hr=document.createElement('div'); hr.className='hr'; hr.textContent=it.code; card.appendChild(hr);
-      var svg=(window.code39 && window.code39.svg) ? window.code39.svg(it.code,{module, height:52, margin:4, showText, fontSize:10}) : document.createElementNS('http://www.w3.org/2000/svg','svg');
-      card.appendChild(svg);
-      sheet.appendChild(card);
+      // …au moment où tu crées chaque étiquette (dans items.forEach):
+var card = document.createElement('div'); 
+card.className = 'label-card';
+
+var name = document.createElement('div');
+name.className = 'name';
+name.textContent = it.name;
+name.style.fontSize = namePt + 'pt';
+card.appendChild(name);
+
+// petite ligne avec le code lisible
+var hr = document.createElement('div');
+hr.className = 'hr';
+hr.textContent = it.code;
+card.appendChild(hr);
+
+// --- BARCODE SVG contraint à la cellule ---
+var svg = (window.code39 && window.code39.svg)
+  ? window.code39.svg(it.code, {
+      module: 2.2,          // base raisonnable
+      height: 52,           // sera plafonné par CSS ci-dessous
+      margin: 2,
+      showText: showText,
+      fontSize: 10
+    })
+  : document.createElementNS('http://www.w3.org/2000/svg','svg');
+
+// IMPORTANT : forcer l'adaptation dans la cellule
+svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+svg.style.width = '100%';
+svg.style.height = 'auto';
+
+// calcul d'une hauteur max pour laisser place au nom + code texte
+// on réserve ~12 mm pour les textes (nom+code), le reste pour le code-barres
+var maxHmm = Math.max(8, (tmpl.cellH - 12)); // minimum 8mm pour rester lisible
+svg.style.maxHeight = maxHmm + 'mm';
+
+card.appendChild(svg);
+sheet.appendChild(card);
+
     });
 
     var rest=perPage-items.length;
