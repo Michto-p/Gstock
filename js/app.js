@@ -1,5 +1,7 @@
-/* Gstock - app.js v2.9.0 */
+/* Gstock - app.js v2.9.0 (éditer + dupliquer + scan case-insensitive) */
 (function(){'use strict';
+
+/* --- utilitaires DOM / divers --- */
 function $(s,r){return (r||document).querySelector(s);}
 function $$(s,r){return Array.from((r||document).querySelectorAll(s));}
 function show(el,on){ if(!el) return; el.hidden = !on; }
@@ -9,7 +11,7 @@ function announce(msg){ if(sr){ sr.textContent=''; setTimeout(()=>{ sr.textConte
 function downloadFile(name,data,type){ var blob=new Blob([data],{type:type}); var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),3000); }
 function debounced(fn,ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; }
 
-/* SAFE MODE via ?safe=1 */
+/* --- SAFE MODE via ?safe=1 --- */
 (async () => {
   try {
     const qs = new URLSearchParams(location.search);
@@ -23,7 +25,7 @@ function debounced(fn,ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout
   } catch (e) {}
 })();
 
-/* Thème */
+/* --- Thème --- */
 var themeToggle=$('#themeToggle');
 if(themeToggle){
   themeToggle.value=(localStorage.getItem('gstock.theme')||'auto');
@@ -35,7 +37,7 @@ if(themeToggle){
   themeToggle.addEventListener('change',applyTheme); applyTheme();
 }
 
-/* Onglets */
+/* --- Onglets --- */
 var sections={home:$('#tab-home'),stock:$('#tab-stock'),atelier:$('#tab-atelier'),scanner:$('#tab-scanner'),labels:$('#tab-labels'),journal:$('#tab-journal'),gear:$('#tab-gear'),settings:$('#tab-settings')};
 $$('nav button[data-tab]').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
 function showTab(name){
@@ -50,7 +52,7 @@ function showTab(name){
   if(name==='settings') initSettingsPanel();
 }
 
-/* Helpers code/ref */
+/* --- helpers de codes --- */
 function deaccent(s){ try{return s.normalize('NFD').replace(/\p{Diacritic}/gu,'');}catch(_){return s;} }
 function nameToCode(name){
   var stop=new Set(['le','la','les','des','du','de','d','l','un','une','pour','et','sur','avec','en','à','au','aux','the','of','for']);
@@ -64,7 +66,17 @@ function nameToCode(name){
 }
 async function generateCodeFromName(name){ var base=nameToCode(name); var c=base, n=2; while(await dbGet(c)) c=base+'-'+(n++); return c; }
 
-/* Accueil */
+/* --- recherche case-insensitive du code (scan/saisie) --- */
+async function getByCodeAnyCase(raw) {
+  if (!raw) return null;
+  const exact = await dbGet(raw);
+  if (exact) return exact;
+  const low = raw.toLowerCase();
+  const all = await dbList();
+  return all.find(i => (i.code || '').toLowerCase() === low) || null;
+}
+
+/* --- Accueil --- */
 async function refreshHome(){
   var items=await dbList();
   var set=await dbGetSettings(); var buf=(set&&set.buffer|0);
@@ -80,7 +92,7 @@ async function refreshHome(){
   ul.innerHTML=(recent.map(m=>`<li>${new Date(m.ts).toLocaleString()} • <strong>${esc(m.type)}</strong> <code>${esc(m.code)}</code> ×${m.qty}</li>`).join(''))||'<li class="muted">Aucun mouvement</li>';
 }
 
-/* Badges statut */
+/* --- statuts --- */
 function ensureType(it){ return it.type||'stock'; }
 function statusBadge(it, buffer){
   var qty=(it.qty|0), thr=(it.threshold|0), diff=qty-thr;
@@ -90,7 +102,7 @@ function statusBadge(it, buffer){
   return '<span class="badge ok" title="OK">OK</span>';
 }
 
-/* Tables Stock/Atelier */
+/* --- Tables Stock/Atelier --- */
 var state={ stock:{q:'',status:'',tag:'',loc:''}, atelier:{q:'',status:'',tag:'',loc:''} };
 var els={
   stock:{ tbody:$('#stockTbody'), search:$('#stockSearch'), status:$('#stockStatus'), tag:$('#stockTag'), loc:$('#stockLoc'), btnAdd:$('#btnAddStock'), btnClear:$('#stockClear') },
@@ -158,8 +170,9 @@ async function refreshTable(type){
       <td>${esc(it.location||'')}</td>
       <td>${linksBtn}</td>
       <td>
-        <button class="btn" data-act="adj" data-code="${esc(it.code)}">Ajuster…</button>
-        <button class="btn" data-act="hist" data-code="${esc(it.code)}">Historique</button>
+        <button class="btn" data-act="adj"  data-code="${esc(it.code)}">Ajuster…</button>
+        <button class="btn" data-act="edit" data-code="${esc(it.code)}">✏️ Éditer</button>
+        <button class="btn" data-act="dup"  data-code="${esc(it.code)}">📄 Dupliquer</button>
         <button class="btn danger" data-act="del" data-code="${esc(it.code)}">Suppr.</button>
       </td>
     </tr>`;
@@ -167,10 +180,12 @@ async function refreshTable(type){
 
   e.tbody.querySelectorAll('button[data-act]').forEach(btn=>{
     var code=btn.dataset.code;
-    if(btn.dataset.act==='adj') btn.onclick=()=>openAdjustDialog({code});
-    if(btn.dataset.act==='hist') btn.onclick=()=>openHistory(code);
+    if(btn.dataset.act==='adj')  btn.onclick=()=>openAdjustDialog({code});
+    if(btn.dataset.act==='hist') btn.onclick=()=>openHistory(code); // (si utilisé ailleurs)
     if(btn.dataset.act==='link') btn.onclick=()=>openLinks(code);
-    if(btn.dataset.act==='del') btn.onclick=async()=>{ if(confirm('Supprimer cet élément ?')){ await dbDelete(code); await refreshTable(type); announce('Élément supprimé'); } };
+    if(btn.dataset.act==='edit') btn.onclick=()=>openEditDialog(code);
+    if(btn.dataset.act==='dup')  btn.onclick=()=>openDuplicateDialog(code);
+    if(btn.dataset.act==='del')  btn.onclick=async()=>{ if(confirm('Supprimer cet élément ?')){ await dbDelete(code); await refreshTable(type); announce('Élément supprimé'); } };
   });
   e.tbody.querySelectorAll('button[data-qa]').forEach(btn=>{
     btn.onclick=async()=>{
@@ -195,7 +210,7 @@ async function openLinks(code){
   var idx=((parseInt(s||'0',10)-1)|0); if(links[idx]) window.open(links[idx],'_blank');
 }
 
-/* Ajustement */
+/* --- Ajustement --- */
 var dlg=$('#adjustDialog'), dlgType=$('#dlgType'), dlgQty=$('#dlgQty'), dlgNote=$('#dlgNote'), dlgItem=$('#dlgItem');
 var dlgState={code:null};
 $('#dlgClose')?.addEventListener('click',()=>dlg?.close());
@@ -203,7 +218,7 @@ $('#dlgValidate')?.addEventListener('click',onValidateAdjust);
 async function openAdjustDialog(opts){
   opts=opts||{}; var code=opts.code||null, type=opts.type||'add';
   if(!code){ code=prompt('Code ?'); if(!code) return; }
-  var item=(await dbGet(code)); if(!item){ alert('Introuvable'); return; }
+  var item=(await getByCodeAnyCase(code)); if(!item){ alert('Introuvable'); return; }
   dlgState.code=item.code; dlgType && (dlgType.value=type); dlgQty && (dlgQty.value=1); dlgNote && (dlgNote.value=''); dlgItem && (dlgItem.textContent=`${item.name} (${item.ref||item.code}) — Stock actuel: ${item.qty}`);
   dlg && dlg.showModal && dlg.showModal();
 }
@@ -217,13 +232,16 @@ async function onValidateAdjust(){
   dlg?.close(); await refreshTable(ensureType(item)); await refreshHome();
 }
 
-/* Création */
+/* --- Création / Édition / Duplication --- */
 var newItemDialog=$('#newItemDialog');
 var niTitle=$('#niTitle'), niType=$('#niType'), niName=$('#niName'), niRef=$('#niRef'), niCode=$('#niCode'),
     niQty=$('#niQty'), niThr=$('#niThr'), niLocSelect=$('#niLocSelect'), niLocCustom=$('#niLocCustom'),
     niLocCustomWrap=$('#niLocCustomWrap'), niLocChips=$('#niLocChips'),
     niTagChecks=$('#niTagChecks'), niTagsExtra=$('#niTagsExtra'), niTagCat=$('#niTagCategory'),
     niLinks=$('#niLinks');
+
+var niMode = 'create';       // 'create' | 'edit' | 'duplicate'
+var niOriginalCode = null;   // code d'origine en édition
 
 $('#niGen')?.addEventListener('click',async ()=>{
   var n=niName && niName.value.trim(); if(!n) return;
@@ -243,6 +261,8 @@ $('#niTagsClear')?.addEventListener('click',()=>{ niTagChecks && niTagChecks.que
 
 async function openNewDialog(type){
   type=type||'stock';
+  niMode='create'; niOriginalCode=null;
+
   niType && (niType.value=type);
   niTitle && (niTitle.textContent=(type==='atelier'?'Nouveau matériel (Atelier)':'Nouvel article (Stock)'));
   niTagCat && (niTagCat.textContent=(type==='atelier'?'Atelier':'Stock'));
@@ -275,28 +295,185 @@ async function openNewDialog(type){
   }
   niTagChecks && (niTagChecks.innerHTML=(defaultsTags.length?defaultsTags:[]).map(t=>`<label class="chip"><input type="checkbox" value="${esc(t)}"> ${esc(t)}</label>`).join('') || '<span class="muted">Aucun tag prédéfini (Paramètres)</span>');
 
-  niName&&(niName.value=''); niRef&&(niRef.value=''); niCode&&(niCode.value=''); niQty&&(niQty.value='0'); niThr&&(niThr.value='0'); niTagsExtra&&(niTagsExtra.value=''); niLinks&&(niLinks.value='');
+  niName&&(niName.value=''); niRef&&(niRef.value=''); niCode&&(niCode.value=''); if(niCode){ niCode.readOnly=false; niCode.title=''; }
+  niQty&&(niQty.value='0'); niThr&&(niThr.value='0'); niTagsExtra&&(niTagsExtra.value=''); niLinks&&(niLinks.value='');
   newItemDialog && newItemDialog.showModal && newItemDialog.showModal(); setTimeout(()=>niName?.focus(),0);
 }
 $('#btnAddStock')?.addEventListener('click',()=>openNewDialog('stock'));
 $('#btnAddAtelier')?.addEventListener('click',()=>openNewDialog('atelier'));
 
-$('#niSave')?.addEventListener('click',async e=>{
+/* --- Éditer --- */
+async function openEditDialog(code){
+  const it = await dbGet(code);
+  if(!it){ alert('Introuvable'); return; }
+  niMode = 'edit';
+  niOriginalCode = it.code;
+
+  niType && (niType.value = it.type || 'stock');
+  niTitle && (niTitle.textContent = 'Éditer l’article');
+  niName && (niName.value = it.name || '');
+  niRef && (niRef.value = it.ref || it.code || '');
+  niCode && (niCode.value = it.code || '');
+  if(niCode){ niCode.readOnly = true; niCode.title = 'Le code n’est pas modifiable en édition'; }
+
+  niQty && (niQty.value = String(it.qty|0));
+  niThr && (niThr.value = String(it.threshold|0));
+
+  const set = await dbGetSettings() || {};
+  const defaultsLocs = (it.type==='atelier' ? (set.defaultLocationsAtelier||[]) : (set.defaultLocationsStock||[]));
+  const defaultsTags = (it.type==='atelier' ? (set.defaultTagsAtelier||[]) : (set.defaultTagsStock||[]));
+
+  const items = await dbList();
+  const locsExisting = Array.from(new Set(items.map(i=>i.location).filter(Boolean))).sort();
+  const combined = Array.from(new Set([].concat(defaultsLocs, locsExisting))).filter(Boolean);
+  if(niLocSelect){
+    niLocSelect.innerHTML = ['<option value="">— Sélectionner —</option>']
+      .concat(combined.map(l=>`<option value="${esc(l)}">${esc(l)}</option>`))
+      .concat(['<option value="__custom__">➕ Saisir personnalisé…</option>']).join('');
+    if(it.location && combined.includes(it.location)) niLocSelect.value = it.location;
+    else if(it.location){ niLocSelect.value='__custom__'; niLocCustomWrap.hidden=false; niLocCustom && (niLocCustom.value=it.location); }
+  }
+  if(niLocChips){
+    niLocChips.innerHTML = (defaultsLocs||[]).map(l=>`<button type="button" class="chip" data-loc="${esc(l)}">${esc(l)}</button>`).join('');
+    niLocChips.querySelectorAll('button[data-loc]').forEach(b=>{
+      b.addEventListener('click',()=>{
+        const val=b.getAttribute('data-loc')||'';
+        const opt=niLocSelect?niLocSelect.querySelector('option[value="'+val.replace(/"/g,'&quot;')+'"]'):null;
+        if(niLocSelect && opt){ niLocSelect.value=val; niLocCustomWrap.hidden=true; }
+        else { niLocSelect && (niLocSelect.value='__custom__'); niLocCustomWrap.hidden=false; niLocCustom && (niLocCustom.value=val); }
+      });
+    });
+  }
+
+  if(niTagChecks){
+    niTagChecks.innerHTML = (defaultsTags||[]).map(t=>{
+      const checked = (it.tags||[]).includes(t) ? 'checked' : '';
+      return `<label class="chip"><input type="checkbox" value="${esc(t)}" ${checked}> ${esc(t)}</label>`;
+    }).join('') || '<span class="muted">Aucun tag prédéfini (Paramètres)</span>';
+  }
+  if(niTagsExtra){
+    const extras = (it.tags||[]).filter(t => !(defaultsTags||[]).includes(t));
+    niTagsExtra.value = extras.join(', ');
+  }
+
+  niLinks && (niLinks.value = (it.links||[]).join('\n'));
+
+  newItemDialog && newItemDialog.showModal && newItemDialog.showModal();
+}
+
+/* --- Dupliquer --- */
+async function openDuplicateDialog(code){
+  const it = await dbGet(code);
+  if(!it){ alert('Introuvable'); return; }
+  niMode = 'duplicate';
+  niOriginalCode = null;
+
+  niType && (niType.value = it.type || 'stock');
+  niTitle && (niTitle.textContent = 'Dupliquer l’article');
+  niName && (niName.value = it.name || '');
+  niRef && (niRef.value = it.ref || '');
+  if(niCode){
+    const base = nameToCode(it.name || it.ref || it.code || '');
+    let c = base, n = 2;
+    while(await dbGet(c)) c = base + '-' + (n++);
+    niCode.value = c;
+    niCode.readOnly = false;
+    niCode.title = '';
+  }
+
+  niQty && (niQty.value = String(it.qty|0));
+  niThr && (niThr.value = String(it.threshold|0));
+
+  const set = await dbGetSettings() || {};
+  const defaultsLocs = (it.type==='atelier' ? (set.defaultLocationsAtelier||[]) : (set.defaultLocationsStock||[]));
+  const defaultsTags = (it.type==='atelier' ? (set.defaultTagsAtelier||[]) : (set.defaultTagsStock||[]));
+
+  const items = await dbList();
+  const locsExisting = Array.from(new Set(items.map(i=>i.location).filter(Boolean))).sort();
+  const combined = Array.from(new Set([].concat(defaultsLocs, locsExisting))).filter(Boolean);
+  if(niLocSelect){
+    niLocSelect.innerHTML = ['<option value="">— Sélectionner —</option>']
+      .concat(combined.map(l=>`<option value="${esc(l)}">${esc(l)}</option>`))
+      .concat(['<option value="__custom__">➕ Saisir personnalisé…</option>']).join('');
+    if(it.location && combined.includes(it.location)) niLocSelect.value = it.location;
+    else if(it.location){ niLocSelect.value='__custom__'; niLocCustomWrap.hidden=false; niLocCustom && (niLocCustom.value=it.location); }
+  }
+  if(niLocChips){
+    niLocChips.innerHTML = (defaultsLocs||[]).map(l=>`<button type="button" class="chip" data-loc="${esc(l)}">${esc(l)}</button>`).join('');
+    niLocChips.querySelectorAll('button[data-loc]').forEach(b=>{
+      b.addEventListener('click',()=>{
+        const val=b.getAttribute('data-loc')||'';
+        const opt=niLocSelect?niLocSelect.querySelector('option[value="'+val.replace(/"/g,'&quot;')+'"]'):null;
+        if(niLocSelect && opt){ niLocSelect.value=val; niLocCustomWrap.hidden=true; }
+        else { niLocSelect && (niLocSelect.value='__custom__'); niLocCustomWrap.hidden=false; niLocCustom && (niLocCustom.value=val); }
+      });
+    });
+  }
+
+  if(niTagChecks){
+    niTagChecks.innerHTML = (defaultsTags||[]).map(t=>{
+      const checked = (it.tags||[]).includes(t) ? 'checked' : '';
+      return `<label class="chip"><input type="checkbox" value="${esc(t)}" ${checked}> ${esc(t)}</label>`;
+    }).join('') || '<span class="muted">Aucun tag prédéfini (Paramètres)</span>';
+  }
+  if(niTagsExtra){
+    const extras = (it.tags||[]).filter(t => !(defaultsTags||[]).includes(t));
+    niTagsExtra.value = extras.join(', ');
+  }
+
+  niLinks && (niLinks.value = (it.links||[]).join('\n'));
+
+  newItemDialog && newItemDialog.showModal && newItemDialog.showModal();
+}
+
+/* --- Sauvegarde dialog (create/edit/duplicate) --- */
+$('#niSave')?.addEventListener('click', async e=>{
   e.preventDefault();
-  var name=niName?niName.value.trim():'', code=niCode?niCode.value.trim():'', ref=niRef?niRef.value.trim():'', type=(niType&&niType.value==='atelier')?'atelier':'stock';
-  if(!name||!code) return;
-  var qty=Math.max(0,parseInt((niQty&&niQty.value)||'0',10));
-  var threshold=Math.max(0,parseInt((niThr&&niThr.value)||'0',10));
-  var loc=(function(){ var v=(niLocSelect&&niLocSelect.value)||''; return (v==='__custom__') ? ((niLocCustom&&niLocCustom.value.trim())||'') : (v.trim()||''); })();
-  var checked=[]; niTagChecks && niTagChecks.querySelectorAll('input[type="checkbox"]:checked').forEach(cb=>checked.push(cb.value));
-  var extras=(niTagsExtra&&niTagsExtra.value||'').split(',').map(t=>t.trim()).filter(Boolean);
-  var tags=Array.from(new Set([].concat(checked, extras)));
-  var links=(niLinks&&niLinks.value||'').split(/\n+/).map(s=>s.trim()).filter(Boolean);
-  await dbPut({id:code,code,ref:(ref||undefined),name,qty,threshold,tags,location:loc,links,type,updated:Date.now()});
-  newItemDialog?.close(); announce('Créé • '+name+' ('+(ref||code)+')'); await refreshTable(type); await refreshHome();
+
+  const type = (niType && niType.value === 'atelier') ? 'atelier' : 'stock';
+  const name = niName ? niName.value.trim() : '';
+  let   code = niCode ? niCode.value.trim() : '';
+  const ref  = niRef ? niRef.value.trim() : '';
+  if(!name) return;
+
+  const qty = Math.max(0, parseInt((niQty && niQty.value) || '0', 10));
+  const threshold = Math.max(0, parseInt((niThr && niThr.value) || '0', 10));
+
+  const loc = (function(){
+    const v = (niLocSelect && niLocSelect.value) || '';
+    return (v==='__custom__') ? ((niLocCustom && niLocCustom.value.trim()) || '') : (v.trim() || '');
+  })();
+
+  const checked=[]; niTagChecks && niTagChecks.querySelectorAll('input[type="checkbox"]:checked').forEach(cb=>checked.push(cb.value));
+  const extras=(niTagsExtra && niTagsExtra.value || '').split(',').map(t=>t.trim()).filter(Boolean);
+  const tags = Array.from(new Set([].concat(checked, extras)));
+  const links = (niLinks && niLinks.value || '').split(/\n+/).map(s=>s.trim()).filter(Boolean);
+
+  if(niMode === 'edit'){
+    code = niOriginalCode;
+    const existing = await dbGet(code);
+    if(!existing){ alert('Article introuvable.'); return; }
+    const updated = { id: code, code, ref: (ref||undefined), name, qty, threshold, tags, location: loc, links, type, updated: Date.now() };
+    await dbPut(updated);
+    newItemDialog?.close(); announce('Modifications enregistrées'); await refreshTable(type); await refreshHome();
+    return;
+  }
+
+  // create | duplicate
+  if(!code){
+    code = await generateCodeFromName(name);
+  } else {
+    const hit = await getByCodeAnyCase(code);
+    if(hit){ alert('Ce code existe déjà : '+hit.code); return; }
+  }
+
+  await dbPut({ id: code, code, ref: (ref||undefined), name, qty, threshold, tags, location: loc, links, type, updated: Date.now() });
+  newItemDialog?.close();
+  announce(niMode==='duplicate' ? 'Copie créée' : 'Créé');
+  await refreshTable(type); await refreshHome();
 });
 
-/* Étiquettes */
+/* --- Étiquettes --- */
 var LABEL_TEMPLATES={ 'avery-l7160':{cols:3,rows:7,cellW:63.5,cellH:38.1,gapX:2.5,gapY:0,marginX:7.5,marginY:12.0},
   'avery-l7159':{cols:3,rows:7,cellW:63.5,cellH:38.1,gapX:2.5,gapY:0,marginX:7.5,marginY:12.0},
   'avery-l7163':{cols:2,rows:7,cellW:99.1,cellH:38.1,gapX:2.0,gapY:0,marginX:5.0,marginY:13.5},
@@ -393,7 +570,7 @@ function updatePaginationDisplay(){
   show(info,!one);
 }
 
-/* Journal */
+/* --- Journal --- */
 var journalTbody=$('#journalTbody');
 $('#btnFilterJournal')?.addEventListener('click',refreshJournal);
 $('#btnExportCSV')?.addEventListener('click',async()=>{ var data=await dbExport('csv'); downloadFile('journal.csv',data,'text/csv'); });
@@ -406,11 +583,11 @@ async function refreshJournal(){
     || '<tr><td colspan="6" class="muted">Aucun mouvement</td></tr>';
 }
 
-/* Emprunts */
+/* --- Emprunts --- */
 var loansTbody=$('#loansTbody');
 $('#btnNewLoan')?.addEventListener('click',async ()=>{
   var code=prompt('Code article ?'); if(!code) return;
-  var it=(await dbGet(code)); if(!it) return alert('Article introuvable');
+  var it=(await getByCodeAnyCase(code)); if(!it) return alert('Article introuvable');
   var person=prompt('Nom emprunteur ?'); if(!person) return;
   var due=prompt('Date prévue retour (YYYY-MM-DD) ?'); if(!due) return;
   var note=prompt('Note (optionnel)')||''; await dbCreateLoan({code:it.code,name:it.name,person,due,note});
@@ -433,7 +610,7 @@ async function refreshLoansTable(){
   if(sReturn){ sReturn.hidden=false; sReturn.disabled=!supported; if(!supported) sReturn.title='Scanner non supporté'; }
 }
 
-/* Paramètres */
+/* --- Paramètres --- */
 function makeSortable(listEl, onUpdate){
   var dragEl=null;
   listEl.addEventListener('dragstart',e=>{ var li=e.target.closest('li'); if(!li) return; dragEl=li; e.dataTransfer.effectAllowed='move'; try{ e.dataTransfer.setData('text/plain', li.dataset.value||''); }catch(_){ } li.style.opacity='0.5'; });
@@ -517,7 +694,7 @@ function initSettingsPanel(){
   })();
 }
 
-/* Scanner articles */
+/* --- Scanner articles --- */
 var videoEl=$('#scanVideo'), btnScanStart=$('#btnScanStart'), btnScanStop=$('#btnScanStop'), btnScanTorch=$('#btnScanTorch'), scanHint=$('#scanHint'), scanFallback=$('#scanFallback'), scanManual=$('#scanManual');
 var scanStream=null, scanTrack=null, scanDetector=null, scanLoopId=0, torchOn=false;
 var lastCode='', lastReadTs=0; var DUP_MS=1200;
@@ -527,7 +704,8 @@ btnScanTorch && (btnScanTorch.hidden=true);
 if(!HAS_DETECTOR){ show(scanFallback,true); scanHint && (scanHint.textContent='Scanner natif indisponible sur ce navigateur'); }
 $('#btnScanManual')?.addEventListener('click',async ()=>{
   var raw=(scanManual&&scanManual.value.trim())||''; if(!raw) return;
-  var item=(await dbGet(raw)); if(item){ beepKnown(); await openAdjustDialog({code:item.code, type:'add'}); } else { alert('Code inconnu'); }
+  var item=(await getByCodeAnyCase(raw));
+  if(item){ beepKnown(); await openAdjustDialog({code:item.code, type:'add'}); } else { alert('Code inconnu'); }
 });
 
 function beepKnown(ms,hz){
@@ -589,7 +767,7 @@ async function runDetectLoop(){
         var raw=(codes[0].rawValue||'').trim(); var now=Date.now();
         if(raw && (raw!==lastCode || (now-lastReadTs)>DUP_MS)){
           lastCode=raw; lastReadTs=now;
-          var item=(await dbGet(raw));
+          var item=(await getByCodeAnyCase(raw));
           if(item){ beepKnown(); stopScan(); await openAdjustDialog({code:item.code, type:'add'}); return; }
           else{ scanHint && (scanHint.textContent='Code inconnu : '+raw+' — on continue...'); }
         }
@@ -606,7 +784,7 @@ btnScanTorch?.addEventListener('click',async ()=>{
   torchOn=!torchOn; try{ await scanTrack.applyConstraints({advanced:[{torch:torchOn}]}); }catch(e){ torchOn=false; }
 });
 
-/* Scan emprunt/retour */
+/* --- Scan emprunt/retour --- */
 var loanDlg=$('#loanScanDialog'), loanVideo=$('#loanVideo'), loanScanTitle=$('#loanScanTitle'), loanScanHint=$('#loanScanHint'), btnLoanTorch=$('#btnLoanTorch'), btnLoanStop=$('#btnLoanStop');
 var loanStream=null, loanTrack=null, loanLoop=0, loanMode='borrow';
 $('#btnScanBorrow')?.addEventListener('click',()=>startLoanScan('borrow'));
@@ -645,7 +823,7 @@ async function runLoanLoop(){
       if(Array.isArray(codes) && codes.length){
         var raw=(codes[0].rawValue||'').trim();
         if(raw){
-          var it=(await dbGet(raw));
+          var it=(await getByCodeAnyCase(raw));
           if(!it){ loanScanHint && (loanScanHint.textContent='Code inconnu : '+raw); loanLoop=requestAnimationFrame(step); return; }
           beepKnown();
           if(loanMode==='borrow'){ stopLoanScan(); openBorrowDialog(it); return; }
@@ -677,7 +855,7 @@ brwCreate?.addEventListener('click',async e=>{
   announce('Prêt créé'); borrowDlg?.close(); await refreshLoansTable(); await refreshHome();
 });
 
-/* INIT */
+/* --- INIT --- */
 (async function init(){
   $('#appVersion') && ($('#appVersion').textContent=window.APP_VERSION||'');
   try {
