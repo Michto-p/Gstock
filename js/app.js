@@ -1,4 +1,4 @@
-/* Gstock - app.js v2.9.0 (éditer + dupliquer + scan case-insensitive) */
+/* Gstock - app.js v2.9.1 (codes normalisés: max10, A-Z0-9, unique) */
 (function(){'use strict';
 
 /* --- utilitaires DOM / divers --- */
@@ -52,28 +52,81 @@ function showTab(name){
   if(name==='settings') initSettingsPanel();
 }
 
+/* --- Règles de nommage des codes --- */
+const CODE_RULES = Object.freeze({
+  maxLen: 10,       // longueur max du code
+  uppercase: true,  // MAJUSCULES
+  alnumOnly: true,  // A-Z 0-9 uniquement
+  prefix: ''        // (optionnel) préfixe à forcer
+});
+
 /* --- helpers de codes --- */
 function deaccent(s){ try{return s.normalize('NFD').replace(/\p{Diacritic}/gu,'');}catch(_){return s;} }
+
+/* Base lisible depuis le nom (héritée de v2.9.0) */
 function nameToCode(name){
   var stop=new Set(['le','la','les','des','du','de','d','l','un','une','pour','et','sur','avec','en','à','au','aux','the','of','for']);
   var parts=deaccent(String(name)).replace(/[^A-Za-z0-9]+/g,' ').trim().split(/\s+/);
-  if(!parts.length) return 'ITM-'+Math.floor(100000+Math.random()*899999);
+  if(!parts.length) return 'ITM'+Math.floor(100000+Math.random()*899999);
   var brand=parts.length>1?parts[parts.length-1]:'';
   var brandShort=brand?(brand.slice(0,3).toLowerCase()):'';
   brandShort=brandShort?(brandShort[0].toUpperCase()+brandShort.slice(1)):'';
-  var base=[]; for(let i=0;i<parts.length-(brand?1:0);i++){ let t=parts[i], low=t.toLowerCase(); if(stop.has(low))continue; if(/^\d+$/.test(t)){base.push(t);continue;} base.push((t.length>=4?t.slice(0,4):t).toLowerCase()); }
-  return base.join('')+brandShort;
+  var base=[]; for(let i=0;i<parts.length-(brand?1:0);i++){
+    let t=parts[i], low=t.toLowerCase();
+    if(stop.has(low))continue;
+    if(/^\d+$/.test(t)){base.push(t);continue;}
+    base.push((t.length>=4?t.slice(0,4):t).toLowerCase());
+  }
+  return base.join('')+brandShort; // ex: disj20xple
 }
-async function generateCodeFromName(name){ var base=nameToCode(name); var c=base, n=2; while(await dbGet(c)) c=base+'-'+(n++); return c; }
+
+/* Normalise un code selon les règles (A-Z0-9, maxLen, préfixe) */
+function normalizeCode(raw){
+  if(!raw) return '';
+  let s = deaccent(String(raw));
+  if(CODE_RULES.alnumOnly) s = s.replace(/[^A-Za-z0-9]/g,'');
+  if(CODE_RULES.uppercase) s = s.toUpperCase();
+  if(CODE_RULES.prefix) s = CODE_RULES.prefix + s;
+  if(s.length > CODE_RULES.maxLen) s = s.slice(0, CODE_RULES.maxLen);
+  return s;
+}
+
+/* Construit une base de code depuis un nom puis normalise */
+function makeCodeBaseFromName(name){
+  let base = nameToCode(name || '');
+  base = normalizeCode(base);
+  if(!base) base = normalizeCode('ITM'+Math.floor(Math.random()*1e6));
+  return base;
+}
+
+/* Garantit l'unicité en suffixant des chiffres sans dépasser maxLen */
+async function makeUniqueCode(base){
+  let code = base;
+  if(!(await getByCodeAnyCase(code))) return code;
+  for(let n=2; n<10000; n++){
+    const suff = String(n);
+    const head = base.slice(0, CODE_RULES.maxLen - suff.length);
+    const cand = head + suff;
+    if(!(await getByCodeAnyCase(cand))) return cand;
+  }
+  // fallback extrême
+  return base.slice(0, CODE_RULES.maxLen);
+}
+
+/* Génère un code depuis le nom en respectant les règles et l'unicité */
+async function generateCodeFromName(name){
+  const base = makeCodeBaseFromName(name);
+  return await makeUniqueCode(base);
+}
 
 /* --- recherche case-insensitive du code (scan/saisie) --- */
 async function getByCodeAnyCase(raw) {
   if (!raw) return null;
   const exact = await dbGet(raw);
   if (exact) return exact;
-  const low = raw.toLowerCase();
+  const low = String(raw).toLowerCase();
   const all = await dbList();
-  return all.find(i => (i.code || '').toLowerCase() === low) || null;
+  return all.find(i => (String(i.code || '')).toLowerCase() === low) || null;
 }
 
 /* --- Accueil --- */
@@ -181,7 +234,7 @@ async function refreshTable(type){
   e.tbody.querySelectorAll('button[data-act]').forEach(btn=>{
     var code=btn.dataset.code;
     if(btn.dataset.act==='adj')  btn.onclick=()=>openAdjustDialog({code});
-    if(btn.dataset.act==='hist') btn.onclick=()=>openHistory(code); // (si utilisé ailleurs)
+    if(btn.dataset.act==='hist') btn.onclick=()=>openHistory(code);
     if(btn.dataset.act==='link') btn.onclick=()=>openLinks(code);
     if(btn.dataset.act==='edit') btn.onclick=()=>openEditDialog(code);
     if(btn.dataset.act==='dup')  btn.onclick=()=>openDuplicateDialog(code);
@@ -245,17 +298,22 @@ var niOriginalCode = null;   // code d'origine en édition
 
 $('#niGen')?.addEventListener('click',async ()=>{
   var n=niName && niName.value.trim(); if(!n) return;
-  var refSug=nameToCode(n);
-  if(niRef && !niRef.value.trim()) niRef.value=refSug;
-  if(niCode && !niCode.value.trim()) niCode.value=refSug;
+  if(niRef && !niRef.value.trim()) niRef.value=nameToCode(n); // ref lisible
+  if(niCode){ niCode.value = await generateCodeFromName(n); } // code normalisé unique
 });
 niName && niName.addEventListener('blur',async ()=>{
   var n=niName.value.trim(); if(!n) return;
   if(niRef && !niRef.value.trim()) niRef.value=nameToCode(n);
   if(niCode && !niCode.value.trim()) niCode.value=await generateCodeFromName(n);
 });
-$('#niCopyRefToCode')?.addEventListener('click',()=>{
-  if(niRef && niCode){ var v=(niRef.value||'').trim(); if(v) niCode.value=v; }
+$('#niCopyRefToCode')?.addEventListener('click',async ()=>{
+  if(niRef && niCode){
+    var v=(niRef.value||'').trim(); if(!v) return;
+    var normalized = normalizeCode(v);
+    if(!normalized){ alert('Référence invalide pour un code (A-Z0-9 requis).'); return; }
+    if(await getByCodeAnyCase(normalized)){ alert('Ce code existe déjà.'); return; }
+    niCode.value = normalized;
+  }
 });
 $('#niTagsClear')?.addEventListener('click',()=>{ niTagChecks && niTagChecks.querySelectorAll('input[type="checkbox"]').forEach(cb=>cb.checked=false); });
 
@@ -373,10 +431,7 @@ async function openDuplicateDialog(code){
   niName && (niName.value = it.name || '');
   niRef && (niRef.value = it.ref || '');
   if(niCode){
-    const base = nameToCode(it.name || it.ref || it.code || '');
-    let c = base, n = 2;
-    while(await dbGet(c)) c = base + '-' + (n++);
-    niCode.value = c;
+    niCode.value = await generateCodeFromName(it.name || it.ref || it.code || '');
     niCode.readOnly = false;
     niCode.title = '';
   }
@@ -450,10 +505,9 @@ $('#niSave')?.addEventListener('click', async e=>{
   const links = (niLinks && niLinks.value || '').split(/\n+/).map(s=>s.trim()).filter(Boolean);
 
   if(niMode === 'edit'){
-    code = niOriginalCode;
-    const existing = await dbGet(code);
+    const existing = await dbGet(niOriginalCode);
     if(!existing){ alert('Article introuvable.'); return; }
-    const updated = { id: code, code, ref: (ref||undefined), name, qty, threshold, tags, location: loc, links, type, updated: Date.now() };
+    const updated = { id: niOriginalCode, code: niOriginalCode, ref: (ref||undefined), name, qty, threshold, tags, location: loc, links, type, updated: Date.now() };
     await dbPut(updated);
     newItemDialog?.close(); announce('Modifications enregistrées'); await refreshTable(type); await refreshHome();
     return;
@@ -463,6 +517,8 @@ $('#niSave')?.addEventListener('click', async e=>{
   if(!code){
     code = await generateCodeFromName(name);
   } else {
+    code = normalizeCode(code);
+    if(!code){ alert('Code invalide (A-Z 0-9, max '+CODE_RULES.maxLen+').'); return; }
     const hit = await getByCodeAnyCase(code);
     if(hit){ alert('Ce code existe déjà : '+hit.code); return; }
   }
@@ -479,7 +535,7 @@ var LABEL_TEMPLATES={ 'avery-l7160':{cols:3,rows:7,cellW:63.5,cellH:38.1,gapX:2.
   'avery-l7163':{cols:2,rows:7,cellW:99.1,cellH:38.1,gapX:2.0,gapY:0,marginX:5.0,marginY:13.5},
   'avery-l7162':{cols:2,rows:8,cellW:99.1,cellH:33.9,gapX:2.0,gapY:2.0,marginX:5.0,marginY:10.7},
   'avery-l7165':{cols:2,rows:4,cellW:99.1,cellH:67.7,gapX:2.0,gapY:0,marginX:5.0,marginY:13.5},
-  'a4-3x8-63x34':{cols:3,rows:8,cellW:63.5,cellH:33.9,gapX:2.5,gapY:2.0,marginX:7.5,marginY:10.7},// 3 colonnes x 8 lignes – approx Avery 63.5×33.9 mm
+  'a4-3x8-63x34':{cols:3,rows:8,cellW:63.5,cellH:33.9,gapX:2.5,gapY:2.0,marginX:7.5,marginY:10.7},
   'mm50x25':{cols:4,rows:10,cellW:50,cellH:25,gapX:5,gapY:5,marginX:10,marginY:10},
   'mm70x35':{cols:3,rows:8,cellW:70,cellH:35,gapX:5,gapY:5,marginX:10,marginY:10} };
 var labelsInitDone=false, labelsAllItems=[], labelsSelected=new Set(), lblPage=0, lblPagesCount=1;
@@ -494,7 +550,7 @@ function bindLabelsUI(){
   labelSearch?.addEventListener('input',()=>rebuildLabelsList());
   btnLblAll?.addEventListener('click',()=>{ labelsAllItems.forEach(i=>labelsSelected.add(i.code)); rebuildLabelsList(); rebuildLabelsPreview(true); });
   btnLblNone?.addEventListener('click',()=>{ labelsSelected.clear(); rebuildLabelsList(); rebuildLabelsPreview(true); });
-  if(lblTemplate){ var t=localStorage.getItem('gstock.lblTemplate'); if(t) lblTemplate.value=t; lblTemplate.addEventListener('change',()=>{ localStorage.setItem('gstock.lblTemplate', lblTemplate.value); rebuildLabelsPreview(true); }); }
+  if(lblTemplate){ var t=localStorage.getItem('gstock.lblTemplate'); if(!t){ t='a4-3x8-63x34'; localStorage.setItem('gstock.lblTemplate',t);} lblTemplate.value=t; lblTemplate.addEventListener('change',()=>{ localStorage.setItem('gstock.lblTemplate', lblTemplate.value); rebuildLabelsPreview(true); }); }
   if(lblDensity){ var d=localStorage.getItem('gstock.lblDensity'); if(d) lblDensity.value=d; lblDensity.addEventListener('change',()=>{ localStorage.setItem('gstock.lblDensity', lblDensity.value); rebuildLabelsPreview(false); }); }
   if(lblNameSize){ var ns=localStorage.getItem('gstock.lblNameSize'); if(ns) lblNameSize.value=ns; lblNameSize.addEventListener('change',()=>{ localStorage.setItem('gstock.lblNameSize', lblNameSize.value); rebuildLabelsPreview(false); }); }
   if(lblShowText){ var st=localStorage.getItem('gstock.lblShowText')==='1'; lblShowText.checked=st; lblShowText.addEventListener('change',()=>{ localStorage.setItem('gstock.lblShowText', lblShowText.checked?'1':'0'); rebuildLabelsPreview(false); }); }
@@ -519,8 +575,8 @@ function updateLblSelInfo(){ lblSelInfo && (lblSelInfo.textContent=labelsSelecte
 function chunkArray(arr, size){ var out=[]; for(let i=0;i<arr.length;i+=size) out.push(arr.slice(i,i+size)); return out; }
 function mm(n){ return n+'mm'; }
 function rebuildLabelsPreview(resetPage){
-  var key=(lblTemplate&&lblTemplate.value)||'avery-l7160';
-  var tmpl=LABEL_TEMPLATES[key]||LABEL_TEMPLATES['avery-l7160'];
+  var key=(lblTemplate&&lblTemplate.value)||'a4-3x8-63x34';
+  var tmpl=LABEL_TEMPLATES[key]||LABEL_TEMPLATES['a4-3x8-63x34'];
   var module=parseFloat((lblDensity&&lblDensity.value)||'2');
   var namePt=parseInt((lblNameSize&&lblNameSize.value)||'11',10);
   var showText=!!(lblShowText&&lblShowText.checked);
@@ -543,46 +599,15 @@ function rebuildLabelsPreview(resetPage){
     sheet.style.rowGap=mm((tmpl.gapY||0));
 
     items.forEach(it=>{
-      // …au moment où tu crées chaque étiquette (dans items.forEach):
-var card = document.createElement('div'); 
-card.className = 'label-card';
-
-var name = document.createElement('div');
-name.className = 'name';
-name.textContent = it.name;
-name.style.fontSize = namePt + 'pt';
-card.appendChild(name);
-
-// petite ligne avec le code lisible
-var hr = document.createElement('div');
-hr.className = 'hr';
-hr.textContent = it.code;
-card.appendChild(hr);
-
-// --- BARCODE SVG contraint à la cellule ---
-var svg = (window.code39 && window.code39.svg)
-  ? window.code39.svg(it.code, {
-      module: 2.2,          // base raisonnable
-      height: 52,           // sera plafonné par CSS ci-dessous
-      margin: 2,
-      showText: showText,
-      fontSize: 10
-    })
-  : document.createElementNS('http://www.w3.org/2000/svg','svg');
-
-// IMPORTANT : forcer l'adaptation dans la cellule
-svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-svg.style.width = '100%';
-svg.style.height = 'auto';
-
-// calcul d'une hauteur max pour laisser place au nom + code texte
-// on réserve ~12 mm pour les textes (nom+code), le reste pour le code-barres
-var maxHmm = Math.max(8, (tmpl.cellH - 12)); // minimum 8mm pour rester lisible
-svg.style.maxHeight = maxHmm + 'mm';
-
-card.appendChild(svg);
-sheet.appendChild(card);
-
+      var card=document.createElement('div'); card.className='label-card';
+      var name=document.createElement('div'); name.className='name'; name.textContent=it.name; name.style.fontSize=namePt+'pt'; card.appendChild(name);
+      var hr=document.createElement('div'); hr.className='hr'; hr.textContent=it.code; card.appendChild(hr);
+      var svg=(window.code39 && window.code39.svg) ? window.code39.svg(it.code,{module, height:52, margin:2, showText, fontSize:10}) : document.createElementNS('http://www.w3.org/2000/svg','svg');
+      svg.setAttribute('preserveAspectRatio','xMidYMid meet');
+      svg.style.width='100%'; svg.style.height='auto';
+      var maxHmm=Math.max(8,(tmpl.cellH-12)); svg.style.maxHeight=maxHmm+'mm';
+      card.appendChild(svg);
+      sheet.appendChild(card);
     });
 
     var rest=perPage-items.length;
