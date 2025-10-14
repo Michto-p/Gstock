@@ -97,3 +97,50 @@ main{padding:1rem;max-width:1100px;margin:0 auto}
   .labels-page{display:block !important;break-after:page}
   .labels-sheet{margin:0}
 }
+/* --- Cartes étiquette : contrainte visuelle côté écran & impression --- */
+.labels-page { display: none; }              /* une page visible à la fois à l'écran */
+.labels-page.active { display: block; }
+.labels-sheet { display: grid; }
+
+/* Empêcher tout débordement interne */
+.label-card {
+  box-sizing: border-box;
+  padding: 2mm 2mm 1mm 2mm;   /* marges internes douces */
+  overflow: hidden;
+}
+.label-card .name {
+  font-weight: 600;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.label-card .hr {
+  font-size: 9pt;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Le SVG est ajusté côté JS (width:100% + max-height en mm) */
+
+/* --- Impression A4 optimisée : on imprime uniquement l'onglet Étiquettes --- */
+@page {
+  size: A4;
+  margin: 0;                 /* on s'appuie sur margins du template */
+}
+@media print {
+  /* On n’imprime que la zone des étiquettes */
+  body * { visibility: hidden !important; }
+  #tab-labels, #tab-labels * { visibility: visible !important; }
+  #tab-labels { position: absolute; inset: 0; }
+
+  /* Toutes les pages d'étiquettes s'enchaînent sur plusieurs feuilles */
+  .labels-page { display: block !important; break-after: page; }
+
+  /* Cache la navigation/headers/footers si existants */
+  nav, header, footer, .toolbar, .filters { display: none !important; }
+
+  /* Pas d'ombres/couleurs parasites à l'impression */
+  .label-card { box-shadow: none !important; border: none !important; }
+}
