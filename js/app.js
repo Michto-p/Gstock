@@ -1,4 +1,4 @@
-/* Gstock - app.js v2.9.1 (codes normalisés: max10, A-Z0-9, unique) */
+/* Gstock - app.js v2.9.2 (labels A4 3x8 + print propre) */
 (function(){'use strict';
 
 /* --- utilitaires DOM / divers --- */
@@ -53,17 +53,10 @@ function showTab(name){
 }
 
 /* --- Règles de nommage des codes --- */
-const CODE_RULES = Object.freeze({
-  maxLen: 10,       // longueur max du code
-  uppercase: true,  // MAJUSCULES
-  alnumOnly: true,  // A-Z 0-9 uniquement
-  prefix: ''        // (optionnel) préfixe à forcer
-});
+const CODE_RULES = Object.freeze({ maxLen: 10, uppercase: true, alnumOnly: true, prefix: '' });
 
 /* --- helpers de codes --- */
 function deaccent(s){ try{return s.normalize('NFD').replace(/\p{Diacritic}/gu,'');}catch(_){return s;} }
-
-/* Base lisible depuis le nom (héritée de v2.9.0) */
 function nameToCode(name){
   var stop=new Set(['le','la','les','des','du','de','d','l','un','une','pour','et','sur','avec','en','à','au','aux','the','of','for']);
   var parts=deaccent(String(name)).replace(/[^A-Za-z0-9]+/g,' ').trim().split(/\s+/);
@@ -77,10 +70,8 @@ function nameToCode(name){
     if(/^\d+$/.test(t)){base.push(t);continue;}
     base.push((t.length>=4?t.slice(0,4):t).toLowerCase());
   }
-  return base.join('')+brandShort; // ex: disj20xple
+  return base.join('')+brandShort;
 }
-
-/* Normalise un code selon les règles (A-Z0-9, maxLen, préfixe) */
 function normalizeCode(raw){
   if(!raw) return '';
   let s = deaccent(String(raw));
@@ -90,16 +81,12 @@ function normalizeCode(raw){
   if(s.length > CODE_RULES.maxLen) s = s.slice(0, CODE_RULES.maxLen);
   return s;
 }
-
-/* Construit une base de code depuis un nom puis normalise */
 function makeCodeBaseFromName(name){
   let base = nameToCode(name || '');
   base = normalizeCode(base);
   if(!base) base = normalizeCode('ITM'+Math.floor(Math.random()*1e6));
   return base;
 }
-
-/* Garantit l'unicité en suffixant des chiffres sans dépasser maxLen */
 async function makeUniqueCode(base){
   let code = base;
   if(!(await getByCodeAnyCase(code))) return code;
@@ -109,17 +96,11 @@ async function makeUniqueCode(base){
     const cand = head + suff;
     if(!(await getByCodeAnyCase(cand))) return cand;
   }
-  // fallback extrême
   return base.slice(0, CODE_RULES.maxLen);
 }
+async function generateCodeFromName(name){ const base = makeCodeBaseFromName(name); return await makeUniqueCode(base); }
 
-/* Génère un code depuis le nom en respectant les règles et l'unicité */
-async function generateCodeFromName(name){
-  const base = makeCodeBaseFromName(name);
-  return await makeUniqueCode(base);
-}
-
-/* --- recherche case-insensitive du code (scan/saisie) --- */
+/* --- recherche case-insensitive du code --- */
 async function getByCodeAnyCase(raw) {
   if (!raw) return null;
   const exact = await dbGet(raw);
@@ -293,13 +274,11 @@ var niTitle=$('#niTitle'), niType=$('#niType'), niName=$('#niName'), niRef=$('#n
     niTagChecks=$('#niTagChecks'), niTagsExtra=$('#niTagsExtra'), niTagCat=$('#niTagCategory'),
     niLinks=$('#niLinks');
 
-var niMode = 'create';       // 'create' | 'edit' | 'duplicate'
-var niOriginalCode = null;   // code d'origine en édition
-
+var niMode = 'create'; var niOriginalCode = null;
 $('#niGen')?.addEventListener('click',async ()=>{
   var n=niName && niName.value.trim(); if(!n) return;
-  if(niRef && !niRef.value.trim()) niRef.value=nameToCode(n); // ref lisible
-  if(niCode){ niCode.value = await generateCodeFromName(n); } // code normalisé unique
+  if(niRef && !niRef.value.trim()) niRef.value=nameToCode(n);
+  if(niCode){ niCode.value = await generateCodeFromName(n); }
 });
 niName && niName.addEventListener('blur',async ()=>{
   var n=niName.value.trim(); if(!n) return;
@@ -359,8 +338,6 @@ async function openNewDialog(type){
 }
 $('#btnAddStock')?.addEventListener('click',()=>openNewDialog('stock'));
 $('#btnAddAtelier')?.addEventListener('click',()=>openNewDialog('atelier'));
-
-/* --- Éditer --- */
 async function openEditDialog(code){
   const it = await dbGet(code);
   if(!it){ alert('Introuvable'); return; }
@@ -415,11 +392,8 @@ async function openEditDialog(code){
   }
 
   niLinks && (niLinks.value = (it.links||[]).join('\n'));
-
   newItemDialog && newItemDialog.showModal && newItemDialog.showModal();
 }
-
-/* --- Dupliquer --- */
 async function openDuplicateDialog(code){
   const it = await dbGet(code);
   if(!it){ alert('Introuvable'); return; }
@@ -477,11 +451,8 @@ async function openDuplicateDialog(code){
   }
 
   niLinks && (niLinks.value = (it.links||[]).join('\n'));
-
   newItemDialog && newItemDialog.showModal && newItemDialog.showModal();
 }
-
-/* --- Sauvegarde dialog (create/edit/duplicate) --- */
 $('#niSave')?.addEventListener('click', async e=>{
   e.preventDefault();
 
@@ -513,7 +484,6 @@ $('#niSave')?.addEventListener('click', async e=>{
     return;
   }
 
-  // create | duplicate
   if(!code){
     code = await generateCodeFromName(name);
   } else {
@@ -530,36 +500,52 @@ $('#niSave')?.addEventListener('click', async e=>{
 });
 
 /* --- Étiquettes --- */
-var LABEL_TEMPLATES={ 'avery-l7160':{cols:3,rows:7,cellW:63.5,cellH:38.1,gapX:2.5,gapY:0,marginX:7.5,marginY:12.0},
-  'avery-l7159':{cols:3,rows:7,cellW:63.5,cellH:38.1,gapX:2.5,gapY:0,marginX:7.5,marginY:12.0},
+var LABEL_TEMPLATES={
+  'a4-3x8-63x34':{cols:3,rows:8,cellW:63.5,cellH:33.9,gapX:2.5,gapY:2.0,marginX:7.5,marginY:10.7}, // par défaut
+  'avery-l7160':{cols:3,rows:7,cellW:63.5,cellH:38.1,gapX:2.5,gapY:0,marginX:7.5,marginY:12.0},
   'avery-l7163':{cols:2,rows:7,cellW:99.1,cellH:38.1,gapX:2.0,gapY:0,marginX:5.0,marginY:13.5},
   'avery-l7162':{cols:2,rows:8,cellW:99.1,cellH:33.9,gapX:2.0,gapY:2.0,marginX:5.0,marginY:10.7},
   'avery-l7165':{cols:2,rows:4,cellW:99.1,cellH:67.7,gapX:2.0,gapY:0,marginX:5.0,marginY:13.5},
-  'a4-3x8-63x34':{cols:3,rows:8,cellW:63.5,cellH:33.9,gapX:2.5,gapY:2.0,marginX:7.5,marginY:10.7},
   'mm50x25':{cols:4,rows:10,cellW:50,cellH:25,gapX:5,gapY:5,marginX:10,marginY:10},
-  'mm70x35':{cols:3,rows:8,cellW:70,cellH:35,gapX:5,gapY:5,marginX:10,marginY:10} };
+  'mm70x35':{cols:3,rows:8,cellW:70,cellH:35,gapX:5,gapY:5,marginX:10,marginY:10}
+};
 var labelsInitDone=false, labelsAllItems=[], labelsSelected=new Set(), lblPage=0, lblPagesCount=1;
 var labelSearch=$('#labelSearch'), labelsList=$('#labelsList'), lblSelInfo=$('#lblSelInfo'),
     lblTemplate=$('#lblTemplate'), lblDensity=$('#lblDensity'), lblNameSize=$('#lblNameSize'), lblShowText=$('#lblShowText'),
     lblOffsetX=$('#lblOffsetX'), lblOffsetY=$('#lblOffsetY'),
     labelsPages=$('#labelsPages'), btnLblAll=$('#lblAll'), btnLblNone=$('#lblNone'),
     btnLblPrev=$('#lblPrev'), btnLblNext=$('#lblNext'), btnLabelsPrint=$('#btnLabelsPrint');
+
 function initLabelsPanel(){ if(!labelsInitDone){ bindLabelsUI(); labelsInitDone=true; } loadLabelsData().then(()=>{ rebuildLabelsList(); rebuildLabelsPreview(true); }); }
 async function loadLabelsData(){ labelsAllItems=await dbList(); if(labelsSelected.size===0){ labelsAllItems.forEach(i=>labelsSelected.add(i.code)); } }
+
 function bindLabelsUI(){
   labelSearch?.addEventListener('input',()=>rebuildLabelsList());
   btnLblAll?.addEventListener('click',()=>{ labelsAllItems.forEach(i=>labelsSelected.add(i.code)); rebuildLabelsList(); rebuildLabelsPreview(true); });
   btnLblNone?.addEventListener('click',()=>{ labelsSelected.clear(); rebuildLabelsList(); rebuildLabelsPreview(true); });
-  if(lblTemplate){ var t=localStorage.getItem('gstock.lblTemplate'); if(!t){ t='a4-3x8-63x34'; localStorage.setItem('gstock.lblTemplate',t);} lblTemplate.value=t; lblTemplate.addEventListener('change',()=>{ localStorage.setItem('gstock.lblTemplate', lblTemplate.value); rebuildLabelsPreview(true); }); }
+  if(lblTemplate){
+    var t=localStorage.getItem('gstock.lblTemplate');
+    if(!t){ t='a4-3x8-63x34'; localStorage.setItem('gstock.lblTemplate',t); }
+    lblTemplate.value=t;
+    lblTemplate.addEventListener('change',()=>{ localStorage.setItem('gstock.lblTemplate', lblTemplate.value); rebuildLabelsPreview(true); });
+  }
   if(lblDensity){ var d=localStorage.getItem('gstock.lblDensity'); if(d) lblDensity.value=d; lblDensity.addEventListener('change',()=>{ localStorage.setItem('gstock.lblDensity', lblDensity.value); rebuildLabelsPreview(false); }); }
   if(lblNameSize){ var ns=localStorage.getItem('gstock.lblNameSize'); if(ns) lblNameSize.value=ns; lblNameSize.addEventListener('change',()=>{ localStorage.setItem('gstock.lblNameSize', lblNameSize.value); rebuildLabelsPreview(false); }); }
   if(lblShowText){ var st=localStorage.getItem('gstock.lblShowText')==='1'; lblShowText.checked=st; lblShowText.addEventListener('change',()=>{ localStorage.setItem('gstock.lblShowText', lblShowText.checked?'1':'0'); rebuildLabelsPreview(false); }); }
   if(lblOffsetX){ var ox=parseFloat(localStorage.getItem('gstock.lblOffsetX')||'0')||0; lblOffsetX.value=ox; lblOffsetX.addEventListener('change',()=>{ localStorage.setItem('gstock.lblOffsetX', String(lblOffsetX.value||0)); rebuildLabelsPreview(false); }); }
   if(lblOffsetY){ var oy=parseFloat(localStorage.getItem('gstock.lblOffsetY')||'0')||0; lblOffsetY.value=oy; lblOffsetY.addEventListener('change',()=>{ localStorage.setItem('gstock.lblOffsetY', String(lblOffsetY.value||0)); rebuildLabelsPreview(false); }); }
+
   btnLblPrev?.addEventListener('click',()=>{ if(lblPage>0){ lblPage--; updatePaginationDisplay(); } });
   btnLblNext?.addEventListener('click',()=>{ if(lblPage<lblPagesCount-1){ lblPage++; updatePaginationDisplay(); } });
-  btnLabelsPrint?.addEventListener('click',()=>window.print());
+
+  // **Impression propre (fenêtre dédiée sans UI)**
+  btnLabelsPrint?.addEventListener('click', printLabelsClean);
 }
+
+function updateLblSelInfo(){ lblSelInfo && (lblSelInfo.textContent=labelsSelected.size+' sélection(s)'); }
+function chunkArray(arr, size){ var out=[]; for(let i=0;i<arr.length;i+=size) out.push(arr.slice(i,i+size)); return out; }
+function mm(n){ return n+'mm'; }
+
 function rebuildLabelsList(){
   var q=(labelSearch&&labelSearch.value||'').toLowerCase();
   if(labelsList){
@@ -571,9 +557,58 @@ function rebuildLabelsList(){
   }
   updateLblSelInfo();
 }
-function updateLblSelInfo(){ lblSelInfo && (lblSelInfo.textContent=labelsSelected.size+' sélection(s)'); }
-function chunkArray(arr, size){ var out=[]; for(let i=0;i<arr.length;i+=size) out.push(arr.slice(i,i+size)); return out; }
-function mm(n){ return n+'mm'; }
+
+/* ---- FABRICATION HTML DES PAGES D'ÉTIQUETTES (réutilisée pour preview et print) ---- */
+function renderLabelCardHTML(it, tmpl, module, namePt, showText){
+  // Texte
+  const name = `<div class="name" style="font-size:${namePt}pt;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.name)}</div>`;
+  const hr   = `<div class="hr" style="font-size:9pt;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.code)}</div>`;
+  // Barcode SVG (string) + contraintes
+  let svgStr = '<svg xmlns="http://www.w3.org/2000/svg"></svg>';
+  try{
+    if(window.code39 && typeof window.code39.svg==='function'){
+      const svgEl = window.code39.svg(it.code, {module, height:52, margin:2, showText, fontSize:10});
+      svgEl.setAttribute('preserveAspectRatio','xMidYMid meet');
+      svgEl.setAttribute('width','100%');
+      svgEl.setAttribute('height','auto');
+      const maxHmm = Math.max(8,(tmpl.cellH - 12));
+      svgEl.style.maxHeight = maxHmm+'mm';
+      svgStr = new XMLSerializer().serializeToString(svgEl);
+    }
+  }catch(_){}
+  return `<div class="label-card" style="box-sizing:border-box;padding:2mm 2mm 1mm 2mm;overflow:hidden">${name}${hr}${svgStr}</div>`;
+}
+function buildLabelsPagesHTML(items, tmpl, opts){
+  const perPage=(tmpl.cols|0)*(tmpl.rows|0);
+  const pages=chunkArray(items, perPage);
+  const sheetStyle = [
+    `padding-left:${mm((tmpl.marginX||0)+(opts.offX||0))}`,
+    `padding-top:${mm((tmpl.marginY||0)+(opts.offY||0))}`,
+    `display:grid`,
+    `grid-template-columns:repeat(${tmpl.cols}, ${mm(tmpl.cellW)})`,
+    `grid-auto-rows:${mm(tmpl.cellH)}`,
+    `column-gap:${mm((tmpl.gapX||0))}`,
+    `row-gap:${mm((tmpl.gapY||0))}`
+  ].join(';');
+
+  let html='';
+  pages.forEach((subset)=>{
+    let sheet = `<div class="labels-sheet" style="${sheetStyle}">`;
+    subset.forEach(it=>{
+      sheet += renderLabelCardHTML(it, tmpl, opts.module, opts.namePt, opts.showText);
+    });
+    // cases vides
+    for(let k=subset.length;k<perPage;k++){ sheet += `<div class="label-card" style="border:1px dashed transparent"></div>`; }
+    sheet += `</div>`;
+    html += `<div class="labels-page">${sheet}</div>`;
+  });
+  // aucune page ? on rend quand même une page vide
+  if(!pages.length){
+    html += `<div class="labels-page"><div class="labels-sheet" style="${sheetStyle}"></div></div>`;
+  }
+  return html;
+}
+
 function rebuildLabelsPreview(resetPage){
   var key=(lblTemplate&&lblTemplate.value)||'a4-3x8-63x34';
   var tmpl=LABEL_TEMPLATES[key]||LABEL_TEMPLATES['a4-3x8-63x34'];
@@ -584,39 +619,13 @@ function rebuildLabelsPreview(resetPage){
   var offY=parseFloat((lblOffsetY&&lblOffsetY.value)||'0')||0;
 
   var selectedItems=labelsAllItems.filter(i=>labelsSelected.has(i.code));
-  var perPage=(tmpl.cols|0)*(tmpl.rows|0);
-  var pages=chunkArray(selectedItems, perPage);
+  const pagesHTML = buildLabelsPagesHTML(selectedItems, tmpl, {module,namePt,showText,offX,offY});
+  if(labelsPages) labelsPages.innerHTML = pagesHTML;
 
-  if(labelsPages) labelsPages.innerHTML='';
-  pages.forEach((items,pageIndex)=>{
-    var page=document.createElement('div'); page.className='labels-page'; page.dataset.index=String(pageIndex);
-    var sheet=document.createElement('div'); sheet.className='labels-sheet';
-    sheet.style.paddingLeft=mm((tmpl.marginX||0)+offX);
-    sheet.style.paddingTop=mm((tmpl.marginY||0)+offY);
-    sheet.style.gridTemplateColumns='repeat('+tmpl.cols+', '+mm(tmpl.cellW)+')';
-    sheet.style.gridAutoRows=mm(tmpl.cellH);
-    sheet.style.columnGap=mm((tmpl.gapX||0));
-    sheet.style.rowGap=mm((tmpl.gapY||0));
-
-    items.forEach(it=>{
-      var card=document.createElement('div'); card.className='label-card';
-      var name=document.createElement('div'); name.className='name'; name.textContent=it.name; name.style.fontSize=namePt+'pt'; card.appendChild(name);
-      var hr=document.createElement('div'); hr.className='hr'; hr.textContent=it.code; card.appendChild(hr);
-      var svg=(window.code39 && window.code39.svg) ? window.code39.svg(it.code,{module, height:52, margin:2, showText, fontSize:10}) : document.createElementNS('http://www.w3.org/2000/svg','svg');
-      svg.setAttribute('preserveAspectRatio','xMidYMid meet');
-      svg.style.width='100%'; svg.style.height='auto';
-      var maxHmm=Math.max(8,(tmpl.cellH-12)); svg.style.maxHeight=maxHmm+'mm';
-      card.appendChild(svg);
-      sheet.appendChild(card);
-    });
-
-    var rest=perPage-items.length;
-    for(let k=0;k<rest;k++){ var empty=document.createElement('div'); empty.className='label-card'; empty.style.border='1px dashed transparent'; sheet.appendChild(empty); }
-    page.appendChild(sheet);
-    labelsPages && labelsPages.appendChild(page);
-  });
-
-  lblPagesCount=Math.max(1, pages.length||1);
+  // pagination visuelle (une page active à l'écran)
+  const perPage=(tmpl.cols|0)*(tmpl.rows|0);
+  const countPages = Math.max(1, Math.ceil(selectedItems.length / perPage));
+  lblPagesCount=countPages;
   if(resetPage) lblPage=0;
   updatePaginationDisplay();
 }
@@ -628,6 +637,50 @@ function updatePaginationDisplay(){
   if(prev){ prev.disabled=(lblPage<=0); show(prev,!one); }
   if(next){ next.disabled=(lblPage>=lblPagesCount-1); show(next,!one); }
   show(info,!one);
+}
+
+/* --- Impression propre dans une nouvelle fenêtre --- */
+function printLabelsClean(){
+  try{
+    var key=(lblTemplate&&lblTemplate.value)||'a4-3x8-63x34';
+    var tmpl=LABEL_TEMPLATES[key]||LABEL_TEMPLATES['a4-3x8-63x34'];
+    var module=parseFloat((lblDensity&&lblDensity.value)||'2');
+    var namePt=parseInt((lblNameSize&&lblNameSize.value)||'11',10);
+    var showText=!!(lblShowText&&lblShowText.checked);
+    var offX=parseFloat((lblOffsetX&&lblOffsetX.value)||'0')||0;
+    var offY=parseFloat((lblOffsetY&&lblOffsetY.value)||'0')||0;
+    var selectedItems=labelsAllItems.filter(i=>labelsSelected.has(i.code));
+
+    const pagesHTML = buildLabelsPagesHTML(selectedItems, tmpl, {module,namePt,showText,offX,offY});
+
+    const css = `
+      @page { size: A4; margin: 0; }
+      html,body{ margin:0; padding:0; }
+      .labels-page { break-after: page; }
+      .labels-sheet { display:grid; }
+      .label-card { box-sizing:border-box; padding:2mm 2mm 1mm 2mm; overflow:hidden; }
+      .label-card .name { font-weight:600; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .label-card .hr   { font-size:9pt;  line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      svg { width:100%; height:auto; }
+    `.replace(/\n\s+/g,' ');
+
+    const html = `<!doctype html>
+      <html>
+        <head><meta charset="utf-8"><title>Étiquettes</title><style>${css}</style></head>
+        <body>${pagesHTML}</body>
+      </html>`;
+
+    const w = window.open('', 'gstock_print', 'width=900,height=700');
+    if(!w){ alert('Pop-up bloquée : autorisez les fenêtres pour imprimer.'); return; }
+    w.document.open(); w.document.write(html); w.document.close();
+    w.focus();
+    // imprime quand la fenêtre est prête
+    setTimeout(()=>{ try{ w.print(); }catch(_){ } setTimeout(()=>{ try{ w.close(); }catch(_){ } }, 500); }, 200);
+  }catch(e){
+    console.warn('print error', e);
+    alert('Impossible de lancer l’impression propre. Essayez l’impression standard du navigateur.');
+    window.print();
+  }
 }
 
 /* --- Journal --- */
@@ -837,9 +890,9 @@ async function runDetectLoop(){
   };
   scanLoopId=requestAnimationFrame(step);
 }
-btnScanStart?.addEventListener('click',startScan);
-btnScanStop?.addEventListener('click',stopScan);
-btnScanTorch?.addEventListener('click',async ()=>{
+$('#btnScanStart')?.addEventListener('click',startScan);
+$('#btnScanStop')?.addEventListener('click',stopScan);
+$('#btnScanTorch')?.addEventListener('click',async ()=>{
   if(!scanTrack) return; var caps=(scanTrack?.getCapabilities?.())||{}; if(!caps.torch) return;
   torchOn=!torchOn; try{ await scanTrack.applyConstraints({advanced:[{torch:torchOn}]}); }catch(e){ torchOn=false; }
 });
