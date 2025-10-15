@@ -1,31 +1,19 @@
-/* Gstock - app.js v2.9.2 (labels A4 3x8 + print propre) */
+/* Gstock - app.js v2.9.3 */
 (function(){'use strict';
 
-/* --- utilitaires DOM / divers --- */
 function $(s,r){return (r||document).querySelector(s);}
 function $$(s,r){return Array.from((r||document).querySelectorAll(s));}
 function show(el,on){ if(!el) return; el.hidden = !on; }
 var sr=$('#sr');
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
 function announce(msg){ if(sr){ sr.textContent=''; setTimeout(()=>{ sr.textContent=msg; },10);} }
-function downloadFile(name,data,type){ var blob=new Blob([data],{type:type}); var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),3000); }
+function downloadFile(name,data,type){ var blob=new Blob([data],{type:type}); var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),2000); }
 function debounced(fn,ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; }
 
-/* --- SAFE MODE via ?safe=1 --- */
-(async () => {
-  try {
-    const qs = new URLSearchParams(location.search);
-    if (qs.has('safe')) {
-      try { await (window.dbNuke ? window.dbNuke(false) : Promise.resolve()); } catch(e){}
-      try { const regs = await (navigator.serviceWorker?.getRegistrations?.() || []); await Promise.all(regs.map(r => r.unregister())); } catch(e){}
-      try { const keys = await (caches?.keys?.() || []); await Promise.all(keys.map(k => caches.delete(k))); } catch(e){}
-      location.replace(location.pathname + '?bust=' + Date.now());
-      return;
-    }
-  } catch (e) {}
-})();
+/* SAFE PURGE with ?safe=1 */
+(async()=>{ try{ const qs=new URLSearchParams(location.search); if(qs.has('safe')){ try{ await (window.dbNuke?window.dbNuke(false):Promise.resolve()); }catch(e){} try{ const regs=await (navigator.serviceWorker?.getRegistrations?.()||[]); await Promise.all(regs.map(r=>r.unregister())); }catch(e){} try{ const keys=await (caches?.keys?.()||[]); await Promise.all(keys.map(k=>caches.delete(k))); }catch(e){} location.replace(location.pathname+'?bust='+Date.now()); return; } }catch(e){} })();
 
-/* --- Thème --- */
+/* THEME */
 var themeToggle=$('#themeToggle');
 if(themeToggle){
   themeToggle.value=(localStorage.getItem('gstock.theme')||'auto');
@@ -37,7 +25,7 @@ if(themeToggle){
   themeToggle.addEventListener('change',applyTheme); applyTheme();
 }
 
-/* --- Onglets --- */
+/* TABS */
 var sections={home:$('#tab-home'),stock:$('#tab-stock'),atelier:$('#tab-atelier'),scanner:$('#tab-scanner'),labels:$('#tab-labels'),journal:$('#tab-journal'),gear:$('#tab-gear'),settings:$('#tab-settings')};
 $$('nav button[data-tab]').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
 function showTab(name){
@@ -52,10 +40,8 @@ function showTab(name){
   if(name==='settings') initSettingsPanel();
 }
 
-/* --- Règles de nommage des codes --- */
-const CODE_RULES = Object.freeze({ maxLen: 10, uppercase: true, alnumOnly: true, prefix: '' });
-
-/* --- helpers de codes --- */
+/* CODE RULES */
+const CODE_RULES=Object.freeze({ maxLen:10, uppercase:true, alnumOnly:true, prefix:'' });
 function deaccent(s){ try{return s.normalize('NFD').replace(/\p{Diacritic}/gu,'');}catch(_){return s;} }
 function nameToCode(name){
   var stop=new Set(['le','la','les','des','du','de','d','l','un','une','pour','et','sur','avec','en','à','au','aux','the','of','for']);
@@ -74,43 +60,19 @@ function nameToCode(name){
 }
 function normalizeCode(raw){
   if(!raw) return '';
-  let s = deaccent(String(raw));
-  if(CODE_RULES.alnumOnly) s = s.replace(/[^A-Za-z0-9]/g,'');
-  if(CODE_RULES.uppercase) s = s.toUpperCase();
-  if(CODE_RULES.prefix) s = CODE_RULES.prefix + s;
-  if(s.length > CODE_RULES.maxLen) s = s.slice(0, CODE_RULES.maxLen);
+  let s=deaccent(String(raw));
+  if(CODE_RULES.alnumOnly) s=s.replace(/[^A-Za-z0-9]/g,'');
+  if(CODE_RULES.uppercase) s=s.toUpperCase();
+  if(CODE_RULES.prefix) s=CODE_RULES.prefix+s;
+  if(s.length>CODE_RULES.maxLen) s=s.slice(0,CODE_RULES.maxLen);
   return s;
 }
-function makeCodeBaseFromName(name){
-  let base = nameToCode(name || '');
-  base = normalizeCode(base);
-  if(!base) base = normalizeCode('ITM'+Math.floor(Math.random()*1e6));
-  return base;
-}
-async function makeUniqueCode(base){
-  let code = base;
-  if(!(await getByCodeAnyCase(code))) return code;
-  for(let n=2; n<10000; n++){
-    const suff = String(n);
-    const head = base.slice(0, CODE_RULES.maxLen - suff.length);
-    const cand = head + suff;
-    if(!(await getByCodeAnyCase(cand))) return cand;
-  }
-  return base.slice(0, CODE_RULES.maxLen);
-}
-async function generateCodeFromName(name){ const base = makeCodeBaseFromName(name); return await makeUniqueCode(base); }
+function makeCodeBaseFromName(n){ let b=nameToCode(n||''); b=normalizeCode(b); if(!b) b=normalizeCode('ITM'+Math.floor(Math.random()*1e6)); return b; }
+async function makeUniqueCode(base){ if(!(await getByCodeAnyCase(base))) return base; for(let n=2;n<10000;n++){ let s=''+n, head=base.slice(0,CODE_RULES.maxLen-s.length), cand=head+s; if(!(await getByCodeAnyCase(cand))) return cand; } return base.slice(0,CODE_RULES.maxLen); }
+async function generateCodeFromName(n){ return await makeUniqueCode(makeCodeBaseFromName(n)); }
+async function getByCodeAnyCase(raw){ if(!raw) return null; const exact=await dbGet(raw); if(exact) return exact; const low=String(raw).toLowerCase(); const all=await dbList(); return all.find(i=>(String(i.code||'')).toLowerCase()===low)||null; }
 
-/* --- recherche case-insensitive du code --- */
-async function getByCodeAnyCase(raw) {
-  if (!raw) return null;
-  const exact = await dbGet(raw);
-  if (exact) return exact;
-  const low = String(raw).toLowerCase();
-  const all = await dbList();
-  return all.find(i => (String(i.code || '')).toLowerCase() === low) || null;
-}
-
-/* --- Accueil --- */
+/* HOME */
 async function refreshHome(){
   var items=await dbList();
   var set=await dbGetSettings(); var buf=(set&&set.buffer|0);
@@ -126,17 +88,17 @@ async function refreshHome(){
   ul.innerHTML=(recent.map(m=>`<li>${new Date(m.ts).toLocaleString()} • <strong>${esc(m.type)}</strong> <code>${esc(m.code)}</code> ×${m.qty}</li>`).join(''))||'<li class="muted">Aucun mouvement</li>';
 }
 
-/* --- statuts --- */
+/* STATUS */
 function ensureType(it){ return it.type||'stock'; }
 function statusBadge(it, buffer){
   var qty=(it.qty|0), thr=(it.threshold|0), diff=qty-thr;
-  if(qty===0) return '<span class="badge under" title="Épuisé">Épuisé</span>';
-  if(qty<=thr) return '<span class="badge under" title="Sous seuil">Sous seuil</span>';
-  if(diff<=((buffer|0))) return '<span class="badge low" title="Approche">Approche</span>';
-  return '<span class="badge ok" title="OK">OK</span>';
+  if(qty===0) return '<span class="badge under">Épuisé</span>';
+  if(qty<=thr) return '<span class="badge under">Sous seuil</span>';
+  if(diff<=((buffer|0))) return '<span class="badge low">Approche</span>';
+  return '<span class="badge ok">OK</span>';
 }
 
-/* --- Tables Stock/Atelier --- */
+/* LISTS */
 var state={ stock:{q:'',status:'',tag:'',loc:''}, atelier:{q:'',status:'',tag:'',loc:''} };
 var els={
   stock:{ tbody:$('#stockTbody'), search:$('#stockSearch'), status:$('#stockStatus'), tag:$('#stockTag'), loc:$('#stockLoc'), btnAdd:$('#btnAddStock'), btnClear:$('#stockClear') },
@@ -215,7 +177,6 @@ async function refreshTable(type){
   e.tbody.querySelectorAll('button[data-act]').forEach(btn=>{
     var code=btn.dataset.code;
     if(btn.dataset.act==='adj')  btn.onclick=()=>openAdjustDialog({code});
-    if(btn.dataset.act==='hist') btn.onclick=()=>openHistory(code);
     if(btn.dataset.act==='link') btn.onclick=()=>openLinks(code);
     if(btn.dataset.act==='edit') btn.onclick=()=>openEditDialog(code);
     if(btn.dataset.act==='dup')  btn.onclick=()=>openDuplicateDialog(code);
@@ -231,12 +192,6 @@ async function refreshTable(type){
     };
   });
 }
-async function openHistory(code){
-  var item=(await dbGet(code));
-  var moves=await dbListMoves({code:(item&&item.code)||code,limit:100});
-  var loans=(typeof dbListLoansByCode==='function') ? (await dbListLoansByCode((item&&item.code)||code)) : [];
-  alert('Historique "'+((item&&item.name)||code)+'"\n\nMouvements: '+moves.length+'\nEmprunts (actifs+clos): '+loans.length);
-}
 async function openLinks(code){
   var it=await dbGet(code); var links=(it&&it.links)||[]; if(!links.length) return;
   if(links.length===1){ window.open(links[0],'_blank'); return; }
@@ -244,7 +199,7 @@ async function openLinks(code){
   var idx=((parseInt(s||'0',10)-1)|0); if(links[idx]) window.open(links[idx],'_blank');
 }
 
-/* --- Ajustement --- */
+/* ADJUST DIALOG */
 var dlg=$('#adjustDialog'), dlgType=$('#dlgType'), dlgQty=$('#dlgQty'), dlgNote=$('#dlgNote'), dlgItem=$('#dlgItem');
 var dlgState={code:null};
 $('#dlgClose')?.addEventListener('click',()=>dlg?.close());
@@ -266,7 +221,7 @@ async function onValidateAdjust(){
   dlg?.close(); await refreshTable(ensureType(item)); await refreshHome();
 }
 
-/* --- Création / Édition / Duplication --- */
+/* CREATE / EDIT / DUPLICATE */
 var newItemDialog=$('#newItemDialog');
 var niTitle=$('#niTitle'), niType=$('#niType'), niName=$('#niName'), niRef=$('#niRef'), niCode=$('#niCode'),
     niQty=$('#niQty'), niThr=$('#niThr'), niLocSelect=$('#niLocSelect'), niLocCustom=$('#niLocCustom'),
@@ -274,7 +229,8 @@ var niTitle=$('#niTitle'), niType=$('#niType'), niName=$('#niName'), niRef=$('#n
     niTagChecks=$('#niTagChecks'), niTagsExtra=$('#niTagsExtra'), niTagCat=$('#niTagCategory'),
     niLinks=$('#niLinks');
 
-var niMode = 'create'; var niOriginalCode = null;
+var niMode='create', niOriginalCode=null;
+
 $('#niGen')?.addEventListener('click',async ()=>{
   var n=niName && niName.value.trim(); if(!n) return;
   if(niRef && !niRef.value.trim()) niRef.value=nameToCode(n);
@@ -288,10 +244,10 @@ niName && niName.addEventListener('blur',async ()=>{
 $('#niCopyRefToCode')?.addEventListener('click',async ()=>{
   if(niRef && niCode){
     var v=(niRef.value||'').trim(); if(!v) return;
-    var normalized = normalizeCode(v);
-    if(!normalized){ alert('Référence invalide pour un code (A-Z0-9 requis).'); return; }
+    var normalized=normalizeCode(v);
+    if(!normalized){ alert('Référence invalide pour un code (A-Z0-9)'); return; }
     if(await getByCodeAnyCase(normalized)){ alert('Ce code existe déjà.'); return; }
-    niCode.value = normalized;
+    niCode.value=normalized;
   }
 });
 $('#niTagsClear')?.addEventListener('click',()=>{ niTagChecks && niTagChecks.querySelectorAll('input[type="checkbox"]').forEach(cb=>cb.checked=false); });
@@ -299,7 +255,6 @@ $('#niTagsClear')?.addEventListener('click',()=>{ niTagChecks && niTagChecks.que
 async function openNewDialog(type){
   type=type||'stock';
   niMode='create'; niOriginalCode=null;
-
   niType && (niType.value=type);
   niTitle && (niTitle.textContent=(type==='atelier'?'Nouveau matériel (Atelier)':'Nouvel article (Stock)'));
   niTagCat && (niTagCat.textContent=(type==='atelier'?'Atelier':'Stock'));
@@ -310,14 +265,14 @@ async function openNewDialog(type){
   var defaultsLocs=(type==='atelier'?((set&&set.defaultLocationsAtelier)||[]):((set&&set.defaultLocationsStock)||[]));
   var defaultsTags=(type==='atelier'?((set&&set.defaultTagsAtelier)||[]):((set&&set.defaultTagsStock)||[]));
 
-  var combined=Array.from(new Set([].concat(defaultsLocs, locsExisting))).filter(Boolean);
+  var combined=Array.from(new Set([].concat(defaultsLocs,locsExisting))).filter(Boolean);
   if(niLocSelect){
-    var opts=['<option value="">— Sélectionner —</option>'].concat(combined.map(l=>`<option value="${esc(l)}">${esc(l)}</option>`)).concat(['<option value="__custom__">➕ Saisir personnalisé…</option>']);
-    niLocSelect.innerHTML=opts.join('');
+    niLocSelect.innerHTML=['<option value="">— Sélectionner —</option>']
+      .concat(combined.map(l=>`<option value="${esc(l)}">${esc(l)}</option>`))
+      .concat(['<option value="__custom__">➕ Saisir personnalisé…</option>']).join('');
     niLocSelect.value='';
-    niLocCustomWrap && (niLocCustomWrap.hidden=true);
-    niLocCustom && (niLocCustom.value='');
-    niLocSelect.onchange=()=>{ if(niLocSelect.value==='__custom__'){ niLocCustomWrap.hidden=false; niLocCustom?.focus(); } else { niLocCustomWrap.hidden=true; } };
+    niLocCustomWrap.hidden=true; niLocCustom.value='';
+    niLocSelect.onchange=()=>{ if(niLocSelect.value==='__custom__'){ niLocCustomWrap.hidden=false; niLocCustom.focus(); } else niLocCustomWrap.hidden=true; };
   }
   if(niLocChips){
     niLocChips.innerHTML=(defaultsLocs||[]).map(l=>`<button type="button" class="chip" data-loc="${esc(l)}">${esc(l)}</button>`).join('');
@@ -325,183 +280,126 @@ async function openNewDialog(type){
       b.addEventListener('click',()=>{
         var val=b.getAttribute('data-loc')||'';
         var opt=niLocSelect?niLocSelect.querySelector('option[value="'+val.replace(/"/g,'&quot;')+'"]'):null;
-        if(niLocSelect && opt){ niLocSelect.value=val; niLocCustomWrap && (niLocCustomWrap.hidden=true); }
-        else { niLocSelect && (niLocSelect.value='__custom__'); niLocCustomWrap && (niLocCustomWrap.hidden=false); niLocCustom && (niLocCustom.value=val); niLocCustom?.focus(); }
+        if(niLocSelect && opt){ niLocSelect.value=val; niLocCustomWrap.hidden=true; }
+        else { niLocSelect.value='__custom__'; niLocCustomWrap.hidden=false; niLocCustom.value=val; niLocCustom.focus(); }
       });
     });
   }
   niTagChecks && (niTagChecks.innerHTML=(defaultsTags.length?defaultsTags:[]).map(t=>`<label class="chip"><input type="checkbox" value="${esc(t)}"> ${esc(t)}</label>`).join('') || '<span class="muted">Aucun tag prédéfini (Paramètres)</span>');
 
-  niName&&(niName.value=''); niRef&&(niRef.value=''); niCode&&(niCode.value=''); if(niCode){ niCode.readOnly=false; niCode.title=''; }
-  niQty&&(niQty.value='0'); niThr&&(niThr.value='0'); niTagsExtra&&(niTagsExtra.value=''); niLinks&&(niLinks.value='');
-  newItemDialog && newItemDialog.showModal && newItemDialog.showModal(); setTimeout(()=>niName?.focus(),0);
+  niName.value=''; niRef.value=''; niCode.value=''; niCode.readOnly=false; niQty.value='0'; niThr.value='0'; (niTagsExtra.value=''); niLinks.value='';
+  newItemDialog.showModal(); setTimeout(()=>niName.focus(),0);
 }
 $('#btnAddStock')?.addEventListener('click',()=>openNewDialog('stock'));
 $('#btnAddAtelier')?.addEventListener('click',()=>openNewDialog('atelier'));
+
 async function openEditDialog(code){
-  const it = await dbGet(code);
-  if(!it){ alert('Introuvable'); return; }
-  niMode = 'edit';
-  niOriginalCode = it.code;
+  const it=await dbGet(code); if(!it){ alert('Introuvable'); return; }
+  niMode='edit'; niOriginalCode=it.code;
+  niType.value=it.type||'stock'; niTitle.textContent='Éditer l’article';
+  niName.value=it.name||''; niRef.value=it.ref||it.code||''; niCode.value=it.code||''; niCode.readOnly=true;
+  niQty.value=String(it.qty|0); niThr.value=String(it.threshold|0);
 
-  niType && (niType.value = it.type || 'stock');
-  niTitle && (niTitle.textContent = 'Éditer l’article');
-  niName && (niName.value = it.name || '');
-  niRef && (niRef.value = it.ref || it.code || '');
-  niCode && (niCode.value = it.code || '');
-  if(niCode){ niCode.readOnly = true; niCode.title = 'Le code n’est pas modifiable en édition'; }
-
-  niQty && (niQty.value = String(it.qty|0));
-  niThr && (niThr.value = String(it.threshold|0));
-
-  const set = await dbGetSettings() || {};
-  const defaultsLocs = (it.type==='atelier' ? (set.defaultLocationsAtelier||[]) : (set.defaultLocationsStock||[]));
-  const defaultsTags = (it.type==='atelier' ? (set.defaultTagsAtelier||[]) : (set.defaultTagsStock||[]));
-
-  const items = await dbList();
-  const locsExisting = Array.from(new Set(items.map(i=>i.location).filter(Boolean))).sort();
-  const combined = Array.from(new Set([].concat(defaultsLocs, locsExisting))).filter(Boolean);
+  const set=await dbGetSettings()||{};
+  const defaultsLocs=(it.type==='atelier'?(set.defaultLocationsAtelier||[]):(set.defaultLocationsStock||[]));
+  const defaultsTags=(it.type==='atelier'?(set.defaultTagsAtelier||[]):(set.defaultTagsStock||[]));
+  const items=await dbList(); const locsExisting=Array.from(new Set(items.map(i=>i.location).filter(Boolean))).sort();
+  const combined=Array.from(new Set([].concat(defaultsLocs,locsExisting))).filter(Boolean);
   if(niLocSelect){
-    niLocSelect.innerHTML = ['<option value="">— Sélectionner —</option>']
+    niLocSelect.innerHTML=['<option value="">— Sélectionner —</option>']
       .concat(combined.map(l=>`<option value="${esc(l)}">${esc(l)}</option>`))
       .concat(['<option value="__custom__">➕ Saisir personnalisé…</option>']).join('');
-    if(it.location && combined.includes(it.location)) niLocSelect.value = it.location;
-    else if(it.location){ niLocSelect.value='__custom__'; niLocCustomWrap.hidden=false; niLocCustom && (niLocCustom.value=it.location); }
+    if(it.location && combined.includes(it.location)) niLocSelect.value=it.location;
+    else if(it.location){ niLocSelect.value='__custom__'; niLocCustomWrap.hidden=false; niLocCustom.value=it.location; }
+    else { niLocSelect.value=''; niLocCustomWrap.hidden=true; niLocCustom.value=''; }
   }
   if(niLocChips){
-    niLocChips.innerHTML = (defaultsLocs||[]).map(l=>`<button type="button" class="chip" data-loc="${esc(l)}">${esc(l)}</button>`).join('');
+    niLocChips.innerHTML=(defaultsLocs||[]).map(l=>`<button type="button" class="chip" data-loc="${esc(l)}">${esc(l)}</button>`).join('');
     niLocChips.querySelectorAll('button[data-loc]').forEach(b=>{
       b.addEventListener('click',()=>{
         const val=b.getAttribute('data-loc')||'';
         const opt=niLocSelect?niLocSelect.querySelector('option[value="'+val.replace(/"/g,'&quot;')+'"]'):null;
         if(niLocSelect && opt){ niLocSelect.value=val; niLocCustomWrap.hidden=true; }
-        else { niLocSelect && (niLocSelect.value='__custom__'); niLocCustomWrap.hidden=false; niLocCustom && (niLocCustom.value=val); }
+        else { niLocSelect.value='__custom__'; niLocCustomWrap.hidden=false; niLocCustom.value=val; }
       });
     });
   }
-
   if(niTagChecks){
-    niTagChecks.innerHTML = (defaultsTags||[]).map(t=>{
-      const checked = (it.tags||[]).includes(t) ? 'checked' : '';
-      return `<label class="chip"><input type="checkbox" value="${esc(t)}" ${checked}> ${esc(t)}</label>`;
-    }).join('') || '<span class="muted">Aucun tag prédéfini (Paramètres)</span>';
+    niTagChecks.innerHTML=(defaultsTags||[]).map(t=>`<label class="chip"><input type="checkbox" value="${esc(t)}" ${(it.tags||[]).includes(t)?'checked':''}> ${esc(t)}</label>`).join('') || '<span class="muted">Aucun tag prédéfini (Paramètres)</span>';
   }
-  if(niTagsExtra){
-    const extras = (it.tags||[]).filter(t => !(defaultsTags||[]).includes(t));
-    niTagsExtra.value = extras.join(', ');
-  }
+  niTagsExtra.value=((it.tags||[]).filter(t=>!(defaultsTags||[]).includes(t))).join(', ');
+  niLinks.value=(it.links||[]).join('\n');
 
-  niLinks && (niLinks.value = (it.links||[]).join('\n'));
-  newItemDialog && newItemDialog.showModal && newItemDialog.showModal();
+  newItemDialog.showModal();
 }
 async function openDuplicateDialog(code){
-  const it = await dbGet(code);
-  if(!it){ alert('Introuvable'); return; }
-  niMode = 'duplicate';
-  niOriginalCode = null;
-
-  niType && (niType.value = it.type || 'stock');
-  niTitle && (niTitle.textContent = 'Dupliquer l’article');
-  niName && (niName.value = it.name || '');
-  niRef && (niRef.value = it.ref || '');
-  if(niCode){
-    niCode.value = await generateCodeFromName(it.name || it.ref || it.code || '');
-    niCode.readOnly = false;
-    niCode.title = '';
-  }
-
-  niQty && (niQty.value = String(it.qty|0));
-  niThr && (niThr.value = String(it.threshold|0));
-
-  const set = await dbGetSettings() || {};
-  const defaultsLocs = (it.type==='atelier' ? (set.defaultLocationsAtelier||[]) : (set.defaultLocationsStock||[]));
-  const defaultsTags = (it.type==='atelier' ? (set.defaultTagsAtelier||[]) : (set.defaultTagsStock||[]));
-
-  const items = await dbList();
-  const locsExisting = Array.from(new Set(items.map(i=>i.location).filter(Boolean))).sort();
-  const combined = Array.from(new Set([].concat(defaultsLocs, locsExisting))).filter(Boolean);
+  const it=await dbGet(code); if(!it){ alert('Introuvable'); return; }
+  niMode='duplicate'; niOriginalCode=null;
+  niType.value=it.type||'stock'; niTitle.textContent='Dupliquer l’article';
+  niName.value=it.name||''; niRef.value=it.ref||''; niCode.value=await generateCodeFromName(it.name||it.ref||it.code||''); niCode.readOnly=false;
+  niQty.value=String(it.qty|0); niThr.value=String(it.threshold|0);
+  const set=await dbGetSettings()||{};
+  const defaultsLocs=(it.type==='atelier'?(set.defaultLocationsAtelier||[]):(set.defaultLocationsStock||[]));
+  const defaultsTags=(it.type==='atelier'?(set.defaultTagsAtelier||[]):(set.defaultTagsStock||[]));
+  const items=await dbList(); const locsExisting=Array.from(new Set(items.map(i=>i.location).filter(Boolean))).sort();
+  const combined=Array.from(new Set([].concat(defaultsLocs,locsExisting))).filter(Boolean);
   if(niLocSelect){
-    niLocSelect.innerHTML = ['<option value="">— Sélectionner —</option>']
+    niLocSelect.innerHTML=['<option value="">— Sélectionner —</option>']
       .concat(combined.map(l=>`<option value="${esc(l)}">${esc(l)}</option>`))
       .concat(['<option value="__custom__">➕ Saisir personnalisé…</option>']).join('');
-    if(it.location && combined.includes(it.location)) niLocSelect.value = it.location;
-    else if(it.location){ niLocSelect.value='__custom__'; niLocCustomWrap.hidden=false; niLocCustom && (niLocCustom.value=it.location); }
+    if(it.location && combined.includes(it.location)) niLocSelect.value=it.location;
+    else if(it.location){ niLocSelect.value='__custom__'; niLocCustomWrap.hidden=false; niLocCustom.value=it.location; }
   }
   if(niLocChips){
-    niLocChips.innerHTML = (defaultsLocs||[]).map(l=>`<button type="button" class="chip" data-loc="${esc(l)}">${esc(l)}</button>`).join('');
+    niLocChips.innerHTML=(defaultsLocs||[]).map(l=>`<button type="button" class="chip" data-loc="${esc(l)}">${esc(l)}</button>`).join('');
     niLocChips.querySelectorAll('button[data-loc]').forEach(b=>{
       b.addEventListener('click',()=>{
         const val=b.getAttribute('data-loc')||'';
         const opt=niLocSelect?niLocSelect.querySelector('option[value="'+val.replace(/"/g,'&quot;')+'"]'):null;
         if(niLocSelect && opt){ niLocSelect.value=val; niLocCustomWrap.hidden=true; }
-        else { niLocSelect && (niLocSelect.value='__custom__'); niLocCustomWrap.hidden=false; niLocCustom && (niLocCustom.value=val); }
+        else { niLocSelect.value='__custom__'; niLocCustomWrap.hidden=false; niLocCustom.value=val; }
       });
     });
   }
-
   if(niTagChecks){
-    niTagChecks.innerHTML = (defaultsTags||[]).map(t=>{
-      const checked = (it.tags||[]).includes(t) ? 'checked' : '';
-      return `<label class="chip"><input type="checkbox" value="${esc(t)}" ${checked}> ${esc(t)}</label>`;
-    }).join('') || '<span class="muted">Aucun tag prédéfini (Paramètres)</span>';
+    niTagChecks.innerHTML=(defaultsTags||[]).map(t=>`<label class="chip"><input type="checkbox" value="${esc(t)}" ${(it.tags||[]).includes(t)?'checked':''}> ${esc(t)}</label>`).join('') || '<span class="muted">Aucun tag prédéfini (Paramètres)</span>';
   }
-  if(niTagsExtra){
-    const extras = (it.tags||[]).filter(t => !(defaultsTags||[]).includes(t));
-    niTagsExtra.value = extras.join(', ');
-  }
-
-  niLinks && (niLinks.value = (it.links||[]).join('\n'));
-  newItemDialog && newItemDialog.showModal && newItemDialog.showModal();
+  niTagsExtra.value=((it.tags||[]).filter(t=>!(defaultsTags||[]).includes(t))).join(', ');
+  niLinks.value=(it.links||[]).join('\n');
+  newItemDialog.showModal();
 }
 $('#niSave')?.addEventListener('click', async e=>{
   e.preventDefault();
-
-  const type = (niType && niType.value === 'atelier') ? 'atelier' : 'stock';
-  const name = niName ? niName.value.trim() : '';
-  let   code = niCode ? niCode.value.trim() : '';
-  const ref  = niRef ? niRef.value.trim() : '';
+  const type=(niType.value==='atelier')?'atelier':'stock';
+  const name=niName.value.trim(); let code=niCode.value.trim(); const ref=niRef.value.trim();
   if(!name) return;
+  const qty=Math.max(0,parseInt(niQty.value||'0',10));
+  const threshold=Math.max(0,parseInt(niThr.value||'0',10));
+  const loc=(niLocSelect.value==='__custom__')?(niLocCustom.value.trim()):(niLocSelect.value.trim());
+  const checked=[]; niTagChecks?.querySelectorAll('input[type="checkbox"]:checked').forEach(cb=>checked.push(cb.value));
+  const extras=(niTagsExtra.value||'').split(',').map(t=>t.trim()).filter(Boolean);
+  const tags=Array.from(new Set([].concat(checked,extras)));
+  const links=(niLinks.value||'').split(/\n+/).map(s=>s.trim()).filter(Boolean);
 
-  const qty = Math.max(0, parseInt((niQty && niQty.value) || '0', 10));
-  const threshold = Math.max(0, parseInt((niThr && niThr.value) || '0', 10));
-
-  const loc = (function(){
-    const v = (niLocSelect && niLocSelect.value) || '';
-    return (v==='__custom__') ? ((niLocCustom && niLocCustom.value.trim()) || '') : (v.trim() || '');
-  })();
-
-  const checked=[]; niTagChecks && niTagChecks.querySelectorAll('input[type="checkbox"]:checked').forEach(cb=>checked.push(cb.value));
-  const extras=(niTagsExtra && niTagsExtra.value || '').split(',').map(t=>t.trim()).filter(Boolean);
-  const tags = Array.from(new Set([].concat(checked, extras)));
-  const links = (niLinks && niLinks.value || '').split(/\n+/).map(s=>s.trim()).filter(Boolean);
-
-  if(niMode === 'edit'){
-    const existing = await dbGet(niOriginalCode);
+  if(niMode==='edit'){
+    const existing=await dbGet(niOriginalCode);
     if(!existing){ alert('Article introuvable.'); return; }
-    const updated = { id: niOriginalCode, code: niOriginalCode, ref: (ref||undefined), name, qty, threshold, tags, location: loc, links, type, updated: Date.now() };
+    const updated={ id:niOriginalCode, code:niOriginalCode, ref:(ref||undefined), name, qty, threshold, tags, location:loc, links, type, updated:Date.now() };
     await dbPut(updated);
-    newItemDialog?.close(); announce('Modifications enregistrées'); await refreshTable(type); await refreshHome();
+    newItemDialog.close(); announce('Modifications enregistrées'); await refreshTable(type); await refreshHome();
     return;
   }
 
-  if(!code){
-    code = await generateCodeFromName(name);
-  } else {
-    code = normalizeCode(code);
-    if(!code){ alert('Code invalide (A-Z 0-9, max '+CODE_RULES.maxLen+').'); return; }
-    const hit = await getByCodeAnyCase(code);
-    if(hit){ alert('Ce code existe déjà : '+hit.code); return; }
-  }
+  if(!code){ code=await generateCodeFromName(name); }
+  else { code=normalizeCode(code); if(!code){ alert('Code invalide'); return; } if(await getByCodeAnyCase(code)){ alert('Ce code existe déjà.'); return; } }
 
-  await dbPut({ id: code, code, ref: (ref||undefined), name, qty, threshold, tags, location: loc, links, type, updated: Date.now() });
-  newItemDialog?.close();
-  announce(niMode==='duplicate' ? 'Copie créée' : 'Créé');
-  await refreshTable(type); await refreshHome();
+  await dbPut({ id:code, code, ref:(ref||undefined), name, qty, threshold, tags, location:loc, links, type, updated:Date.now() });
+  newItemDialog.close(); announce(niMode==='duplicate'?'Copie créée':'Créé'); await refreshTable(type); await refreshHome();
 });
 
-/* --- Étiquettes --- */
+/* LABELS */
 var LABEL_TEMPLATES={
-  'a4-3x8-63x34':{cols:3,rows:8,cellW:63.5,cellH:33.9,gapX:2.5,gapY:2.0,marginX:7.5,marginY:10.7}, // par défaut
+  'a4-3x8-63x34':{cols:3,rows:8,cellW:63.5,cellH:33.9,gapX:2.5,gapY:2.0,marginX:7.5,marginY:10.7},
   'avery-l7160':{cols:3,rows:7,cellW:63.5,cellH:38.1,gapX:2.5,gapY:0,marginX:7.5,marginY:12.0},
   'avery-l7163':{cols:2,rows:7,cellW:99.1,cellH:38.1,gapX:2.0,gapY:0,marginX:5.0,marginY:13.5},
   'avery-l7162':{cols:2,rows:8,cellW:99.1,cellH:33.9,gapX:2.0,gapY:2.0,marginX:5.0,marginY:10.7},
@@ -518,14 +416,25 @@ var labelSearch=$('#labelSearch'), labelsList=$('#labelsList'), lblSelInfo=$('#l
 
 function initLabelsPanel(){ if(!labelsInitDone){ bindLabelsUI(); labelsInitDone=true; } loadLabelsData().then(()=>{ rebuildLabelsList(); rebuildLabelsPreview(true); }); }
 async function loadLabelsData(){ labelsAllItems=await dbList(); if(labelsSelected.size===0){ labelsAllItems.forEach(i=>labelsSelected.add(i.code)); } }
-
 function bindLabelsUI(){
   labelSearch?.addEventListener('input',()=>rebuildLabelsList());
   btnLblAll?.addEventListener('click',()=>{ labelsAllItems.forEach(i=>labelsSelected.add(i.code)); rebuildLabelsList(); rebuildLabelsPreview(true); });
   btnLblNone?.addEventListener('click',()=>{ labelsSelected.clear(); rebuildLabelsList(); rebuildLabelsPreview(true); });
+
   if(lblTemplate){
-    var t=localStorage.getItem('gstock.lblTemplate');
-    if(!t){ t='a4-3x8-63x34'; localStorage.setItem('gstock.lblTemplate',t); }
+    const nameMap={
+      'a4-3x8-63x34':'A4 3×8 (63.5×33.9)',
+      'avery-l7160':'Avery L7160 (3×7 63.5×38.1)',
+      'avery-l7163':'Avery L7163 (2×7 99.1×38.1)',
+      'avery-l7162':'Avery L7162 (2×8 99.1×33.9)',
+      'avery-l7165':'Avery L7165 (2×4 99.1×67.7)',
+      'mm50x25':'Custom 50×25 (4×10)',
+      'mm70x35':'Custom 70×35 (3×8)'
+    };
+    lblTemplate.innerHTML = Object.entries(LABEL_TEMPLATES).map(([k,t])=>{
+      const label=nameMap[k]||`${k} (${t.cols}×${t.rows} ${t.cellW}×${t.cellH}mm)`; return `<option value="${k}">${label}</option>`;
+    }).join('');
+    let t=localStorage.getItem('gstock.lblTemplate'); if(!t || !LABEL_TEMPLATES[t]){ t='a4-3x8-63x34'; localStorage.setItem('gstock.lblTemplate',t); }
     lblTemplate.value=t;
     lblTemplate.addEventListener('change',()=>{ localStorage.setItem('gstock.lblTemplate', lblTemplate.value); rebuildLabelsPreview(true); });
   }
@@ -537,51 +446,30 @@ function bindLabelsUI(){
 
   btnLblPrev?.addEventListener('click',()=>{ if(lblPage>0){ lblPage--; updatePaginationDisplay(); } });
   btnLblNext?.addEventListener('click',()=>{ if(lblPage<lblPagesCount-1){ lblPage++; updatePaginationDisplay(); } });
-
-  // **Impression propre (fenêtre dédiée sans UI)**
   btnLabelsPrint?.addEventListener('click', printLabelsClean);
 }
-
 function updateLblSelInfo(){ lblSelInfo && (lblSelInfo.textContent=labelsSelected.size+' sélection(s)'); }
-function chunkArray(arr, size){ var out=[]; for(let i=0;i<arr.length;i+=size) out.push(arr.slice(i,i+size)); return out; }
+function chunkArray(arr,size){ var out=[]; for(let i=0;i<arr.length;i+=size) out.push(arr.slice(i,i+size)); return out; }
 function mm(n){ return n+'mm'; }
-
-function rebuildLabelsList(){
-  var q=(labelSearch&&labelSearch.value||'').toLowerCase();
-  if(labelsList){
-    labelsList.innerHTML = labelsAllItems.filter(i=>!q || [i.name,i.code,(i.tags||[]).join(' ')].join(' ').toLowerCase().includes(q))
-      .map(i=>`<div class="row"><label style="display:flex;align-items:center;gap:.5rem;flex:1"><input type="checkbox" class="lblRow" data-code="${esc(i.code)}" ${(labelsSelected.has(i.code)?'checked':'')}> <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.name)}</span></label><code>${esc(i.code)}</code></div>`).join('');
-    labelsList.querySelectorAll('.lblRow').forEach(cb=>{
-      cb.addEventListener('change',()=>{ var code=cb.dataset.code; if(cb.checked) labelsSelected.add(code); else labelsSelected.delete(code); updateLblSelInfo(); rebuildLabelsPreview(true); });
-    });
-  }
-  updateLblSelInfo();
-}
-
-/* ---- FABRICATION HTML DES PAGES D'ÉTIQUETTES (réutilisée pour preview et print) ---- */
 function renderLabelCardHTML(it, tmpl, module, namePt, showText){
-  // Texte
-  const name = `<div class="name" style="font-size:${namePt}pt;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.name)}</div>`;
-  const hr   = `<div class="hr" style="font-size:9pt;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.code)}</div>`;
-  // Barcode SVG (string) + contraintes
-  let svgStr = '<svg xmlns="http://www.w3.org/2000/svg"></svg>';
+  const name=`<div class="name" style="font-size:${namePt}pt;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.name)}</div>`;
+  const hr=`<div class="hr" style="font-size:9pt;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.code)}</div>`;
+  let svgStr='<svg xmlns="http://www.w3.org/2000/svg"></svg>';
   try{
     if(window.code39 && typeof window.code39.svg==='function'){
-      const svgEl = window.code39.svg(it.code, {module, height:52, margin:2, showText, fontSize:10});
+      const svgEl=window.code39.svg(it.code,{module,height:52,margin:2,showText,fontSize:10});
       svgEl.setAttribute('preserveAspectRatio','xMidYMid meet');
-      svgEl.setAttribute('width','100%');
-      svgEl.setAttribute('height','auto');
-      const maxHmm = Math.max(8,(tmpl.cellH - 12));
-      svgEl.style.maxHeight = maxHmm+'mm';
-      svgStr = new XMLSerializer().serializeToString(svgEl);
+      svgEl.setAttribute('width','100%'); svgEl.setAttribute('height','auto');
+      svgEl.style.maxHeight=Math.max(8,(tmpl.cellH-12))+'mm';
+      svgStr=new XMLSerializer().serializeToString(svgEl);
     }
   }catch(_){}
   return `<div class="label-card" style="box-sizing:border-box;padding:2mm 2mm 1mm 2mm;overflow:hidden">${name}${hr}${svgStr}</div>`;
 }
-function buildLabelsPagesHTML(items, tmpl, opts){
+function buildLabelsPagesHTML(items,tmpl,opts){
   const perPage=(tmpl.cols|0)*(tmpl.rows|0);
-  const pages=chunkArray(items, perPage);
-  const sheetStyle = [
+  const pages=chunkArray(items,perPage);
+  const sheetStyle=[
     `padding-left:${mm((tmpl.marginX||0)+(opts.offX||0))}`,
     `padding-top:${mm((tmpl.marginY||0)+(opts.offY||0))}`,
     `display:grid`,
@@ -590,25 +478,28 @@ function buildLabelsPagesHTML(items, tmpl, opts){
     `column-gap:${mm((tmpl.gapX||0))}`,
     `row-gap:${mm((tmpl.gapY||0))}`
   ].join(';');
-
   let html='';
-  pages.forEach((subset)=>{
-    let sheet = `<div class="labels-sheet" style="${sheetStyle}">`;
-    subset.forEach(it=>{
-      sheet += renderLabelCardHTML(it, tmpl, opts.module, opts.namePt, opts.showText);
-    });
-    // cases vides
-    for(let k=subset.length;k<perPage;k++){ sheet += `<div class="label-card" style="border:1px dashed transparent"></div>`; }
-    sheet += `</div>`;
-    html += `<div class="labels-page">${sheet}</div>`;
+  pages.forEach(sub=>{
+    let sheet=`<div class="labels-sheet" style="${sheetStyle}">`;
+    sub.forEach(it=>{ sheet+=renderLabelCardHTML(it,tmpl,opts.module,opts.namePt,opts.showText); });
+    for(let k=sub.length;k<perPage;k++){ sheet+=`<div class="label-card" style="border:1px dashed transparent"></div>`; }
+    sheet+=`</div>`;
+    html+=`<div class="labels-page">${sheet}</div>`;
   });
-  // aucune page ? on rend quand même une page vide
-  if(!pages.length){
-    html += `<div class="labels-page"><div class="labels-sheet" style="${sheetStyle}"></div></div>`;
-  }
+  if(!pages.length) html+=`<div class="labels-page"><div class="labels-sheet" style="${sheetStyle}"></div></div>`;
   return html;
 }
-
+function rebuildLabelsList(){
+  var q=(labelSearch&&labelSearch.value||'').toLowerCase();
+  if(labelsList){
+    labelsList.innerHTML=labelsAllItems.filter(i=>!q||[i.name,i.code,(i.tags||[]).join(' ')].join(' ').toLowerCase().includes(q))
+      .map(i=>`<div class="row"><label style="display:flex;align-items:center;gap:.5rem;flex:1"><input type="checkbox" class="lblRow" data-code="${esc(i.code)}" ${(labelsSelected.has(i.code)?'checked':'')}> <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.name)}</span></label><code>${esc(i.code)}</code></div>`).join('');
+    labelsList.querySelectorAll('.lblRow').forEach(cb=>{
+      cb.addEventListener('change',()=>{ var code=cb.dataset.code; if(cb.checked) labelsSelected.add(code); else labelsSelected.delete(code); updateLblSelInfo(); rebuildLabelsPreview(true); });
+    });
+  }
+  updateLblSelInfo();
+}
 function rebuildLabelsPreview(resetPage){
   var key=(lblTemplate&&lblTemplate.value)||'a4-3x8-63x34';
   var tmpl=LABEL_TEMPLATES[key]||LABEL_TEMPLATES['a4-3x8-63x34'];
@@ -619,18 +510,17 @@ function rebuildLabelsPreview(resetPage){
   var offY=parseFloat((lblOffsetY&&lblOffsetY.value)||'0')||0;
 
   var selectedItems=labelsAllItems.filter(i=>labelsSelected.has(i.code));
-  const pagesHTML = buildLabelsPagesHTML(selectedItems, tmpl, {module,namePt,showText,offX,offY});
-  if(labelsPages) labelsPages.innerHTML = pagesHTML;
+  const pagesHTML=buildLabelsPagesHTML(selectedItems,tmpl,{module,namePt,showText,offX,offY});
+  if(labelsPages) labelsPages.innerHTML=pagesHTML;
 
-  // pagination visuelle (une page active à l'écran)
   const perPage=(tmpl.cols|0)*(tmpl.rows|0);
-  const countPages = Math.max(1, Math.ceil(selectedItems.length / perPage));
+  const countPages=Math.max(1, Math.ceil(selectedItems.length/perPage));
   lblPagesCount=countPages;
   if(resetPage) lblPage=0;
   updatePaginationDisplay();
 }
 function updatePaginationDisplay(){
-  var pages=$$('.labels-page', labelsPages);
+  var pages=$$('.labels-page',labelsPages);
   pages.forEach((p,i)=>p.classList.toggle('active', i===lblPage));
   var info=$('#lblPageInfo'); info && (info.textContent='Page '+Math.min(lblPage+1,lblPagesCount)+' / '+lblPagesCount);
   var prev=$('#lblPrev'), next=$('#lblNext'), one=(lblPagesCount<=1);
@@ -638,8 +528,6 @@ function updatePaginationDisplay(){
   if(next){ next.disabled=(lblPage>=lblPagesCount-1); show(next,!one); }
   show(info,!one);
 }
-
-/* --- Impression propre dans une nouvelle fenêtre --- */
 function printLabelsClean(){
   try{
     var key=(lblTemplate&&lblTemplate.value)||'a4-3x8-63x34';
@@ -651,52 +539,27 @@ function printLabelsClean(){
     var offY=parseFloat((lblOffsetY&&lblOffsetY.value)||'0')||0;
     var selectedItems=labelsAllItems.filter(i=>labelsSelected.has(i.code));
 
-    const pagesHTML = buildLabelsPagesHTML(selectedItems, tmpl, {module,namePt,showText,offX,offY});
-
-    const css = `
-      @page { size: A4; margin: 0; }
-      html,body{ margin:0; padding:0; }
-      .labels-page { break-after: page; }
-      .labels-sheet { display:grid; }
-      .label-card { box-sizing:border-box; padding:2mm 2mm 1mm 2mm; overflow:hidden; }
-      .label-card .name { font-weight:600; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-      .label-card .hr   { font-size:9pt;  line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-      svg { width:100%; height:auto; }
-    `.replace(/\n\s+/g,' ');
-
-    const html = `<!doctype html>
-      <html>
-        <head><meta charset="utf-8"><title>Étiquettes</title><style>${css}</style></head>
-        <body>${pagesHTML}</body>
-      </html>`;
-
-    const w = window.open('', 'gstock_print', 'width=900,height=700');
-    if(!w){ alert('Pop-up bloquée : autorisez les fenêtres pour imprimer.'); return; }
-    w.document.open(); w.document.write(html); w.document.close();
-    w.focus();
-    // imprime quand la fenêtre est prête
-    setTimeout(()=>{ try{ w.print(); }catch(_){ } setTimeout(()=>{ try{ w.close(); }catch(_){ } }, 500); }, 200);
-  }catch(e){
-    console.warn('print error', e);
-    alert('Impossible de lancer l’impression propre. Essayez l’impression standard du navigateur.');
-    window.print();
-  }
+    const pagesHTML=buildLabelsPagesHTML(selectedItems,tmpl,{module,namePt,showText,offX,offY});
+    const css=`@page{size:A4;margin:0}html,body{margin:0;padding:0}.labels-page{break-after:page}.labels-sheet{display:grid}.label-card{box-sizing:border-box;padding:2mm 2mm 1mm 2mm;overflow:hidden}.label-card .name{font-weight:600;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.label-card .hr{font-size:9pt;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}svg{width:100%;height:auto}`;
+    const html=`<!doctype html><html><head><meta charset="utf-8"><title>Étiquettes</title><style>${css}</style></head><body>${pagesHTML}</body></html>`;
+    const w=window.open('','gstock_print','width=900,height=700'); if(!w){ alert('Pop-up bloquée'); return; }
+    w.document.open(); w.document.write(html); w.document.close(); w.focus(); setTimeout(()=>{ try{ w.print(); }catch(_){ } setTimeout(()=>{ try{ w.close(); }catch(_){ } }, 500); }, 200);
+  }catch(e){ console.warn('print error',e); alert('Impossible de lancer l’impression propre.'); window.print(); }
 }
 
-/* --- Journal --- */
+/* JOURNAL */
 var journalTbody=$('#journalTbody');
 $('#btnFilterJournal')?.addEventListener('click',refreshJournal);
 $('#btnExportCSV')?.addEventListener('click',async()=>{ var data=await dbExport('csv'); downloadFile('journal.csv',data,'text/csv'); });
 $('#btnExportJSON')?.addEventListener('click',async()=>{ var data=await dbExport('json'); downloadFile('journal.json',data,'application/json'); });
 async function refreshJournal(){
-  var from=($('#dateFrom') && $('#dateFrom').value) ? new Date($('#dateFrom').value).getTime() : 0;
-  var to=($('#dateTo') && $('#dateTo').value) ? (new Date($('#dateTo').value).getTime()+24*3600*1000) : Infinity;
+  var from=($('#dateFrom')&&$('#dateFrom').value)?new Date($('#dateFrom').value).getTime():0;
+  var to=($('#dateTo')&&$('#dateTo').value)?(new Date($('#dateTo').value).getTime()+24*3600*1000):Infinity;
   var list=await dbListMoves({from,to,limit:1000});
-  journalTbody.innerHTML = list.map(m=>`<tr><td>${new Date(m.ts).toLocaleString()}</td><td>${m.type}</td><td><code>${esc(m.code)}</code></td><td>${esc(m.name||'')}</td><td>${m.qty}</td><td>${esc(m.note||'')}</td></tr>`).join('')
-    || '<tr><td colspan="6" class="muted">Aucun mouvement</td></tr>';
+  journalTbody.innerHTML=list.map(m=>`<tr><td>${new Date(m.ts).toLocaleString()}</td><td>${m.type}</td><td><code>${esc(m.code)}</code></td><td>${esc(m.name||'')}</td><td>${m.qty}</td><td>${esc(m.note||'')}</td></tr>`).join('')||'<tr><td colspan="6" class="muted">Aucun mouvement</td></tr>';
 }
 
-/* --- Emprunts --- */
+/* LOANS */
 var loansTbody=$('#loansTbody');
 $('#btnNewLoan')?.addEventListener('click',async ()=>{
   var code=prompt('Code article ?'); if(!code) return;
@@ -709,12 +572,12 @@ $('#btnNewLoan')?.addEventListener('click',async ()=>{
 $('#searchLoans')?.addEventListener('input',refreshLoansTable);
 async function refreshLoansTable(){
   if(!loansTbody) return;
-  var q=($('#searchLoans') && $('#searchLoans').value || '').toLowerCase();
+  var q=($('#searchLoans')&&$('#searchLoans').value||'').toLowerCase();
   var loans=await dbListLoans(true);
-  loansTbody.innerHTML = loans.filter(l=>!q || [l.person,l.code,l.name].join(' ').toLowerCase().includes(q)).map(l=>{
-    var overdue = l.returnedAt ? false : (Date.now()>new Date(l.due).getTime());
+  loansTbody.innerHTML=loans.filter(l=>!q||[l.person,l.code,l.name].join(' ').toLowerCase().includes(q)).map(l=>{
+    var overdue=l.returnedAt?false:(Date.now()>new Date(l.due).getTime());
     return `<tr><td>${esc(l.name||'')}</td><td><code>${esc(l.code)}</code></td><td>${esc(l.person||'')}</td><td>${esc(l.due||'')}</td><td>${l.returnedAt?'<span class="badge low">Clos</span>':(overdue?'<span class="badge under">En retard</span>':'<span class="badge ok">Actif</span>')}</td><td>${l.returnedAt?'<span class="muted">—</span>':'<button class="btn" data-return="'+l.id+'">✅ Retour</button>'}</td></tr>`;
-  }).join('') || '<tr><td colspan="6" class="muted">Aucun emprunt</td></tr>';
+  }).join('')||'<tr><td colspan="6" class="muted">Aucun emprunt</td></tr>';
   loansTbody.querySelectorAll('button[data-return]').forEach(btn=>{
     btn.onclick=async()=>{ var id=btn.getAttribute('data-return'); await dbReturnLoan(id); announce('Matériel retourné'); await refreshLoansTable(); await refreshHome(); };
   });
@@ -723,33 +586,27 @@ async function refreshLoansTable(){
   if(sReturn){ sReturn.hidden=false; sReturn.disabled=!supported; if(!supported) sReturn.title='Scanner non supporté'; }
 }
 
-/* --- Paramètres --- */
-function makeSortable(listEl, onUpdate){
+/* SETTINGS */
+function makeSortable(listEl,onUpdate){
   var dragEl=null;
   listEl.addEventListener('dragstart',e=>{ var li=e.target.closest('li'); if(!li) return; dragEl=li; e.dataTransfer.effectAllowed='move'; try{ e.dataTransfer.setData('text/plain', li.dataset.value||''); }catch(_){ } li.style.opacity='0.5'; });
   listEl.addEventListener('dragend',()=>{ if(dragEl){ dragEl.style.opacity=''; dragEl=null; } });
-  listEl.addEventListener('dragover',e=>{ e.preventDefault(); var li=e.target.closest('li'); if(!li||li===dragEl) return; var rect=li.getBoundingClientRect(); var before=(e.clientY - rect.top) < rect.height/2; if(before) listEl.insertBefore(dragEl, li); else listEl.insertBefore(dragEl, li.nextSibling); });
+  listEl.addEventListener('dragover',e=>{ e.preventDefault(); var li=e.target.closest('li'); if(!li||li===dragEl) return; var rect=li.getBoundingClientRect(); var before=(e.clientY-rect.top)<rect.height/2; if(before) listEl.insertBefore(dragEl,li); else listEl.insertBefore(dragEl,li.nextSibling); });
   listEl.addEventListener('drop',e=>{ e.preventDefault(); typeof onUpdate==='function' && onUpdate(); });
 }
-function renderList(sel, items){
+function renderList(sel,items){
   var ul=$(sel); if(!ul) return;
   ul.innerHTML=(items||[]).map((v,i)=>`<li draggable="true" data-value="${esc(v)}"><span class="drag">≡</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(v)}</span><button class="btn" data-del="${i}">🗑️</button></li>`).join('');
   ul.querySelectorAll('button[data-del]').forEach(b=>b.addEventListener('click',()=>{ var idx=parseInt(b.getAttribute('data-del'),10)|0; items.splice(idx,1); renderList(sel,items); updateCounts(); }));
-  makeSortable(ul, updateCounts);
+  makeSortable(ul,updateCounts);
 }
 function valuesFromList(sel){ var ul=$(sel); if(!ul) return []; return Array.from(ul.querySelectorAll('li')).map(li=>li.dataset.value||li.textContent.trim()).filter(Boolean); }
-function attachAdd(inpSel, btnSel, listSel, items){
+function attachAdd(inpSel,btnSel,listSel,items){
   var input=$(inpSel), btn=$(btnSel);
   function add(){ var v=(input && input.value || '').trim(); if(!v) return; if(items.indexOf(v)>=0){ input.value=''; return; } items.push(v); renderList(listSel,items); input && (input.value=''); input?.focus(); updateCounts(); }
   btn?.addEventListener('click',add); input?.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); add(); } });
 }
-function updateCounts(){
-  var el;
-  (el=$('#countTagsStock')) && (el.textContent=String(valuesFromList('#listTagsStock').length));
-  (el=$('#countTagsAtelier')) && (el.textContent=String(valuesFromList('#listTagsAtelier').length));
-  (el=$('#countLocsStock')) && (el.textContent=String(valuesFromList('#listLocsStock').length));
-  (el=$('#countLocsAtelier')) && (el.textContent=String(valuesFromList('#listLocsAtelier').length));
-}
+function updateCounts(){ var el; (el=$('#countTagsStock'))&&(el.textContent=String(valuesFromList('#listTagsStock').length)); (el=$('#countTagsAtelier'))&&(el.textContent=String(valuesFromList('#listTagsAtelier').length)); (el=$('#countLocsStock'))&&(el.textContent=String(valuesFromList('#listLocsStock').length)); (el=$('#countLocsAtelier'))&&(el.textContent=String(valuesFromList('#listLocsAtelier').length)); }
 $('#btnExportFull')?.addEventListener('click',async()=>{ var blob=await dbExportFull(); downloadFile('gstock-export.json', JSON.stringify(blob,null,2),'application/json'); });
 $('#btnImportJSON')?.addEventListener('click',async()=>{
   try{
@@ -769,20 +626,16 @@ $('#btnResetCache')?.addEventListener('click',async()=>{
   try { await dbNuke(false); } catch(e){}
   try{ var regs=await (navigator.serviceWorker?.getRegistrations?.()||[]); await Promise.all(regs.map(r=>r.unregister())); }catch(e){}
   try{ var keys=await (window.caches?.keys?.()||[]); await Promise.all(keys.map(k=>caches.delete(k))); }catch(e){}
-  location.href = location.pathname + '?bust=' + Date.now();
+  location.href=location.pathname+'?bust='+Date.now();
 });
 function initSettingsPanel(){
-  (async ()=>{
+  (async()=>{
     var set=await dbGetSettings()||{};
     var tagsStock=(set.defaultTagsStock||[]).slice();
     var tagsAtelier=(set.defaultTagsAtelier||[]).slice();
     var locsStock=(set.defaultLocationsStock||[]).slice();
     var locsAtelier=(set.defaultLocationsAtelier||[]).slice();
-    renderList('#listTagsStock', tagsStock);
-    renderList('#listTagsAtelier', tagsAtelier);
-    renderList('#listLocsStock', locsStock);
-    renderList('#listLocsAtelier', locsAtelier);
-    updateCounts();
+    renderList('#listTagsStock',tagsStock); renderList('#listTagsAtelier',tagsAtelier); renderList('#listLocsStock',locsStock); renderList('#listLocsAtelier',locsAtelier); updateCounts();
     attachAdd('#addTagStock','#btnAddTagStock','#listTagsStock',tagsStock);
     attachAdd('#addTagAtelier','#btnAddTagAtelier','#listTagsAtelier',tagsAtelier);
     attachAdd('#addLocStock','#btnAddLocStock','#listLocsStock',locsStock);
@@ -793,53 +646,29 @@ function initSettingsPanel(){
     var apply=(en)=>{ window.GSTOCK_DEBUG=!!en; localStorage.setItem('gstock.debug',en?'1':'0'); window.dispatchEvent(new CustomEvent('gstock:debug-changed',{detail:{enabled:!!en}})); };
     if(chkDebug){ chkDebug.checked=(localStorage.getItem('gstock.debug')==='1'); apply(chkDebug.checked); chkDebug.addEventListener('change',e=>apply(e.target.checked)); }
 
-    $('#btnSaveSettings')?.addEventListener('click',async ()=>{
+    $('#btnSaveSettings')?.addEventListener('click',async()=>{
       var newSet={
         buffer:Math.max(0,parseInt(($('#inputBuffer')&&$('#inputBuffer').value)||'0',10)),
-        defaultTagsStock: valuesFromList('#listTagsStock'),
-        defaultTagsAtelier: valuesFromList('#listTagsAtelier'),
-        defaultLocationsStock: valuesFromList('#listLocsStock'),
-        defaultLocationsAtelier: valuesFromList('#listLocsAtelier')
+        defaultTagsStock:valuesFromList('#listTagsStock'),
+        defaultTagsAtelier:valuesFromList('#listTagsAtelier'),
+        defaultLocationsStock:valuesFromList('#listLocsStock'),
+        defaultLocationsAtelier:valuesFromList('#listLocsAtelier')
       };
-      await dbSaveSettings(Object.assign({}, set, newSet));
+      await dbSaveSettings(Object.assign({},set,newSet));
       announce('Paramètres enregistrés');
     });
   })();
 }
 
-/* --- Scanner articles --- */
+/* SCANNER */
 var videoEl=$('#scanVideo'), btnScanStart=$('#btnScanStart'), btnScanStop=$('#btnScanStop'), btnScanTorch=$('#btnScanTorch'), scanHint=$('#scanHint'), scanFallback=$('#scanFallback'), scanManual=$('#scanManual');
-var scanStream=null, scanTrack=null, scanDetector=null, scanLoopId=0, torchOn=false;
-var lastCode='', lastReadTs=0; var DUP_MS=1200;
+var scanStream=null, scanTrack=null, scanDetector=null, scanLoopId=0, torchOn=false; var lastCode='', lastReadTs=0; var DUP_MS=1200;
 var HAS_DETECTOR=('BarcodeDetector' in window);
-btnScanStop && (btnScanStop.hidden=true);
-btnScanTorch && (btnScanTorch.hidden=true);
+btnScanStop && (btnScanStop.hidden=true); btnScanTorch && (btnScanTorch.hidden=true);
 if(!HAS_DETECTOR){ show(scanFallback,true); scanHint && (scanHint.textContent='Scanner natif indisponible sur ce navigateur'); }
-$('#btnScanManual')?.addEventListener('click',async ()=>{
-  var raw=(scanManual&&scanManual.value.trim())||''; if(!raw) return;
-  var item=(await getByCodeAnyCase(raw));
-  if(item){ beepKnown(); await openAdjustDialog({code:item.code, type:'add'}); } else { alert('Code inconnu'); }
-});
-
-function beepKnown(ms,hz){
-  ms=ms||140; hz=hz||880;
-  try{
-    var AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
-    var ctx=new AC(), o=ctx.createOscillator(), g=ctx.createGain();
-    o.frequency.value=hz; o.type='sine'; o.connect(g); g.connect(ctx.destination); o.start();
-    g.gain.setValueAtTime(0.001, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime+0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+ms/1000);
-    setTimeout(()=>{ o.stop(); ctx.close(); }, ms+60);
-  }catch(_){}
-}
-async function ensureDetector(){
-  if(!('BarcodeDetector' in window)) throw new Error('BarcodeDetector non supporté');
-  var fmts=['ean_13','code_128','code_39','qr_code','ean_8','upc_a','upc_e','itf','codabar','pdf417'];
-  var supported=[]; try{ if(window.BarcodeDetector?.getSupportedFormats) supported=await window.BarcodeDetector.getSupportedFormats(); }catch(_){}
-  if(Array.isArray(supported) && supported.length) fmts=fmts.filter(f=>supported.indexOf(f)>=0);
-  scanDetector=new window.BarcodeDetector({formats:fmts});
-}
+$('#btnScanManual')?.addEventListener('click',async()=>{ var raw=(scanManual&&scanManual.value.trim())||''; if(!raw) return; var item=(await getByCodeAnyCase(raw)); if(item){ beepKnown(); await openAdjustDialog({code:item.code,type:'add'}); } else { alert('Code inconnu'); } });
+function beepKnown(ms,hz){ ms=ms||140; hz=hz||880; try{ var AC=window.AudioContext||window.webkitAudioContext; if(!AC) return; var ctx=new AC(), o=ctx.createOscillator(), g=ctx.createGain(); o.frequency.value=hz; o.type='sine'; o.connect(g); g.connect(ctx.destination); o.start(); g.gain.setValueAtTime(0.001, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime+0.02); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+ms/1000); setTimeout(()=>{ o.stop(); ctx.close(); }, ms+60); }catch(_){ } }
+async function ensureDetector(){ if(!('BarcodeDetector' in window)) throw new Error('BarcodeDetector non supporté'); var fmts=['ean_13','code_128','code_39','qr_code','ean_8','upc_a','upc_e','itf','codabar','pdf417']; var supported=[]; try{ if(window.BarcodeDetector?.getSupportedFormats) supported=await window.BarcodeDetector.getSupportedFormats(); }catch(_){ } if(Array.isArray(supported)&&supported.length) fmts=fmts.filter(f=>supported.indexOf(f)>=0); scanDetector=new window.BarcodeDetector({formats:fmts}); }
 async function startScan(){
   try{
     var constraints={ video:{ facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} }, audio:false };
@@ -847,66 +676,48 @@ async function startScan(){
     if(videoEl){ videoEl.srcObject=scanStream; await videoEl.play(); }
     scanTrack=scanStream.getVideoTracks()[0];
     var caps=(scanTrack?.getCapabilities?.())||{};
-    btnScanStart && (btnScanStart.hidden=true);
-    btnScanStop && (btnScanStop.hidden=false);
-    btnScanTorch && (btnScanTorch.hidden=!caps.torch, btnScanTorch.disabled=!caps.torch);
-    torchOn=false;
+    btnScanStart && (btnScanStart.hidden=true); btnScanStop && (btnScanStop.hidden=false);
+    btnScanTorch && (btnScanTorch.hidden=!caps.torch, btnScanTorch.disabled=!caps.torch); torchOn=false;
     await ensureDetector();
-    lastCode=''; lastReadTs=0; scanHint && (scanHint.textContent='Visez le code-barres...');
+    lastCode=''; lastReadTs=0; scanHint && (scanHint.textContent='Visez le code-barres…');
     runDetectLoop();
   }catch(err){
-    console.warn('startScan error', err);
+    console.warn('startScan error',err);
     scanHint && (scanHint.textContent=String(err).includes('BarcodeDetector')?'Détection non supportée. Utilisez la saisie manuelle.':'Accès caméra impossible (HTTPS/permissions).');
     if(!scanStream){ stopScan(); }
   }
 }
-function stopScan(){
-  if(scanLoopId){ cancelAnimationFrame(scanLoopId); scanLoopId=0; }
-  try{ videoEl?.pause(); }catch(_){}
-  if(scanTrack){ try{ scanTrack.stop(); }catch(_){ } scanTrack=null; }
-  if(scanStream){ try{ scanStream.getTracks().forEach(t=>t.stop()); }catch(_){ } scanStream=null; }
-  if(videoEl) videoEl.srcObject=null;
-  btnScanStart && (btnScanStart.hidden=false);
-  btnScanStop && (btnScanStop.hidden=true);
-  btnScanTorch && (btnScanTorch.hidden=true);
-  torchOn=false;
-}
+function stopScan(){ if(scanLoopId){ cancelAnimationFrame(scanLoopId); scanLoopId=0; } try{ videoEl?.pause(); }catch(_){ } if(scanTrack){ try{ scanTrack.stop(); }catch(_){ } scanTrack=null; } if(scanStream){ try{ scanStream.getTracks().forEach(t=>t.stop()); }catch(_){ } scanStream=null; } if(videoEl) videoEl.srcObject=null; btnScanStart && (btnScanStart.hidden=false); btnScanStop && (btnScanStop.hidden=true); btnScanTorch && (btnScanTorch.hidden=true); torchOn=false; }
 async function runDetectLoop(){
   var step=async()=>{
-    if(!scanDetector || !videoEl || !scanStream) return;
+    if(!scanDetector||!videoEl||!scanStream) return;
     try{
       var codes=await scanDetector.detect(videoEl);
-      if(Array.isArray(codes) && codes.length){
+      if(Array.isArray(codes)&&codes.length){
         var raw=(codes[0].rawValue||'').trim(); var now=Date.now();
         if(raw && (raw!==lastCode || (now-lastReadTs)>DUP_MS)){
           lastCode=raw; lastReadTs=now;
           var item=(await getByCodeAnyCase(raw));
-          if(item){ beepKnown(); stopScan(); await openAdjustDialog({code:item.code, type:'add'}); return; }
-          else{ scanHint && (scanHint.textContent='Code inconnu : '+raw+' — on continue...'); }
+          if(item){ beepKnown(); stopScan(); await openAdjustDialog({code:item.code,type:'add'}); return; }
+          else{ scanHint && (scanHint.textContent='Code inconnu : '+raw+' — on continue…'); }
         }
       }
-    }catch(err){ if(window.GSTOCK_DEBUG) console.debug('detect error', err); }
+    }catch(err){ if(window.GSTOCK_DEBUG) console.debug('detect error',err); }
     scanLoopId=requestAnimationFrame(step);
   };
   scanLoopId=requestAnimationFrame(step);
 }
 $('#btnScanStart')?.addEventListener('click',startScan);
 $('#btnScanStop')?.addEventListener('click',stopScan);
-$('#btnScanTorch')?.addEventListener('click',async ()=>{
-  if(!scanTrack) return; var caps=(scanTrack?.getCapabilities?.())||{}; if(!caps.torch) return;
-  torchOn=!torchOn; try{ await scanTrack.applyConstraints({advanced:[{torch:torchOn}]}); }catch(e){ torchOn=false; }
-});
+$('#btnScanTorch')?.addEventListener('click',async()=>{ if(!scanTrack) return; var caps=(scanTrack?.getCapabilities?.())||{}; if(!caps.torch) return; var on=!torchOn; try{ await scanTrack.applyConstraints({advanced:[{torch:on}]}); torchOn=on; }catch(_){ torchOn=false; } });
 
-/* --- Scan emprunt/retour --- */
+/* LOAN SCAN */
 var loanDlg=$('#loanScanDialog'), loanVideo=$('#loanVideo'), loanScanTitle=$('#loanScanTitle'), loanScanHint=$('#loanScanHint'), btnLoanTorch=$('#btnLoanTorch'), btnLoanStop=$('#btnLoanStop');
 var loanStream=null, loanTrack=null, loanLoop=0, loanMode='borrow';
 $('#btnScanBorrow')?.addEventListener('click',()=>startLoanScan('borrow'));
 $('#btnScanReturn')?.addEventListener('click',()=>startLoanScan('return'));
 btnLoanStop?.addEventListener('click',stopLoanScan);
-btnLoanTorch?.addEventListener('click',async ()=>{
-  if(!loanTrack) return; var caps=(loanTrack?.getCapabilities?.())||{}; if(!caps.torch) return;
-  var on=!loanTrack._torchOn; try{ await loanTrack.applyConstraints({advanced:[{torch:on}]}); loanTrack._torchOn=on; }catch(_){ loanTrack._torchOn=false; }
-});
+btnLoanTorch?.addEventListener('click',async()=>{ if(!loanTrack) return; var caps=(loanTrack?.getCapabilities?.())||{}; if(!caps.torch) return; var on=!loanTrack._torchOn; try{ await loanTrack.applyConstraints({advanced:[{torch:on}]}); loanTrack._torchOn=on; }catch(_){ loanTrack._torchOn=false; } });
 async function startLoanScan(mode){
   loanMode=mode||'borrow'; loanScanTitle && (loanScanTitle.textContent=(loanMode==='borrow'?'Scanner un emprunt':'Scanner un retour'));
   try{
@@ -916,24 +727,18 @@ async function startLoanScan(mode){
     loanTrack=loanStream.getVideoTracks()[0];
     var caps=(loanTrack?.getCapabilities?.())||{}; btnLoanTorch && (btnLoanTorch.disabled=!caps.torch); loanTrack._torchOn=false;
     await ensureDetector();
-    loanScanHint && (loanScanHint.textContent='Visez le code-barres...');
+    loanScanHint && (loanScanHint.textContent='Visez le code-barres…');
     loanDlg && loanDlg.showModal && loanDlg.showModal();
     runLoanLoop();
-  }catch(err){ console.warn('loan scan error', err); alert('Caméra ou détection indisponible. Utilisez la saisie manuelle sur la fiche.'); }
+  }catch(err){ console.warn('loan scan error',err); alert('Caméra/détection indisponible. Utilisez la saisie manuelle.'); }
 }
-function stopLoanScan(){
-  if(loanLoop){ cancelAnimationFrame(loanLoop); loanLoop=0; }
-  try{ loanVideo?.pause(); }catch(_){}
-  if(loanTrack){ try{ loanTrack.stop(); }catch(_){ } loanTrack=null; }
-  if(loanStream){ try{ loanStream.getTracks().forEach(t=>t.stop()); }catch(_){ } loanStream=null; }
-  if(loanVideo) loanVideo.srcObject=null; try{ loanDlg?.close(); }catch(_){}
-}
+function stopLoanScan(){ if(loanLoop){ cancelAnimationFrame(loanLoop); loanLoop=0; } try{ loanVideo?.pause(); }catch(_){ } if(loanTrack){ try{ loanTrack.stop(); }catch(_){ } loanTrack=null; } if(loanStream){ try{ loanStream.getTracks().forEach(t=>t.stop()); }catch(_){ } loanStream=null; } if(loanVideo) loanVideo.srcObject=null; try{ loanDlg?.close(); }catch(_){ } }
 async function runLoanLoop(){
   var step=async()=>{
-    if(!scanDetector || !loanVideo || !loanStream) return;
+    if(!scanDetector||!loanVideo||!loanStream) return;
     try{
       var codes=await scanDetector.detect(loanVideo);
-      if(Array.isArray(codes) && codes.length){
+      if(Array.isArray(codes)&&codes.length){
         var raw=(codes[0].rawValue||'').trim();
         if(raw){
           var it=(await getByCodeAnyCase(raw));
@@ -944,63 +749,46 @@ async function runLoanLoop(){
             var loans=await dbListLoans(true);
             var active=loans.find(l=>l.code===it.code && !l.returnedAt);
             if(active){ await dbReturnLoan(active.id); announce('Retour enregistré • '+it.name); await refreshLoansTable(); await refreshHome(); stopLoanScan(); return; }
-            loanScanHint && (loanScanHint.textContent='Aucun prêt actif pour ce code — on continue...');
+            loanScanHint && (loanScanHint.textContent='Aucun prêt actif pour ce code — on continue…');
           }
         }
       }
-    }catch(err){ if(window.GSTOCK_DEBUG) console.debug('loan detect err', err); }
+    }catch(err){ if(window.GSTOCK_DEBUG) console.debug('loan detect err',err); }
     loanLoop=requestAnimationFrame(step);
   };
   loanLoop=requestAnimationFrame(step);
 }
 var borrowDlg=$('#borrowDialog'), borrowItem=$('#borrowItem'), brwPerson=$('#brwPerson'), brwDue=$('#brwDue'), brwNote=$('#brwNote'), brwCreate=$('#brwCreate');
 var borrowCurrent=null;
-function openBorrowDialog(item){
-  borrowCurrent=item; borrowItem && (borrowItem.textContent=item.name+' ('+(item.ref||item.code)+')');
-  brwPerson&&(brwPerson.value=''); brwDue&&(brwDue.value=''); brwNote&&(brwNote.value='');
-  borrowDlg && borrowDlg.showModal && borrowDlg.showModal();
-}
+function openBorrowDialog(item){ borrowCurrent=item; borrowItem && (borrowItem.textContent=item.name+' ('+(item.ref||item.code)+')'); brwPerson.value=''; brwDue.value=''; brwNote.value=''; borrowDlg.showModal(); }
 brwCreate?.addEventListener('click',async e=>{
-  e.preventDefault(); if(!borrowCurrent){ borrowDlg?.close(); return; }
-  var person=(brwPerson&&brwPerson.value.trim())||''; var due=(brwDue&&brwDue.value)||''; var note=(brwNote&&brwNote.value)||'';
-  if(!person||!due){ alert('Emprunteur et date de retour requis.'); return; }
+  e.preventDefault(); if(!borrowCurrent){ borrowDlg.close(); return; }
+  var person=(brwPerson.value||'').trim(); var due=(brwDue.value||''); var note=(brwNote.value||'');
+  if(!person||!due){ alert('Emprunteur et date requis.'); return; }
   await dbCreateLoan({code:borrowCurrent.code,name:borrowCurrent.name,person,due,note});
-  announce('Prêt créé'); borrowDlg?.close(); await refreshLoansTable(); await refreshHome();
+  announce('Prêt créé'); borrowDlg.close(); await refreshLoansTable(); await refreshHome();
 });
 
-/* --- INIT --- */
+/* INIT */
 (async function init(){
   $('#appVersion') && ($('#appVersion').textContent=window.APP_VERSION||'');
-  try {
-    if (typeof window.dbInit !== 'function') throw new Error('db.js non chargé');
-    await dbInit(); // IDB ou fallback LS
-  } catch (e) {
-    console.error('Init DB error (verbose):', { name: e && e.name, message: e && e.message, stack: e && e.stack }, e);
-    const msg = String((e && (e.message || e.name)) || 'Unknown');
-    if ((e && (e.name === 'UnknownError' || e.name === 'InvalidStateError' || e.name === 'QuotaExceededError')) || /Internal error/i.test(msg)) {
-      const ok = confirm('Le stockage local semble corrompu/bloqué.\nLancer la réparation ?\n(La base locale sera réinitialisée)');
-      if (ok) {
-        try { await (window.dbNuke ? window.dbNuke(false) : Promise.resolve()); } catch(_) {}
-        try {
-          if ('caches' in window) { const ks = await caches.keys(); await Promise.all(ks.map(k=>caches.delete(k))); }
-          if (navigator.serviceWorker?.getRegistrations) { const regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map(r=>r.unregister())); }
-        } catch(_) {}
-        location.href = location.pathname + '?bust=' + Date.now();
-        return;
+  try{
+    if(typeof window.dbInit!=='function') throw new Error('db.js non chargé');
+    await dbInit();
+  }catch(e){
+    console.error('Init DB error (verbose):',e);
+    const msg=String((e&&(e.message||e.name))||'Unknown');
+    if((e && (e.name==='UnknownError'||e.name==='InvalidStateError'||e.name==='QuotaExceededError'))||/Internal error/i.test(msg)){
+      const ok=confirm('Le stockage local semble corrompu/bloqué.\nLancer la réparation ?\n(La base locale sera réinitialisée)');
+      if(ok){
+        try{ await (window.dbNuke?window.dbNuke(false):Promise.resolve()); }catch(_){}
+        try{ if('caches' in window){ const ks=await caches.keys(); await Promise.all(ks.map(k=>caches.delete(k))); } if(navigator.serviceWorker?.getRegistrations){ const regs=await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map(r=>r.unregister())); } }catch(_){}
+        location.href=location.pathname+'?bust='+Date.now(); return;
       }
     }
-    if (e && (e.name === 'SecurityError' || e.name === 'NotAllowedError')) {
-      alert('IndexedDB est bloqué (navigation privée / politique). Fallback mémoire activé.');
-    }
-    if (!window.dbInit) {
-      alert('db.js non chargé (cache SW ?). Rechargement.');
-      location.href = location.pathname + '?bust=' + Date.now();
-      return;
-    }
+    if(e && (e.name==='SecurityError'||e.name==='NotAllowedError')){ alert('IndexedDB bloqué. Fallback mémoire activé.'); }
+    if(!window.dbInit){ alert('db.js non chargé (cache SW ?). Rechargement.'); location.href=location.pathname+'?bust='+Date.now(); return; }
   }
-
-  await refreshHome();
-  showTab('home');
-  await refreshLoansTable();
+  await refreshHome(); showTab('home'); await refreshLoansTable();
 })();
 })();

@@ -1,89 +1,79 @@
 <!doctype html>
 <html lang="fr" data-theme="auto">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#111827">
-  <title>Gstock – Gestion de stock</title>
-
-  <!-- Favicon inline (évite 404) 
- <link rel="icon" href="data:icons/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23111827'/%3E%3Ctext x='7' y='22' font-size='16' fill='%23fff'%3EG%3C/text%3E%3C/svg%3E">
--->
-  <!-- PWA -->
-  <link rel="manifest" href="manifest.json?v=2.9.0">
-
-  <!-- Styles -->
-  <link rel="stylesheet" href="css/styles.css?v=2.9.0">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0d9488" />
+  <title>Gstock v2.9.3</title>
+  <link rel="manifest" href="manifest.json?v=2.9.3">
+  <link rel="icon" href="icons/icon-192.png" sizes="192x192">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/styles.css?v=2.9.3" />
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <span class="logo">📦</span>
-      <strong>Gstock</strong>
-      <small class="muted">v<span id="appVersion">2.9.0</span></small>
+      <strong>Gstock</strong> <span class="muted">v<span id="appVersion"></span></span>
     </div>
-    <div class="grow"></div>
-    <div class="theme">
-      <label for="themeToggle" class="muted">Thème</label>
-      <select id="themeToggle" title="Thème">
-        <option value="auto">Auto</option>
-        <option value="light">Clair</option>
-        <option value="dark">Sombre</option>
-      </select>
+    <nav>
+      <button data-tab="home"    title="Accueil">🏠</button>
+      <button data-tab="stock"   title="Articles (Stock)">📦</button>
+      <button data-tab="atelier" title="Matériel (Atelier)">🛠️</button>
+      <button data-tab="scanner" title="Scanner">📷</button>
+      <button data-tab="labels"  title="Étiquettes">🏷️</button>
+      <button data-tab="journal" title="Journal">🧾</button>
+      <button data-tab="gear"    title="Emprunts">🤝</button>
+      <button data-tab="settings" title="Paramètres">⚙️</button>
+    </nav>
+    <div class="tools">
+      <label class="theme">
+        Thème
+        <select id="themeToggle">
+          <option value="auto">Auto</option>
+          <option value="light">Clair</option>
+          <option value="dark">Sombre</option>
+        </select>
+      </label>
     </div>
   </header>
 
-  <nav class="tabs">
-    <button data-tab="home"    title="Accueil">🏠 Accueil</button>
-    <button data-tab="stock"   title="Stock">📋 Stock</button>
-    <button data-tab="atelier" title="Atelier">🛠️ Atelier</button>
-    <button data-tab="scanner" title="Scanner">📷 Scanner</button>
-    <button data-tab="labels"  title="Étiquettes">🏷️ Étiquettes</button>
-    <button data-tab="journal" title="Journal">🧾 Journal</button>
-    <button data-tab="gear"    title="Emprunts">📇 Emprunts</button>
-    <button data-tab="settings"title="Paramètres">⚙️ Paramètres</button>
-  </nav>
-
   <main>
     <!-- ACCUEIL -->
-    <section id="tab-home" hidden>
-      <h2>Tableau de bord</h2>
+    <section id="tab-home" class="tab">
+      <h1>Accueil</h1>
       <div class="kpis">
-        <div class="kpi"><div class="kpi-num" id="kpiItems">0</div><div class="kpi-label">Articles</div></div>
-        <div class="kpi"><div class="kpi-num" id="kpiQty">0</div><div class="kpi-label">Quantité totale</div></div>
-        <div class="kpi"><div class="kpi-num warn" id="kpiLow">0</div><div class="kpi-label">Approche</div></div>
-        <div class="kpi"><div class="kpi-num danger" id="kpiUnder">0</div><div class="kpi-label">Sous seuil</div></div>
-        <div class="kpi"><div class="kpi-num" id="kpiLoansActive">0</div><div class="kpi-label">Emprunts actifs</div></div>
-        <div class="kpi"><div class="kpi-num danger" id="kpiLoansOverdue">0</div><div class="kpi-label">Retards</div></div>
+        <div class="kpi"><div class="kpi-title">Articles</div><div id="kpiItems" class="kpi-value">0</div></div>
+        <div class="kpi"><div class="kpi-title">Qté totale</div><div id="kpiQty" class="kpi-value">0</div></div>
+        <div class="kpi warn"><div class="kpi-title">Sous seuil</div><div id="kpiUnder" class="kpi-value">0</div></div>
+        <div class="kpi low"><div class="kpi-title">Approche</div><div id="kpiLow" class="kpi-value">0</div></div>
+        <div class="kpi"><div class="kpi-title">Emprunts actifs</div><div id="kpiLoansActive" class="kpi-value">0</div></div>
+        <div class="kpi warn"><div class="kpi-title">Retards</div><div id="kpiLoansOverdue" class="kpi-value">0</div></div>
       </div>
-
-      <h3>Derniers mouvements</h3>
-      <ul id="recentMoves" class="list"></ul>
+      <h2>Derniers mouvements</h2>
+      <ul id="recentMoves" class="list slim"></ul>
     </section>
 
     <!-- STOCK -->
-    <section id="tab-stock" hidden>
-      <div class="panel-head">
-        <h2>Stock</h2>
-        <div class="panel-actions">
-          <input id="stockSearch" type="search" placeholder="Rechercher (nom, ref, code, tag, lien…)">
-          <select id="stockStatus" title="Filtrer par statut">
-            <option value="">Tous statuts</option>
-            <option value="ok">OK</option>
-            <option value="low">Approche</option>
-            <option value="under">Sous seuil</option>
-          </select>
-          <select id="stockTag" title="Filtrer par tag"></select>
-          <select id="stockLoc" title="Filtrer par emplacement"></select>
-          <button id="stockClear" class="btn">♻️ Effacer filtres</button>
-          <button id="btnAddStock" class="btn primary">➕ Nouvel article</button>
-        </div>
+    <section id="tab-stock" class="tab" hidden>
+      <h1>Articles (Stock)</h1>
+      <div class="toolbar">
+        <input id="stockSearch" placeholder="Rechercher nom/code/tags…" />
+        <select id="stockStatus">
+          <option value="">Tous statuts</option>
+          <option value="ok">OK</option>
+          <option value="low">Approche</option>
+          <option value="under">Sous seuil/Épuisé</option>
+        </select>
+        <select id="stockTag"><option value="">Tous tags</option></select>
+        <select id="stockLoc"><option value="">Tous emplacements</option></select>
+        <button id="stockClear" class="ghost">✖️</button>
+        <button id="btnAddStock">➕ Nouvel article</button>
       </div>
       <div class="table-wrap">
-        <table class="table">
+        <table class="grid">
           <thead>
             <tr>
-              <th>Designation</th>
+              <th>Désignation</th>
               <th>Référence</th>
               <th>Codebarre</th>
               <th>Quantité</th>
@@ -100,36 +90,27 @@
     </section>
 
     <!-- ATELIER -->
-    <section id="tab-atelier" hidden>
-      <div class="panel-head">
-        <h2>Atelier</h2>
-        <div class="panel-actions">
-          <input id="atelierSearch" type="search" placeholder="Rechercher (nom, ref, code, tag, lien…)">
-          <select id="atelierStatus">
-            <option value="">Tous statuts</option>
-            <option value="ok">OK</option>
-            <option value="low">Approche</option>
-            <option value="under">Sous seuil</option>
-          </select>
-          <select id="atelierTag"></select>
-          <select id="atelierLoc"></select>
-          <button id="atelierClear" class="btn">♻️ Effacer filtres</button>
-          <button id="btnAddAtelier" class="btn primary">➕ Nouveau matériel</button>
-        </div>
+    <section id="tab-atelier" class="tab" hidden>
+      <h1>Matériel (Atelier)</h1>
+      <div class="toolbar">
+        <input id="atelierSearch" placeholder="Rechercher…" />
+        <select id="atelierStatus">
+          <option value="">Tous statuts</option>
+          <option value="ok">OK</option>
+          <option value="low">Approche</option>
+          <option value="under">Sous seuil/Épuisé</option>
+        </select>
+        <select id="atelierTag"><option value="">Tous tags</option></select>
+        <select id="atelierLoc"><option value="">Tous emplacements</option></select>
+        <button id="atelierClear" class="ghost">✖️</button>
+        <button id="btnAddAtelier">➕ Nouveau matériel</button>
       </div>
       <div class="table-wrap">
-        <table class="table">
+        <table class="grid">
           <thead>
             <tr>
-              <th>Designation</th>
-              <th>Référence</th>
-              <th>Codebarre</th>
-              <th>Quantité</th>
-              <th>Seuil</th>
-              <th>Tags</th>
-              <th>Emplacement</th>
-              <th>Liens</th>
-              <th>Actions</th>
+              <th>Désignation</th><th>Référence</th><th>Codebarre</th><th>Quantité</th>
+              <th>Seuil</th><th>Tags</th><th>Emplacement</th><th>Liens</th><th>Actions</th>
             </tr>
           </thead>
           <tbody id="atelierTbody"></tbody>
@@ -138,108 +119,75 @@
     </section>
 
     <!-- SCANNER -->
-    <section id="tab-scanner" hidden>
-      <h2>Scanner un article</h2>
-      <div class="scanner">
-        <video id="scanVideo" playsinline></video>
-        <div class="scan-actions">
-          <button id="btnScanStart" class="btn primary">▶️ Démarrer</button>
-          <button id="btnScanStop" class="btn">⏹️ Stop</button>
-          <button id="btnScanTorch" class="btn">🔦 Lampe</button>
+    <section id="tab-scanner" class="tab" hidden>
+      <h1>Scanner</h1>
+      <div class="scan-wrap">
+        <video id="scanVideo" playsinline muted></video>
+        <div class="scan-controls">
+          <button id="btnScanStart">▶️ Démarrer</button>
+          <button id="btnScanStop" hidden>⏹️ Arrêter</button>
+          <button id="btnScanTorch" hidden>🔦 Lampe</button>
         </div>
-        <p id="scanHint" class="muted"></p>
-
-        <!-- Fallback si pas de BarcodeDetector -->
-        <div id="scanFallback" class="scan-fallback" hidden>
-          <div class="inline">
-            <input id="scanManual" placeholder="Saisir / coller un code-barres">
-            <button id="btnScanManual" class="btn">Valider</button>
-          </div>
-          <p class="muted">Scanner natif indisponible sur ce navigateur. Utilisez la saisie ci-dessus.</p>
+        <div id="scanHint" class="muted">Autorisez la caméra pour scanner.</div>
+        <div id="scanFallback" class="fallback" hidden>
+          <input id="scanManual" placeholder="Saisir un code…" />
+          <button id="btnScanManual">Valider</button>
         </div>
       </div>
     </section>
 
-    <!-- ÉTIQUETTES -->
-    <section id="tab-labels" hidden>
-      <h2>Étiquettes</h2>
-      <div class="labels-grid">
-        <aside class="labels-left">
-          <div class="form-row">
-            <input id="labelSearch" type="search" placeholder="Filtrer par nom, code, tag…">
-            <div class="btns">
-              <button id="lblAll" class="btn">Tout</button>
-              <button id="lblNone" class="btn">Aucun</button>
-            </div>
+    <!-- ETIQUETTES -->
+    <section id="tab-labels" class="tab" hidden>
+      <h1>Étiquettes</h1>
+      <div class="labels-config">
+        <div class="left">
+          <div class="toolbar">
+            <label>Modèle :
+              <select id="lblTemplate"></select>
+            </label>
+            <label>Densité :
+              <input id="lblDensity" type="number" min="1" max="4" step="0.1" value="2" />
+            </label>
+            <label>Taille nom :
+              <input id="lblNameSize" type="number" min="8" max="18" step="1" value="11" />
+            </label>
+            <label><input id="lblShowText" type="checkbox" /> Texte sous code-barres</label>
+            <label>Offset X (mm) <input id="lblOffsetX" type="number" step="0.5" value="0"></label>
+            <label>Offset Y (mm) <input id="lblOffsetY" type="number" step="0.5" value="0"></label>
           </div>
-
-          <div class="form-row">
-            <label>Modèle</label>
-            <select id="lblTemplate">
-              <option value="avery-l7160">Avery L7160 (3×7)</option>
-              <option value="avery-l7159">Avery L7159 (3×7)</option>
-              <option value="avery-l7163">Avery L7163 (2×7)</option>
-              <option value="avery-l7162">Avery L7162 (2×8)</option>
-              <option value="avery-l7165">Avery L7165 (2×4)</option>
-              <option value="mm50x25">50×25 mm (4×10)</option>
-              <option value="mm70x35">70×35 mm (3×8)</option>
-            </select>
+          <div class="toolbar">
+            <input id="labelSearch" placeholder="Filtrer la liste…" />
+            <span id="lblSelInfo" class="muted">0 sélection(s)</span>
+            <button id="lblAll" class="ghost">Tout</button>
+            <button id="lblNone" class="ghost">Aucun</button>
+            <button id="btnLabelsPrint">🖨️ Imprimer</button>
           </div>
-
-          <div class="form-grid-2">
-            <label>Épaisseur barres (px/mm)
-              <input id="lblDensity" type="number" step="0.1" min="0.6" value="2">
-            </label>
-            <label>Taille nom (pt)
-              <input id="lblNameSize" type="number" min="8" value="11">
-            </label>
-            <label>Afficher le texte
-              <input id="lblShowText" type="checkbox">
-            </label>
-            <div></div>
-            <label>Décalage X (mm)
-              <input id="lblOffsetX" type="number" step="0.1" value="0">
-            </label>
-            <label>Décalage Y (mm)
-              <input id="lblOffsetY" type="number" step="0.1" value="0">
-            </label>
-          </div>
-
-          <p class="muted"><span id="lblSelInfo">0 sélection</span></p>
           <div id="labelsList" class="list scroll"></div>
-
-          <div class="print-actions">
-            <button id="btnLabelsPrint" class="btn primary">🖨️ Imprimer ces étiquettes</button>
-          </div>
-        </aside>
-
-        <div class="labels-right">
-          <div class="labels-preview">
-            <div class="labels-pages" id="labelsPages"></div>
-          </div>
-          <div class="pager">
-            <button id="lblPrev" class="btn">◀</button>
+        </div>
+        <div class="right">
+          <div class="preview-head">
+            <button id="lblPrev" class="ghost">◀</button>
             <span id="lblPageInfo" class="muted"></span>
-            <button id="lblNext" class="btn">▶</button>
+            <button id="lblNext" class="ghost">▶</button>
           </div>
+          <div id="labelsPages" class="labels-pages"></div>
         </div>
       </div>
     </section>
 
     <!-- JOURNAL -->
-    <section id="tab-journal" hidden>
-      <div class="panel-head">
-        <h2>Journal des mouvements</h2>
-        <div class="panel-actions">
-          <input type="date" id="dateFrom">
-          <input type="date" id="dateTo">
-          <button id="btnFilterJournal" class="btn">Filtrer</button>
-          <button id="btnExportCSV" class="btn">⬇️ CSV</button>
-          <button id="btnExportJSON" class="btn">⬇️ JSON</button>
-        </div>
+    <section id="tab-journal" class="tab" hidden>
+      <h1>Journal</h1>
+      <div class="toolbar">
+        <label>Du <input id="dateFrom" type="date"></label>
+        <label>au <input id="dateTo" type="date"></label>
+        <button id="btnFilterJournal">Filtrer</button>
+        <span class="spacer"></span>
+        <button id="btnExportCSV" class="ghost">Exporter CSV</button>
+        <button id="btnExportJSON" class="ghost">Exporter JSON</button>
       </div>
       <div class="table-wrap">
-        <table class="table">
+        <table class="grid">
           <thead><tr><th>Date</th><th>Type</th><th>Code</th><th>Nom</th><th>Qté</th><th>Note</th></tr></thead>
           <tbody id="journalTbody"></tbody>
         </table>
@@ -247,213 +195,202 @@
     </section>
 
     <!-- EMPRUNTS -->
-    <section id="tab-gear" hidden>
-      <div class="panel-head">
-        <h2>Emprunts</h2>
-        <div class="panel-actions">
-          <input id="searchLoans" type="search" placeholder="Filtrer emprunts (nom, code, personne)">
-          <button id="btnNewLoan" class="btn primary">➕ Nouvel emprunt</button>
-          <button id="btnScanBorrow" class="btn">📷 Scanner emprunt</button>
-          <button id="btnScanReturn" class="btn">📷 Scanner retour</button>
-        </div>
+    <section id="tab-gear" class="tab" hidden>
+      <h1>Emprunts</h1>
+      <div class="toolbar">
+        <button id="btnNewLoan">➕ Nouvel emprunt</button>
+        <button id="btnScanBorrow">📷 Scanner un emprunt</button>
+        <button id="btnScanReturn">📷 Scanner un retour</button>
+        <span class="spacer"></span>
+        <input id="searchLoans" placeholder="Rechercher…" />
       </div>
       <div class="table-wrap">
-        <table class="table">
+        <table class="grid">
           <thead><tr><th>Article</th><th>Code</th><th>Emprunteur</th><th>Retour prévu</th><th>Statut</th><th>Action</th></tr></thead>
           <tbody id="loansTbody"></tbody>
         </table>
       </div>
     </section>
 
-    <!-- PARAMÈTRES -->
-    <section id="tab-settings" hidden>
-      <h2>Paramètres</h2>
-
-      <details open>
-        <summary>Guide rapide</summary>
-        <div class="help">
-          <p>Bienvenue dans <strong>Gstock</strong> : scannez un article, ajustez les quantités, imprimez des étiquettes, et suivez les emprunts.</p>
-          <p><strong>Scanner</strong> : bouton “Démarrer” → bip si l’article est reconnu → fenêtre d’ajustement.</p>
-          <p><strong>Étiquettes</strong> : sélection multi, choix du modèle, aperçu paginé A4, impression sans l’UI.</p>
-          <p><strong>Tags / Emplacements</strong> : gérez des listes triables (glisser/déposer), réutilisées à la création.</p>
-        </div>
-      </details>
+    <!-- PARAMETRES -->
+    <section id="tab-settings" class="tab" hidden>
+      <h1>Paramètres</h1>
+      <article class="help">
+        <h3>Aide intégrée</h3>
+        <p>Gstock fonctionne hors-ligne. Utilisez le scanner (📷) pour ajouter/retirer rapidement des quantités. Les codes-barres sont normalisés automatiquement (A-Z/0-9, max 10).</p>
+        <p>Les statuts de stock : <span class="badge ok">OK</span> quand au-dessus du seuil + buffer, <span class="badge low">Approche</span> quand proche du seuil (≤ buffer), <span class="badge under">Sous seuil</span> ou épuisé.</p>
+        <p>Les étiquettes (🏷️) proposent des modèles (dont A4 3×8). L’impression se fait dans une fenêtre dédiée sans l’UI.</p>
+        <p>En cas de souci de cache, ajoutez <code>?safe=1</code> à l’URL pour purger SW/IDB.</p>
+      </article>
 
       <div class="settings-grid">
-        <section>
-          <h3>Tags prédéfinis – Stock (<span id="countTagsStock">0</span>)</h3>
-          <div class="list-editor">
-            <input id="addTagStock" placeholder="Ajouter un tag…">
-            <button id="btnAddTagStock" class="btn">Ajouter</button>
-            <ul id="listTagsStock" class="sortable"></ul>
+        <div>
+          <h3>Tags (Stock) <small><span id="countTagsStock">0</span></small></h3>
+          <div class="row-add">
+            <input id="addTagStock" placeholder="Nouveau tag…" />
+            <button id="btnAddTagStock">Ajouter</button>
           </div>
-        </section>
-
-        <section>
-          <h3>Tags prédéfinis – Atelier (<span id="countTagsAtelier">0</span>)</h3>
-          <div class="list-editor">
-            <input id="addTagAtelier" placeholder="Ajouter un tag…">
-            <button id="btnAddTagAtelier" class="btn">Ajouter</button>
-            <ul id="listTagsAtelier" class="sortable"></ul>
+          <ul id="listTagsStock" class="sortable"></ul>
+        </div>
+        <div>
+          <h3>Tags (Atelier) <small><span id="countTagsAtelier">0</span></small></h3>
+          <div class="row-add">
+            <input id="addTagAtelier" placeholder="Nouveau tag…" />
+            <button id="btnAddTagAtelier">Ajouter</button>
           </div>
-        </section>
-
-        <section>
-          <h3>Emplacements – Stock (<span id="countLocsStock">0</span>)</h3>
-          <div class="list-editor">
-            <input id="addLocStock" placeholder="Ajouter un emplacement…">
-            <button id="btnAddLocStock" class="btn">Ajouter</button>
-            <ul id="listLocsStock" class="sortable"></ul>
+          <ul id="listTagsAtelier" class="sortable"></ul>
+        </div>
+        <div>
+          <h3>Emplacements (Stock) <small><span id="countLocsStock">0</span></small></h3>
+          <div class="row-add">
+            <input id="addLocStock" placeholder="Ex. Atelier/Étagère 1…" />
+            <button id="btnAddLocStock">Ajouter</button>
           </div>
-        </section>
-
-        <section>
-          <h3>Emplacements – Atelier (<span id="countLocsAtelier">0</span>)</h3>
-          <div class="list-editor">
-            <input id="addLocAtelier" placeholder="Ajouter un emplacement…">
-            <button id="btnAddLocAtelier" class="btn">Ajouter</button>
-            <ul id="listLocsAtelier" class="sortable"></ul>
+          <ul id="listLocsStock" class="sortable"></ul>
+        </div>
+        <div>
+          <h3>Emplacements (Atelier) <small><span id="countLocsAtelier">0</span></small></h3>
+          <div class="row-add">
+            <input id="addLocAtelier" placeholder="Ex. Atelier/Étagère 1…" />
+            <button id="btnAddLocAtelier">Ajouter</button>
           </div>
-        </section>
+          <ul id="listLocsAtelier" class="sortable"></ul>
+        </div>
       </div>
 
-      <div class="settings-row">
-        <label>Buffer d’alerte (écart au seuil pour “Approche”)
-          <input id="inputBuffer" type="number" min="0" value="0">
-        </label>
-        <label class="switch">
-          <input id="chkDebug" type="checkbox"> Mode développeur (logs scanner, etc.)
-        </label>
-      </div>
-
-      <div class="settings-actions">
-        <button id="btnLinkSharedFile" class="btn">Lier un fichier partagé (JSON)</button>
+      <div class="toolbar">
+        <label>Buffer alerte (pièces) <input id="inputBuffer" type="number" min="0" step="1" value="0"></label>
+        <label><input id="chkDebug" type="checkbox"> Mode debug</label>
+        <span class="spacer"></span>
+        <button id="btnSaveSettings">💾 Enregistrer</button>
+        <button id="btnExportFull" class="ghost">Exporter (tout)</button>
+        <button id="btnImportJSON" class="ghost">Importer (JSON)</button>
+        <button id="btnLinkSharedFile" class="ghost">Lier fichier partagé</button>
         <span id="sharedFileStatus" class="muted"></span>
-        <div class="grow"></div>
-        <button id="btnExportFull" class="btn">Exporter toutes les données</button>
-        <button id="btnImportJSON" class="btn">Importer un JSON</button>
-        <button id="btnResetCache" class="btn danger">Réinitialiser (IDB+SW+cache)</button>
-        <button id="btnSaveSettings" class="btn primary">💾 Enregistrer</button>
+        <button id="btnResetCache" class="danger">Purgez SW/IDB</button>
       </div>
     </section>
   </main>
 
-  <!-- Dialogs -->
-  <dialog id="adjustDialog" class="dialog">
-    <h3 id="dlgItem">Ajuster</h3>
-    <div class="grid-2">
-      <label>Type
-        <select id="dlgType">
-          <option value="add">Entrée</option>
-          <option value="remove">Sortie</option>
-        </select>
-      </label>
-      <label>Quantité
-        <input id="dlgQty" type="number" min="1" value="1">
-      </label>
-    </div>
-    <label>Note (optionnel)
-      <input id="dlgNote" placeholder="Commentaire…">
-    </label>
-    <footer class="dialog-actions">
-      <button id="dlgClose" class="btn">Annuler</button>
-      <button id="dlgValidate" class="btn primary">Valider</button>
-    </footer>
+  <!-- DIALOG: Ajustement -->
+  <dialog id="adjustDialog">
+    <form method="dialog">
+      <h3>Ajuster les quantités</h3>
+      <div id="dlgItem" class="muted"></div>
+      <div class="row">
+        <label>Type
+          <select id="dlgType">
+            <option value="add">Ajout</option>
+            <option value="remove">Retrait</option>
+          </select>
+        </label>
+        <label>Quantité <input id="dlgQty" type="number" min="1" step="1" value="1"></label>
+      </div>
+      <label>Note <input id="dlgNote" placeholder="Optionnel…"></label>
+      <menu>
+        <button id="dlgClose" class="ghost">Annuler</button>
+        <button id="dlgValidate">Valider</button>
+      </menu>
+    </form>
   </dialog>
 
-  <dialog id="newItemDialog" class="dialog">
-    <h3 id="niTitle">Nouvel article</h3>
-    <label>Type
-      <select id="niType"><option value="stock">Stock</option><option value="atelier">Atelier</option></select>
-    </label>
-    <label>Designation <input id="niName" required placeholder="ex. Disjoncteur 20 A XP Legrand"></label>
-    <div class="grid-2">
-      <label>Référence <input id="niRef" placeholder="ex. disj20xpLeg"></label>
-      <label>Code-barres
-        <div class="inline">
-          <input id="niCode" placeholder="Valeur scannée ou générée">
-          <button id="niCopyRefToCode" class="btn">⮕ Copier la réf.</button>
-          <button id="niGen" class="btn">✨ Générer</button>
+  <!-- DIALOG: Création/Édition -->
+  <dialog id="newItemDialog">
+    <form method="dialog">
+      <h3 id="niTitle">Nouvel article</h3>
+      <div class="row">
+        <label>Type
+          <select id="niType">
+            <option value="stock">Stock</option>
+            <option value="atelier">Atelier</option>
+          </select>
+        </label>
+        <label>Désignation <input id="niName" required></label>
+      </div>
+      <div class="row">
+        <label>Référence <input id="niRef" placeholder="ex: cat interne"></label>
+        <label>Code <input id="niCode" placeholder="Auto si vide (A-Z0-9)"></label>
+        <button id="niGen" type="button" class="ghost">Auto</button>
+        <button id="niCopyRefToCode" type="button" class="ghost">Ref → Code</button>
+      </div>
+      <div class="row">
+        <label>Qté <input id="niQty" type="number" min="0" step="1" value="0"></label>
+        <label>Seuil <input id="niThr" type="number" min="0" step="1" value="0"></label>
+      </div>
+      <fieldset>
+        <legend>Emplacement</legend>
+        <div class="row">
+          <select id="niLocSelect"></select>
+          <div id="niLocCustomWrap">
+            <input id="niLocCustom" placeholder="Saisir personnalisé…" />
+          </div>
         </div>
-      </label>
-    </div>
-    <div class="grid-2">
-      <label>Quantité <input id="niQty" type="number" min="0" value="0"></label>
-      <label>Seuil <input id="niThr" type="number" min="0" value="0"></label>
-    </div>
-    <fieldset>
-      <legend>Emplacement</legend>
-      <div class="inline">
-        <select id="niLocSelect"></select>
-        <div id="niLocCustomWrap"><input id="niLocCustom" placeholder="Saisir un emplacement…"></div>
+        <div id="niLocChips" class="chips"></div>
+      </fieldset>
+      <fieldset>
+        <legend>Tags <small class="muted" id="niTagCategory"></small></legend>
+        <div id="niTagChecks" class="chips"></div>
+        <div class="row">
+          <input id="niTagsExtra" placeholder="Tags supplémentaires (séparés par des virgules)…" />
+          <button id="niTagsClear" type="button" class="ghost">Tout décocher</button>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Liens</legend>
+        <textarea id="niLinks" rows="3" placeholder="Un lien par ligne (fournisseur, fiche, doc)…"></textarea>
+      </fieldset>
+      <menu>
+        <button class="ghost" onclick="this.closest('dialog').close()">Annuler</button>
+        <button id="niSave">Enregistrer</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <!-- DIALOG: Scan prêt/retour -->
+  <dialog id="loanScanDialog">
+    <form method="dialog">
+      <h3 id="loanScanTitle">Scanner</h3>
+      <video id="loanVideo" playsinline muted></video>
+      <div class="scan-controls">
+        <button id="btnLoanTorch" type="button">🔦</button>
+        <button id="btnLoanStop" type="button">⏹️</button>
       </div>
-      <div id="niLocChips" class="chips"></div>
-    </fieldset>
-    <fieldset>
-      <legend>Tags <small class="muted">catégorie: <span id="niTagCategory">Stock</span></small></legend>
-      <div id="niTagChecks" class="chips"></div>
-      <div class="inline">
-        <input id="niTagsExtra" placeholder="Tags supplémentaires (virgules)">
-        <button id="niTagsClear" class="btn">Effacer sélection</button>
+      <div id="loanScanHint" class="muted"></div>
+    </form>
+  </dialog>
+
+  <!-- DIALOG: Création prêt -->
+  <dialog id="borrowDialog">
+    <form method="dialog">
+      <h3>Créer un prêt</h3>
+      <div id="borrowItem" class="muted"></div>
+      <div class="row">
+        <label>Emprunteur <input id="brwPerson" required></label>
+        <label>Retour prévu <input id="brwDue" type="date" required></label>
       </div>
-    </fieldset>
-    <label>Liens (un par ligne)<textarea id="niLinks" rows="3" placeholder="https://…"></textarea></label>
-    <footer class="dialog-actions">
-      <button class="btn" onclick="document.getElementById('newItemDialog').close()">Annuler</button>
-      <button id="niSave" class="btn primary">Créer</button>
-    </footer>
+      <label>Note <input id="brwNote" placeholder="Optionnel…"></label>
+      <menu>
+        <button class="ghost" onclick="this.closest('dialog').close()">Annuler</button>
+        <button id="brwCreate">Créer</button>
+      </menu>
+    </form>
   </dialog>
 
-  <dialog id="loanScanDialog" class="dialog">
-    <h3 id="loanScanTitle">Scanner</h3>
-    <video id="loanVideo" playsinline></video>
-    <div class="scan-actions">
-      <button id="btnLoanTorch" class="btn">🔦 Lampe</button>
-      <button id="btnLoanStop" class="btn">⏹️ Stop</button>
-    </div>
-    <p id="loanScanHint" class="muted"></p>
-  </dialog>
+  <div id="sr" class="sr" aria-live="polite" aria-atomic="true"></div>
 
-  <dialog id="borrowDialog" class="dialog">
-    <h3>Nouvel emprunt</h3>
-    <p id="borrowItem" class="muted"></p>
-    <div class="grid-2">
-      <label>Emprunteur <input id="brwPerson" placeholder="Nom de l'emprunteur"></label>
-      <label>Retour prévu <input id="brwDue" type="date"></label>
-    </div>
-    <label>Note <input id="brwNote" placeholder="Commentaire (optionnel)"></label>
-    <footer class="dialog-actions">
-      <button class="btn" onclick="document.getElementById('borrowDialog').close()">Annuler</button>
-      <button id="brwCreate" class="btn primary">Créer</button>
-    </footer>
-  </dialog>
-
-  <!-- Live region -->
-  <div id="sr" class="sr-only" aria-live="polite"></div>
-
-  <!-- Scripts (ordre important) -->
-  <script>window.APP_VERSION="2.9.0";</script>
-  <script src="js/code39.js?v=2.9.0"></script>
-  <script src="js/db.js?v=2.9.0"></script>
-  <script src="js/app.js?v=2.9.0"></script>
-
-  <!-- Service Worker : enregistrement conditionnel -->
+  <script>window.APP_VERSION="2.9.3";</script>
+  <script src="js/code39.js?v=2.9.3"></script>
+  <script src="js/db.js?v=2.9.3"></script>
+  <script src="js/app.js?v=2.9.3"></script>
   <script>
-  (async () => {
-    if (!('serviceWorker' in navigator)) return;
-    // Ne pas enregistrer SW si le stockage est indisponible (évite AbortError)
-    async function canUseCache() {
-      try { const c = await caches.open('gstock-sw-test'); await c.put(new Request('./'), new Response('ok')); await caches.delete('gstock-sw-test'); return true; }
-      catch(e){ console.warn('CacheStorage indisponible:', e); return false; }
-    }
-    const ok = await canUseCache();
-    if (!ok) return; // skip SW
-    try {
-      await navigator.serviceWorker.register('sw.js?v=2.9.0', { scope: './' });
-    } catch (e) {
-      console.warn('SW non enregistré:', e);
-    }
-  })();
+  // Enregistrement SW (réseau-first, cache léger)
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js?v=2.9.3').catch(e=>{
+        console.warn('SW non enregistré:', e);
+      });
+    });
+  }
   </script>
 </body>
 </html>
