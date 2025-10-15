@@ -4,8 +4,8 @@ const CORE = [
   './',
   './index.html',
   './css/styles.css?v=2.9.0',
-  './js/app.js?v=2.9.2',
-  './js/db.js?v=2.9.0',
+  './js/app.js?v=2.9.6',
+  './js/db.js?v=2.9.7',
   './js/code39.js?v=2.9.0',
   './manifest.json?v=2.9.0'
 ];
