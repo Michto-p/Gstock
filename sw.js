@@ -1,5 +1,5 @@
 /* Gstock SW v2.9.0 – stratégie mixte + purge */
-const VERSION = 'v2.9.0';
+const VERSION = 'v2.9.1';
 const CORE = [
   './',
   './index.html',
