@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#0d9488" />
-  <title>Gstock v2.9.5</title>
+  <title>Gstock v2.9.6</title>
   <link rel="manifest" href="manifest.json?v=2.9.3">
   <link rel="icon" href="icons/icon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -267,7 +267,6 @@
         <p>En cas de souci de cache, ajoutez <code>?safe=1</code> à l’URL pour purger SW/IDB.</p>
       </article>
 
-      <!-- … (le reste inchangé : Tags/Emplacements/Buffer/Debug/Export/Import) … -->
       <div class="settings-grid">
         <div>
           <h3>Tags (Stock) <small><span id="countTagsStock">0</span></small></h3>
@@ -317,14 +316,142 @@
     </section>
   </main>
 
-  <!-- Dialogs inchangés (ajustement, création/édition, prêt, scan prêt/retour) … -->
+  <!-- DIALOGS =================================================== -->
+
+  <!-- Créer / Éditer / Dupliquer -->
+  <dialog id="newItemDialog">
+    <form method="dialog">
+      <h3 id="niTitle">Nouvel article</h3>
+      <div class="row">
+        <label>Type
+          <select id="niType">
+            <option value="stock">Stock</option>
+            <option value="atelier">Atelier</option>
+          </select>
+        </label>
+        <label>Désignation
+          <input id="niName" required />
+        </label>
+        <label>Référence
+          <input id="niRef" />
+        </label>
+      </div>
+      <div class="row">
+        <label>Code-barres
+          <input id="niCode" maxlength="10" placeholder="Auto si vide" />
+        </label>
+        <button id="niGen" type="button">Générer</button>
+        <button id="niCopyRefToCode" type="button">Ref → Code</button>
+      </div>
+      <div class="row">
+        <label>Quantité
+          <input id="niQty" type="number" min="0" step="1" value="0" />
+        </label>
+        <label>Seuil
+          <input id="niThr" type="number" min="0" step="1" value="0" />
+        </label>
+      </div>
+      <div class="row">
+        <label>Emplacement
+          <select id="niLocSelect"></select>
+        </label>
+        <div id="niLocCustomWrap">
+          <label>Perso
+            <input id="niLocCustom" />
+          </label>
+        </div>
+      </div>
+      <div class="row">
+        <div id="niLocChips" class="chips"></div>
+      </div>
+      <div class="row">
+        <strong id="niTagCategory">Stock</strong>
+        <div id="niTagChecks" class="chips" style="flex:1"></div>
+        <button id="niTagsClear" type="button" class="ghost">Tout décocher</button>
+      </div>
+      <div class="row">
+        <label>Tags supplémentaires (séparés par des virgules)
+          <input id="niTagsExtra" placeholder="ex: critique, fragile" />
+        </label>
+      </div>
+      <div class="row">
+        <label>Liens (un par ligne)
+          <textarea id="niLinks" rows="3" placeholder="https://…"></textarea>
+        </label>
+      </div>
+      <menu>
+        <button value="cancel">Annuler</button>
+        <button id="niSave" class="primary">Enregistrer</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <!-- Ajuster les quantités après scan ou manuel -->
+  <dialog id="adjustDialog">
+    <form method="dialog">
+      <h3>Ajuster le stock</h3>
+      <p><strong id="adjName">—</strong> <code id="adjCode">—</code></p>
+      <div class="row">
+        <label>Quantité
+          <input id="adjQty" type="number" min="1" step="1" value="1" />
+        </label>
+      </div>
+      <menu>
+        <button id="adjRemove" type="button">Retirer</button>
+        <button id="adjAdd" type="button" class="primary">Ajouter</button>
+        <button value="cancel">Fermer</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <!-- Nouvel emprunt -->
+  <dialog id="loanDialog">
+    <form method="dialog">
+      <h3>Nouvel emprunt</h3>
+      <div class="row">
+        <label>Code article
+          <input id="loanCode" />
+        </label>
+        <button id="btnScanInLoan" type="button">📷 Scanner</button>
+      </div>
+      <div class="row">
+        <label>Emprunteur
+          <input id="loanPerson" />
+        </label>
+        <label>Retour prévu
+          <input id="loanDue" type="date" />
+        </label>
+      </div>
+      <div class="row">
+        <label>Note
+          <input id="loanNote" />
+        </label>
+      </div>
+      <menu>
+        <button value="cancel">Annuler</button>
+        <button id="loanSave" class="primary">Valider</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <!-- Scan prêt/retour dédié -->
+  <dialog id="loanScanDialog">
+    <form method="dialog">
+      <h3 id="loanScanTitle">Scanner</h3>
+      <video id="loanVideo" playsinline muted></video>
+      <menu>
+        <button id="loanScanStop" type="button">Arrêter</button>
+        <button value="cancel">Fermer</button>
+      </menu>
+    </form>
+  </dialog>
 
   <div id="sr" class="sr" aria-live="polite" aria-atomic="true"></div>
 
-  <script>window.APP_VERSION="2.9.5";</script>
+  <script>window.APP_VERSION="2.9.6";</script>
   <script src="js/code39.js?v=2.9.3"></script>
   <script src="js/db.js?v=2.9.3"></script>
-  <script src="js/app.js?v=2.9.5"></script>
+  <script src="js/app.js?v=2.9.6"></script>
   <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
