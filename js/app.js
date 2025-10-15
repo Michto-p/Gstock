@@ -451,21 +451,52 @@ function bindLabelsUI(){
 function updateLblSelInfo(){ lblSelInfo && (lblSelInfo.textContent=labelsSelected.size+' sélection(s)'); }
 function chunkArray(arr,size){ var out=[]; for(let i=0;i<arr.length;i+=size) out.push(arr.slice(i,i+size)); return out; }
 function mm(n){ return n+'mm'; }
+// Remplace l’ancienne version de renderLabelCardHTML par celle-ci
 function renderLabelCardHTML(it, tmpl, module, namePt, showText){
-  const name=`<div class="name" style="font-size:${namePt}pt;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.name)}</div>`;
-  const hr=`<div class="hr" style="font-size:9pt;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.code)}</div>`;
-  let svgStr='<svg xmlns="http://www.w3.org/2000/svg"></svg>';
+  // Taille max du code-barres en px à partir de la hauteur de cellule en mm
+  // approx 1 mm ≈ 3.78 px @96dpi
+  const mmToPx = (mm)=> Math.max(1, Math.floor(mm * 3.78));
+  // on réserve un peu de place pour le nom (pt→mm ~ 0.3527) + marges haut/bas + texte sous code
+  const reservedTopMm = (namePt * 0.3527) + 2;            // nom + marge
+  const reservedBottomMm = (showText ? (9 * 0.3527 + 2) : 2); // code texte + marge (ou juste marge)
+  const maxBarMm = Math.max(8, tmpl.cellH - reservedTopMm - reservedBottomMm);
+  const barHeightPx = mmToPx(maxBarMm);
+
+  // Génère le SVG (aucun texte dans le SVG; on le met séparément en dessous)
+  let svgStr = '<svg xmlns="http://www.w3.org/2000/svg"></svg>';
   try{
-    if(window.code39 && typeof window.code39.svg==='function'){
-      const svgEl=window.code39.svg(it.code,{module,height:52,margin:2,showText,fontSize:10});
-      svgEl.setAttribute('preserveAspectRatio','xMidYMid meet');
-      svgEl.setAttribute('width','100%'); svgEl.setAttribute('height','auto');
-      svgEl.style.maxHeight=Math.max(8,(tmpl.cellH-12))+'mm';
-      svgStr=new XMLSerializer().serializeToString(svgEl);
+    if (window.code39 && typeof window.code39.svg === 'function'){
+      const svgEl = window.code39.svg(it.code, {
+        module,            // épaisseur de barre en px
+        height: barHeightPx,
+        margin: 2,
+        showText: false,   // texte séparé dessous
+        fontSize: 10
+      });
+      svgEl.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+      svgEl.setAttribute('width', '100%');
+      // IMPORTANT: ne pas mettre height="auto" (illégal en SVG)
+      // On laisse le viewBox/width gérer l’échelle, et on limite par CSS inline :
+      svgEl.style.maxHeight = Math.max(8, maxBarMm) + 'mm';
+      svgEl.style.display = 'block';
+      svgEl.style.margin = '0 auto';
+      svgStr = new XMLSerializer().serializeToString(svgEl);
     }
-  }catch(_){}
-  return `<div class="label-card" style="box-sizing:border-box;padding:2mm 2mm 1mm 2mm;overflow:hidden">${name}${hr}${svgStr}</div>`;
+  }catch(e){ /* ignore */ }
+
+  // Contenus centrés : Nom (au-dessus), Code-barres, Code texte (en dessous)
+  const nameHTML = `<div class="name" style="font-size:${namePt}pt;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:1mm;text-align:center">${esc(it.name)}</div>`;
+  const codeText = showText
+    ? `<div class="code-text" style="font-size:9pt;line-height:1.1;margin-top:1mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center">${esc(it.code)}</div>`
+    : '';
+
+  return `<div class="label-card" style="box-sizing:border-box;padding:2mm 2mm 1mm 2mm;overflow:hidden;text-align:center">
+    ${nameHTML}
+    <div class="barcode">${svgStr}</div>
+    ${codeText}
+  </div>`;
 }
+
 function buildLabelsPagesHTML(items,tmpl,opts){
   const perPage=(tmpl.cols|0)*(tmpl.rows|0);
   const pages=chunkArray(items,perPage);

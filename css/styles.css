@@ -101,3 +101,7 @@ dialog menu{ display:flex; gap:.5rem; justify-content:flex-end; margin-top:1rem;
   nav button{ font-size:1.1rem; padding:.45rem; }
   .labels-config{ grid-template-columns: 1fr; }
 }
+.label-card { text-align:center; }
+.label-card .name { margin-bottom: 1mm; }
+.label-card .code-text { margin-top: 1mm; font-size: 9pt; }
+.barcode svg { display:block; margin:0 auto; width:100%; height:auto; } /* pas d'attribut height dans le SVG */
