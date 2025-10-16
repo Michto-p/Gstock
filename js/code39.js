@@ -1,66 +1,59 @@
-/* Gstock - code39.js v2.1.7 (renderer Code 39 en SVG) */
-'use strict';
+/* Minimal Code39 → SVG (v2.9.3) */
 (function(){
-  const MAP = {
-    '0':'nnnwwnwnn','1':'wnnwnnnnw','2':'nnwwnnnnw','3':'wnwwnnnnn','4':'nnnwwnnnw',
-    '5':'wnnwwnnnn','6':'nnwwwnnnn','7':'nnnwnnwnw','8':'wnnwnnwnn','9':'nnwwnnwnn',
-    'A':'wnnnnwnnw','B':'nnwnnwnnw','C':'wnwnnwnnn','D':'nnnnwwnnw','E':'wnnnwwnnn',
-    'F':'nnwnwwnnn','G':'nnnnnwwnw','H':'wnnnnwwnn','I':'nnwnnwwnn','J':'nnnnwwwnn',
-    'K':'wnnnnnnww','L':'nnwnnnnww','M':'wnwnnnnwn','N':'nnnnwnnww','O':'wnnnwnnwn',
-    'P':'nnwnwnnwn','Q':'nnnnnnwww','R':'wnnnnnwwn','S':'nnwnnnwwn','T':'nnnnwnwwn',
-    'U':'wwnnnnnnw','V':'nwwnnnnnw','W':'wwwnnnnnn','X':'nwnnwnnnw','Y':'wwnnwnnnn',
-    'Z':'nwwnwnnnn','-':'nwnnnnwnw','.':'wwnnnnwnn',' ':'nwwnnnwnn','*':'nwnnwnwnn',
-    '$':'nwnwnwnnn','/':'nwnwnnnwn','+':'nwnnnwnwn','%':'nnnwnwnwn'
+  const CHARS = {
+    '0':'nnnwwnwnn','1':'wnnwnnnnw','2':'nnwwnnnnw','3':'wnwwnnnnn','4':'nnnwwnnnw','5':'wnnwwnnnn','6':'nnwwwnnnn','7':'nnnwnnwnw','8':'wnnwnnwnn','9':'nnwwnnwnn',
+    'A':'wnnnnwnnw','B':'nnwnnwnnw','C':'wnwnnwnnn','D':'nnnnwwnnw','E':'wnnnwwnnn','F':'nnwnwwnnn','G':'nnnnnwwnw','H':'wnnnnwwnn','I':'nnwnnwwnn','J':'nnnnwwwnn',
+    'K':'wnnnnnnww','L':'nnwnnnnww','M':'wnwnnnnwn','N':'nnnnwnnww','O':'wnnnwnnwn','P':'nnwnwnnwn','Q':'nnnnnnwww','R':'wnnnnnwwn','S':'nnwnnnwwn','T':'nnnnwnwwn',
+    'U':'wwnnnnnnw','V':'nwwnnnnnw','W':'wwwnnnnnn','X':'nwnnwnnnw','Y':'wwnnwnnnn','Z':'nwwnwnnnn','-':'nwnnnnwnw','.':'wwnnnnwnn',' ':'nwwnnnwnn','$':'nwnwnwnnn','/':'nwnwnnnwn','+':'nwnnnwnwn','%':'nnnwnwnwn','*':'nwnnwnwnn'
   };
-
-  function svg(value, opts={}){
-    const {module=2, height=40, margin=10, showText=true, fontSize=12} = opts;
-    const data = `*${String(value).toUpperCase()}*`;
-    const inter = module;
-    let total = margin*2 + inter*(data.length-1);
-    for(const ch of data){
-      const p = MAP[ch];
-      if(!p) throw new Error('Caractère non supporté: '+ch);
-      for(const c of p) total += (c==='w'?3:1)*module;
-    }
-    const w = total, h = height + (showText?(fontSize+6):0);
-    let x = margin;
-    const svgns='http://www.w3.org/2000/svg';
-    const s=document.createElementNS(svgns,'svg');
-    s.setAttribute('width', String(w));
-    s.setAttribute('height', String(h));
-    s.setAttribute('viewBox', `0 0 ${w} ${h}`);
-    const g=document.createElementNS(svgns,'g'); s.appendChild(g);
-    for(const ch of data){
-      const pat = MAP[ch];
-      for(let i=0;i<9;i++){
-        const wide = pat[i]==='w';
-        const ww = (wide?3:1)*module;
-        if(i%2===0){ // barre
-          const r=document.createElementNS(svgns,'rect');
-          r.setAttribute('x', String(x));
-          r.setAttribute('y', '0');
-          r.setAttribute('width', String(ww));
-          r.setAttribute('height', String(height));
-          r.setAttribute('fill', '#111827');
-          g.appendChild(r);
-        }
-        x += ww;
-      }
-      x += inter;
-    }
-    if(showText){
-      const t=document.createElementNS(svgns,'text');
-      t.setAttribute('x', String(w/2));
-      t.setAttribute('y', String(height+fontSize));
-      t.setAttribute('text-anchor','middle');
-      t.setAttribute('font-family','ui-monospace, SFMono-Regular, Menlo, Consolas, monospace');
-      t.setAttribute('font-size', String(fontSize));
-      t.textContent = String(value);
-      s.appendChild(t);
-    }
-    return s;
+  function encode(input){
+    const s=String(input).toUpperCase();
+    const safe = '*'+ s.replace(/[^0-9A-Z\-\. \$\/\+\%]/g,'') +'*';
+    return safe.split('').map(ch=>CHARS[ch]||CHARS['-']).join('n'); // interchar space
   }
+  function svg(value, opts){
+    opts=opts||{};
+    const module=opts.module||2;  // px
+    const h=opts.height||50;      // px
+    const margin=opts.margin==null?4:opts.margin;
+    const showText=!!opts.showText;
+    const fontSize=opts.fontSize||12;
 
-  window.code39 = { svg };
+    const pattern=encode(value);
+    // compute width
+    let w=0; for(const c of pattern){ w += (c==='w'?3:1); } w *= module;
+    const textH = showText ? (fontSize + 6) : 0;
+    const totalW = w + margin*2;
+    const totalH = h + margin*2 + textH;
+
+    const svgNS='http://www.w3.org/2000/svg';
+    const svg=document.createElementNS(svgNS,'svg');
+    svg.setAttribute('viewBox',`0 0 ${totalW} ${totalH}`);
+    svg.setAttribute('width', totalW);
+    svg.setAttribute('height', totalH);
+
+    let x=margin, drawBar=true;
+    for(const c of pattern){
+      const ww=(c==='w'?3*module:1*module);
+      if(drawBar){
+        const r=document.createElementNS(svgNS,'rect');
+        r.setAttribute('x',x); r.setAttribute('y',margin);
+        r.setAttribute('width',ww); r.setAttribute('height',h);
+        r.setAttribute('fill','#000');
+        svg.appendChild(r);
+      }
+      x+=ww;
+      drawBar=!drawBar;
+    }
+
+    if(showText){
+      const t=document.createElementNS(svgNS,'text');
+      t.setAttribute('x', totalW/2); t.setAttribute('y', margin+h+textH-4);
+      t.setAttribute('font-size', fontSize); t.setAttribute('text-anchor','middle');
+      t.textContent=String(value);
+      svg.appendChild(t);
+    }
+    return svg;
+  }
+  window.code39={ svg };
 })();

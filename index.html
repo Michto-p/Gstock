@@ -1,543 +1,472 @@
 <!doctype html>
 <html lang="fr" data-theme="auto">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#0a84ff">
-  <meta name="color-scheme" content="light dark">
-  <link rel="manifest" href="manifest.json">
-  <link rel="icon" sizes="192x192" href="icons/icon-192.png">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0d9488" />
+  <title>Gstock v2.9.6</title>
+  <link rel="manifest" href="manifest.json?v=2.9.3">
+  <link rel="icon" href="icons/icon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <title>Gstock</title>
-  <style>
-    :root{ --bg:#fff; --fg:#0b0b0b; --muted:#6b7280; --acc:#0a84ff; --bd:#e5e7eb; --ok:#10b981; --warn:#f59e0b; --danger:#ef4444; --elev:#fafafa; }
-    [data-theme="dark"]{ --bg:#0b0b0b; --fg:#f5f5f5; --muted:#a1a1aa; --bd:#374151; --elev:#111827; }
-    html,body{height:100%}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial,sans-serif;background:var(--bg);color:var(--fg);transition:background-color .2s,color .2s}
-    .topbar{position:sticky;top:0;z-index:50;background:color-mix(in oklab, var(--bg) 90%, transparent);backdrop-filter:saturate(1.1) blur(6px);border-bottom:1px solid var(--bd)}
-    .topbar-inner{max-width:1100px;margin:0 auto;padding:.6rem 1rem}
-    .brand{display:flex;gap:.6rem;align-items:center;justify-content:space-between}
-    .brand-left{display:flex;gap:.6rem;align-items:center}
-    .pill{padding:.2rem .5rem;border-radius:999px;background:var(--elev);font-size:.75rem}
-    .muted{color:var(--muted)}
-    .toggle{display:flex;align-items:center;gap:.35rem}
-
-    nav{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.5rem}
-    nav button{display:inline-flex;align-items:center;gap:.45rem;padding:.45rem .6rem;border:1px solid var(--bd);background:var(--elev);border-radius:.6rem;cursor:pointer}
-    nav button .icon{font-size:1rem;line-height:1}
-    nav button.active{outline:2px solid var(--acc);outline-offset:1px}
-    @media (max-width:640px){ nav .label{display:none} }
-
-    main{padding:1rem;max-width:1100px;margin:0 auto}
-    section[hidden]{display:none}
-
-    table{border-collapse:collapse;width:100%;background:var(--elev);border-radius:.6rem;overflow:hidden}
-    th,td{padding:.5rem;border-bottom:1px solid var(--bd);vertical-align:middle}
-    .badge{display:inline-block;padding:.15rem .4rem;border-radius:.4rem;font-size:.75rem}
-    .ok{background:rgba(16,185,129,.15);color:#047857}
-    .low{background:rgba(245,158,11,.15);color:#92400e}
-    .under{background:rgba(239,68,68,.15);color:#991b1b}
-    .toolbar{display:flex;gap:.5rem;align-items:center;margin:.5rem 0;flex-wrap:wrap}
-    .toolbar.sticky{position:sticky;top:8px;z-index:10;background:var(--bg);border:1px solid var(--bd);border-radius:.6rem;padding:.5rem}
-    .btn{padding:.5rem .8rem;border:1px solid var(--bd);background:var(--elev);border-radius:.5rem;cursor:pointer}
-    .btn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
-    .btn.danger{background:var(--danger);border-color:var(--danger);color:#fff}
-    input.btn,select.btn,textarea.btn{appearance:none}
-    code{background:rgba(0,0,0,.06);padding:.1rem .3rem;border-radius:.3rem}
-    .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-    .chip{display:inline-flex;align-items:center;gap:.3rem;border:1px solid var(--bd);border-radius:999px;padding:.15rem .5rem;background:var(--bg);font-size:.8rem}
-    .chip .x{cursor:pointer}
-
-    /* Accueil */
-    .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-    .card{background:var(--elev);border:1px solid var(--bd);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;min-height:90px}
-    .kpi{font-size:1.6rem;font-weight:700;line-height:1}
-    @media (max-width:900px){ .cards{grid-template-columns:repeat(2,1fr)} }
-    @media (max-width:520px){ .cards{grid-template-columns:1fr} }
-
-    /* Étiquettes */
-    .labels-layout{display:grid;grid-template-columns:320px 1fr;gap:12px}
-    .labels-side{border:1px solid var(--bd);border-radius:.6rem;padding:.6rem;background:var(--elev);display:flex;flex-direction:column;gap:.5rem;max-height:70vh}
-    .labels-list{flex:1;overflow:auto;border:1px dashed var(--bd);border-radius:.5rem;padding:.4rem;background:color-mix(in oklab, var(--elev) 90%, transparent)}
-    .labels-list .row{display:flex;align-items:center;justify-content:space-between;gap:.5rem;border-bottom:1px dashed var(--bd);padding:.25rem 0}
-    .labels-main{display:flex;flex-direction:column;gap:.6rem}
-    .labels-options{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
-    .labels-pages{position:relative;border:1px solid var(--bd);border-radius:.6rem;padding:.6rem;background:var(--elev);min-height:140px}
-    .labels-page{display:none}
-    .labels-page.active{display:block}
-    .labels-pagination{display:flex;gap:.5rem;align-items:center;justify-content:flex-end}
-    .labels-sheet{display:grid;justify-content:center;margin:.5rem auto;max-width:210mm}
-    .label-card{box-sizing:border-box;border:1px dashed var(--bd);border-radius:2mm;padding:2mm;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1mm;background:#fff;color:#000;overflow:hidden}
-    [data-theme="dark"] .label-card{background:#fff;color:#000}
-    .label-card .name{font-weight:700;line-height:1.1;text-align:center;max-width:100%;word-break:break-word}
-    .label-card .hr{font-size:8pt}
-    .label-card svg{width:100%}
-
-    /* Paramètres – listes triables */
-    .settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    @media (max-width:900px){ .settings-grid{grid-template-columns:1fr} }
-    .section-card{border:1px solid var(--bd);border-radius:.6rem;padding:.8rem;background:var(--elev)}
-    .sort-wrap{display:flex;flex-direction:column;gap:.5rem}
-    .sort-add{display:flex;gap:.4rem}
-    .sort-add input{flex:1}
-    .sort-list{list-style:none;margin:0;padding:.4rem;border:1px dashed var(--bd);border-radius:.5rem;background:color-mix(in oklab, var(--elev) 90%, transparent);max-height:260px;overflow:auto}
-    .sort-list li{display:flex;align-items:center;gap:.5rem;border:1px solid var(--bd);background:var(--bg);border-radius:.5rem;padding:.35rem .5rem;margin:.3rem 0}
-    .drag{cursor:grab;user-select:none}
-    .pill-mini{font-size:.75rem;padding:.1rem .35rem;border-radius:999px;border:1px solid var(--bd);background:var(--bg);color:var(--muted)}
-    .help-card{border:1px solid var(--bd);border-radius:.6rem;background:var(--elev);padding:.8rem}
-    details.help>summary{cursor:pointer;font-weight:600}
-
-    /* Impression : uniquement la planche d’étiquettes */
-    @media print{
-      :root{--bg:#fff;--fg:#000;--bd:#000}
-      @page{ size:A4; margin:0 } /* on gère marges/offsets dans la grille */
-      body{background:#fff;color:#000}
-      .topbar,nav,.toolbar,#tab-home,#tab-scanner,#tab-journal,#tab-gear,#tab-settings,.labels-side,.labels-options,.labels-pagination{display:none!important}
-      #tab-labels{display:block!important}
-      .labels-pages{border:0;padding:0}
-      .labels-page{display:block!important;break-after:page}
-      .label-card{border:0}
-      .btn{display:none!important}
-    }
-  </style>
-  <script>
-    window.APP_VERSION='2.7.0';
-    (function(){
-      const saved=localStorage.getItem('gstock.theme');
-      const prefersDark=window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
-      document.documentElement.setAttribute('data-theme', saved || (prefersDark?'dark':'light'));
-      window.GSTOCK_DEBUG = localStorage.getItem('gstock.debug')==='1';
-    })();
-  </script>
+  <link rel="stylesheet" href="css/styles.css?v=2.9.5" />
 </head>
 <body>
-  <div class="topbar" role="banner">
-    <div class="topbar-inner">
-      <div class="brand">
-        <div class="brand-left">
-          <img src="icons/icon-192.png" alt="" width="28" height="28" style="border-radius:6px">
-          <strong>Gstock</strong><span class="muted">— Gestion de stock</span>
-          <span class="pill muted">v<span id="appVersion">2.7.0</span></span>
-        </div>
-        <div class="toggle">
-          <label for="themeToggle" class="muted">Thème</label>
-          <select id="themeToggle" class="btn">
-            <option value="auto">Auto</option>
-            <option value="light">Clair</option>
-            <option value="dark">Sombre</option>
-          </select>
-        </div>
-      </div>
-
-      <nav aria-label="Onglets">
-        <button data-tab="home" class="active"><span class="icon">🏠</span><span class="label">Accueil</span></button>
-        <button data-tab="stock"><span class="icon">📦</span><span class="label">Stock</span></button>
-        <button data-tab="atelier"><span class="icon">🛠️</span><span class="label">Matériel atelier</span></button>
-        <button data-tab="scanner"><span class="icon">📷</span><span class="label">Scanner</span></button>
-        <button data-tab="labels"><span class="icon">🏷️</span><span class="label">Étiquettes</span></button>
-        <button data-tab="journal"><span class="icon">📜</span><span class="label">Journal</span></button>
-        <button data-tab="gear"><span class="icon">🤝</span><span class="label">Prêts</span></button>
-        <button data-tab="settings"><span class="icon">⚙️</span><span class="label">Paramètres</span></button>
-      </nav>
+  <header class="topbar">
+    <div class="brand">
+      <strong>Gstock</strong> <span class="muted">v<span id="appVersion"></span></span>
     </div>
-  </div>
+    <nav>
+      <button data-tab="home"    title="Accueil">🏠 <span class="label">Accueil</span></button>
+      <button data-tab="stock"   title="Articles (Stock)">📦 <span class="label">Articles</span></button>
+      <button data-tab="atelier" title="Matériel (Atelier)">🛠️ <span class="label">Atelier</span></button>
+      <button data-tab="scanner" title="Scanner">📷 <span class="label">Scanner</span></button>
+      <button data-tab="labels"  title="Étiquettes">🏷️ <span class="label">Étiquettes</span></button>
+      <button data-tab="journal" title="Journal">🧾 <span class="label">Journal</span></button>
+      <button data-tab="gear"    title="Emprunts">🤝 <span class="label">Emprunts</span></button>
+      <button data-tab="settings" title="Paramètres">⚙️ <span class="label">Paramètres</span></button>
+    </nav>
+    <div class="tools">
+      <label class="theme">
+        Thème
+        <select id="themeToggle">
+          <option value="auto">Auto</option>
+          <option value="light">Clair</option>
+          <option value="dark">Sombre</option>
+        </select>
+      </label>
+    </div>
+  </header>
 
   <main>
-    <!-- Accueil -->
-    <section id="tab-home">
-      <div class="cards">
-        <div class="card"><h4>Total articles</h4><div id="kpiItems" class="kpi">—</div></div>
-        <div class="card"><h4>Quantité totale</h4><div id="kpiQty" class="kpi">—</div></div>
-        <div class="card"><h4>Sous seuil</h4><div id="kpiUnder" class="kpi">—</div></div>
-        <div class="card"><h4>Approche</h4><div id="kpiLow" class="kpi">—</div></div>
+    <!-- ACCUEIL -->
+    <section id="tab-home" class="tab">
+      <h1>Accueil</h1>
+      <div class="kpis">
+        <div class="kpi"><div class="kpi-title">Articles</div><div id="kpiItems" class="kpi-value">0</div></div>
+        <div class="kpi"><div class="kpi-title">Qté totale</div><div id="kpiQty" class="kpi-value">0</div></div>
+        <div class="kpi warn"><div class="kpi-title">Sous seuil</div><div id="kpiUnder" class="kpi-value">0</div></div>
+        <div class="kpi low"><div class="kpi-title">Approche</div><div id="kpiLow" class="kpi-value">0</div></div>
+        <div class="kpi"><div class="kpi-title">Emprunts actifs</div><div id="kpiLoansActive" class="kpi-value">0</div></div>
+        <div class="kpi warn"><div class="kpi-title">Retards</div><div id="kpiLoansOverdue" class="kpi-value">0</div></div>
       </div>
-      <div style="margin-top:12px" class="cards">
-        <div class="card" style="grid-column: span 3">
-          <h4>Derniers mouvements</h4>
-          <ul id="recentMoves" style="margin:0;padding-left:1rem"></ul>
+
+      <div class="home-status">
+        <div class="panel">
+          <h3>🟥 Épuisé</h3>
+          <ul id="homeExhausted" class="list slim"></ul>
         </div>
-        <div class="card">
-          <h4>Emprunts</h4>
-          <div>Actifs: <strong id="kpiLoansActive">—</strong></div>
-          <div>En retard: <strong id="kpiLoansOverdue">—</strong></div>
+        <div class="panel">
+          <h3>🟧 Sous seuil</h3>
+          <ul id="homeUnder" class="list slim"></ul>
+        </div>
+        <div class="panel">
+          <h3>🟨 Approche</h3>
+          <ul id="homeLow" class="list slim"></ul>
         </div>
       </div>
+
+      <h2>Derniers mouvements</h2>
+      <ul id="recentMoves" class="list slim"></ul>
     </section>
 
-    <!-- Stock -->
-    <section id="tab-stock" hidden>
-      <div class="toolbar sticky">
-        <button id="btnAddStock" class="btn primary">➕ Nouvel article (Stock)</button>
-        <input id="stockSearch" type="search" placeholder="Rechercher (nom, code, tag, emplacement)…" class="btn" style="min-width:260px">
-        <select id="stockStatus" class="btn"><option value="">Tous statuts</option><option value="ok">OK</option><option value="low">Approche</option><option value="under">Sous seuil</option></select>
-        <select id="stockTag" class="btn"><option value="">Tous tags</option></select>
-        <select id="stockLoc" class="btn"><option value="">Tous emplacements</option></select>
-        <button id="stockClear" class="btn">♻️ Réinitialiser</button>
-      </div>
-
-      <div id="stockBulk" class="toolbar" hidden>
-        <strong id="stockBulkCount">0 sélection(s)</strong>
-        <div style="display:flex;gap:.5rem">
-          <button id="stockBulkLabels" class="btn">🏷️ Étiquettes</button>
-          <button id="stockBulkExport" class="btn">⬇️ Export CSV</button>
-          <button id="stockBulkDelete" class="btn danger">🗑️ Supprimer</button>
-        </div>
-      </div>
-
-      <table aria-label="Table Stock">
-        <thead>
-          <tr>
-            <th style="width:34px"><input type="checkbox" id="stockSelAll" aria-label="Tout sélectionner"></th>
-            <th>Nom</th><th>Code</th><th style="width:220px">Quantité</th><th style="width:110px">Seuil</th><th>Tags</th><th>Emplacement</th><th style="width:90px">Liens</th><th style="width:220px">Actions</th>
-          </tr>
-        </thead>
-        <tbody id="stockTbody"></tbody>
-      </table>
-    </section>
-
-    <!-- Matériel atelier -->
-    <section id="tab-atelier" hidden>
-      <div class="toolbar sticky">
-        <button id="btnAddAtelier" class="btn primary">➕ Nouveau matériel (Atelier)</button>
-        <input id="atelierSearch" type="search" placeholder="Rechercher (nom, code, tag, emplacement)…" class="btn" style="min-width:260px">
-        <select id="atelierStatus" class="btn"><option value="">Tous statuts</option><option value="ok">OK</option><option value="low">Approche</option><option value="under">Sous seuil</option></select>
-        <select id="atelierTag" class="btn"><option value="">Tous tags</option></select>
-        <select id="atelierLoc" class="btn"><option value="">Tous emplacements</option></select>
-        <button id="atelierClear" class="btn">♻️ Réinitialiser</button>
-      </div>
-
-      <div id="atelierBulk" class="toolbar" hidden>
-        <strong id="atelierBulkCount">0 sélection(s)</strong>
-        <div style="display:flex;gap:.5rem">
-          <button id="atelierBulkLabels" class="btn">🏷️ Étiquettes</button>
-          <button id="atelierBulkExport" class="btn">⬇️ Export CSV</button>
-          <button id="atelierBulkDelete" class="btn danger">🗑️ Supprimer</button>
-        </div>
-      </div>
-
-      <table aria-label="Table Atelier">
-        <thead>
-          <tr>
-            <th style="width:34px"><input type="checkbox" id="atelierSelAll" aria-label="Tout sélectionner"></th>
-            <th>Nom</th><th>Code</th><th style="width:220px">Quantité</th><th style="width:110px">Seuil</th><th>Tags</th><th>Emplacement</th><th style="width:90px">Liens</th><th style="width:220px">Actions</th>
-          </tr>
-        </thead>
-        <tbody id="atelierTbody"></tbody>
-      </table>
-    </section>
-
-    <!-- Scanner -->
-    <section id="tab-scanner" hidden>
+    <!-- STOCK -->
+    <section id="tab-stock" class="tab" hidden>
+      <h1>Articles (Stock)</h1>
       <div class="toolbar">
-        <button id="btnScanStart" class="btn primary">📷 Démarrer</button>
-        <button id="btnScanStop" class="btn">⏹️ Arrêter</button>
-        <button id="btnScanTorch" class="btn">🔦 Lampe</button>
+        <input id="stockSearch" placeholder="Rechercher nom/code/tags…" />
+        <select id="stockStatus">
+          <option value="">Tous statuts</option>
+          <option value="ok">OK</option>
+          <option value="low">Approche</option>
+          <option value="under">Sous seuil/Épuisé</option>
+        </select>
+        <select id="stockTag"><option value="">Tous tags</option></select>
+        <select id="stockLoc"><option value="">Tous emplacements</option></select>
+        <button id="stockClear" class="ghost">✖️</button>
+        <button id="btnAddStock">➕ Nouvel article</button>
       </div>
-      <video id="scanVideo" style="width:100%;max-height:60vh;background:#000;border-radius:8px" playsinline></video>
-      <p id="scanHint" class="muted" style="margin:.5rem 0 0">Visez le code-barres. Bip uniquement si l’article est reconnu.</p>
+      <div class="table-wrap">
+        <table class="grid">
+          <thead>
+            <tr>
+              <th>Désignation</th>
+              <th>Référence</th>
+              <th>Codebarre</th>
+              <th>Quantité</th>
+              <th>Seuil</th>
+              <th>Tags</th>
+              <th>Emplacement</th>
+              <th>Liens</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="stockTbody"></tbody>
+        </table>
+      </div>
     </section>
 
-    <!-- Étiquettes -->
-    <section id="tab-labels" hidden>
-      <div class="labels-layout">
-        <aside class="labels-side">
-          <div style="display:flex;gap:.4rem">
-            <input id="labelSearch" class="btn" type="search" placeholder="Rechercher… (nom/code)" style="flex:1">
-            <button id="lblAll" class="btn" title="Tout sélectionner">Tout</button>
-            <button id="lblNone" class="btn" title="Tout désélectionner">Aucun</button>
+    <!-- ATELIER -->
+    <section id="tab-atelier" class="tab" hidden>
+      <h1>Matériel (Atelier)</h1>
+      <div class="toolbar">
+        <input id="atelierSearch" placeholder="Rechercher…" />
+        <select id="atelierStatus">
+          <option value="">Tous statuts</option>
+          <option value="ok">OK</option>
+          <option value="low">Approche</option>
+          <option value="under">Sous seuil/Épuisé</option>
+        </select>
+        <select id="atelierTag"><option value="">Tous tags</option></select>
+        <select id="atelierLoc"><option value="">Tous emplacements</option></select>
+        <button id="atelierClear" class="ghost">✖️</button>
+        <button id="btnAddAtelier">➕ Nouveau matériel</button>
+      </div>
+      <div class="table-wrap">
+        <table class="grid">
+          <thead>
+            <tr>
+              <th>Désignation</th><th>Référence</th><th>Codebarre</th><th>Quantité</th>
+              <th>Seuil</th><th>Tags</th><th>Emplacement</th><th>Liens</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="atelierTbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- SCANNER -->
+    <section id="tab-scanner" class="tab" hidden>
+      <h1>Scanner</h1>
+      <div class="scan-wrap">
+        <video id="scanVideo" playsinline muted></video>
+        <div class="scan-controls">
+          <button id="btnScanStart">▶️ Démarrer</button>
+          <button id="btnScanStop" hidden>⏹️ Arrêter</button>
+          <button id="btnScanTorch" hidden>🔦 Lampe</button>
+        </div>
+        <div id="scanHint" class="muted">Autorisez la caméra pour scanner.</div>
+        <div id="scanFallback" class="fallback" hidden>
+          <input id="scanManual" placeholder="Saisir un code…" />
+          <button id="btnScanManual">Valider</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ETIQUETTES -->
+    <section id="tab-labels" class="tab" hidden>
+      <h1>Étiquettes</h1>
+      <div class="labels-config">
+        <div class="left">
+          <div class="toolbar">
+            <label>Modèle :
+              <select id="lblTemplate"></select>
+            </label>
           </div>
-          <div class="muted" id="lblSelInfo">0 sélection(s)</div>
-          <div id="labelsList" class="labels-list" aria-label="Sélection des articles"></div>
-        </aside>
-        <div class="labels-main">
-          <div class="labels-options">
-            <label>Modèle
-              <select id="lblTemplate" class="btn">
-                <option value="avery-l7160">Avery L7160 — 63.5×38.1 mm (3×7)</option>
-                <option value="avery-l7159">Avery L7159 — 63.5×38.1 mm (3×7)</option>
-                <option value="avery-l7163">Avery L7163 — 99.1×38.1 mm (2×7)</option>
-                <option value="avery-l7162">Avery L7162 — 99.1×33.9 mm (2×8)</option>
-                <option value="avery-l7165">Avery L7165 — 99.1×67.7 mm (2×4)</option>
-                <option value="mm50x25">50×25 mm (4×10)</option>
-                <option value="mm70x35">70×35 mm (3×8)</option>
+          <div class="toolbar">
+            <label><input id="lblShowName" type="checkbox" checked> Afficher nom</label>
+            <label><input id="lblShowText" type="checkbox" checked> Texte sous code</label>
+          </div>
+          <div class="toolbar">
+            <label>Taille nom (pt)
+              <input id="lblNameSize" type="number" min="8" max="18" step="1" value="11" />
+            </label>
+            <label>Taille code (pt)
+              <input id="lblCodeTextSize" type="number" min="8" max="16" step="1" value="9" />
+            </label>
+          </div>
+          <div class="toolbar">
+            <label>Hauteur code (%) 
+              <input id="lblBarHeightPct" type="number" min="20" max="90" step="1" value="60" />
+            </label>
+            <label>Épaisseur barres
+              <input id="lblDensity" type="number" min="1" max="4" step="0.1" value="2" />
+            </label>
+            <label>Padding (mm)
+              <input id="lblPadding" type="number" min="0" max="6" step="0.5" value="2" />
+            </label>
+          </div>
+          <div class="toolbar">
+            <label>Disposition
+              <select id="lblLayout">
+                <option value="name-above">Nom au-dessus</option>
+                <option value="name-below">Nom au-dessous</option>
+                <option value="barcode-only">Code-barres seul</option>
               </select>
             </label>
-            <label>Densité code
-              <select id="lblDensity" class="btn">
-                <option value="2">Normal</option>
-                <option value="1.6">Compact</option>
-                <option value="2.6">Large</option>
-              </select>
-            </label>
-            <label>Taille nom
-              <select id="lblNameSize" class="btn">
-                <option value="10">10 pt</option>
-                <option value="11" selected>11 pt</option>
-                <option value="12">12 pt</option>
-                <option value="14">14 pt</option>
-              </select>
-            </label>
-            <label style="display:flex;align-items:center;gap:.3rem"><input type="checkbox" id="lblShowText" class="btn"> Texte du code</label>
-            <label>Décalage X (mm)
-              <input id="lblOffsetX" class="btn" type="number" step="0.5" value="0" style="width:6rem">
-            </label>
-            <label>Décalage Y (mm)
-              <input id="lblOffsetY" class="btn" type="number" step="0.5" value="0" style="width:6rem">
-            </label>
-            <button id="btnLabelsPrint" class="btn primary">🖨️ Imprimer</button>
+          </div>
+          <div class="toolbar">
+            <label>Offset X (mm) <input id="lblOffsetX" type="number" step="0.5" value="0"></label>
+            <label>Offset Y (mm) <input id="lblOffsetY" type="number" step="0.5" value="0"></label>
           </div>
 
-          <div class="labels-pages" id="labelsPages"></div>
-
-          <div class="labels-pagination">
-            <button id="lblPrev" class="btn">‹ Préc.</button>
-            <span id="lblPageInfo" class="muted">Page 1 / 1</span>
-            <button id="lblNext" class="btn">Suiv. ›</button>
+          <div class="toolbar">
+            <input id="labelSearch" placeholder="Filtrer la liste…" />
+            <span id="lblSelInfo" class="muted">0 sélection(s)</span>
+            <button id="lblAll" class="ghost">Tout</button>
+            <button id="lblNone" class="ghost">Aucun</button>
+            <button id="btnLabelsPrint">🖨️ Imprimer</button>
           </div>
+          <div id="labelsList" class="list scroll"></div>
+        </div>
+        <div class="right">
+          <div class="preview-head">
+            <button id="lblPrev" class="ghost">◀</button>
+            <span id="lblPageInfo" class="muted"></span>
+            <button id="lblNext" class="ghost">▶</button>
+          </div>
+          <div id="labelsPages" class="labels-pages"></div>
         </div>
       </div>
     </section>
 
-    <!-- Journal -->
-    <section id="tab-journal" hidden>
+    <!-- JOURNAL -->
+    <section id="tab-journal" class="tab" hidden>
+      <h1>Journal</h1>
       <div class="toolbar">
-        <input id="dateFrom" type="date" class="btn">
-        <input id="dateTo" type="date" class="btn">
-        <button id="btnFilterJournal" class="btn">Filtrer</button>
-        <button id="btnExportCSV" class="btn">⬇️ Export CSV</button>
-        <button id="btnExportJSON" class="btn">⬇️ Export JSON</button>
+        <label>Du <input id="dateFrom" type="date"></label>
+        <label>au <input id="dateTo" type="date"></label>
+        <button id="btnFilterJournal">Filtrer</button>
+        <span class="spacer"></span>
+        <button id="btnExportCSV" class="ghost">Exporter CSV</button>
+        <button id="btnExportJSON" class="ghost">Exporter JSON</button>
       </div>
-      <table aria-label="Journal des mouvements"><thead><tr><th>Date/heure</th><th>Type</th><th>Code</th><th>Nom</th><th>Qté</th><th>Note</th></tr></thead><tbody id="journalTbody"></tbody></table>
+      <div class="table-wrap">
+        <table class="grid">
+          <thead><tr><th>Date</th><th>Type</th><th>Code</th><th>Nom</th><th>Qté</th><th>Note</th></tr></thead>
+          <tbody id="journalTbody"></tbody>
+        </table>
+      </div>
     </section>
 
-    <!-- Prêts -->
-    <section id="tab-gear" hidden>
+    <!-- EMPRUNTS -->
+    <section id="tab-gear" class="tab" hidden>
+      <h1>Emprunts</h1>
       <div class="toolbar">
-        <button id="btnNewLoan" class="btn primary">➕ Nouvel emprunt</button>
-        <button id="btnScanBorrow" class="btn">📥 Scanner emprunt</button>
-        <button id="btnScanReturn" class="btn">📤 Scanner retour</button>
-        <input id="searchLoans" type="search" placeholder="Rechercher emprunts…" class="btn">
+        <button id="btnNewLoan">➕ Nouvel emprunt</button>
+        <button id="btnScanBorrow">📷 Scanner un emprunt</button>
+        <button id="btnScanReturn">📷 Scanner un retour</button>
+        <span class="spacer"></span>
+        <input id="searchLoans" placeholder="Rechercher…" />
       </div>
-      <table aria-label="Table des emprunts"><thead><tr><th>Article</th><th>Code</th><th>À</th><th>Prévu retour</th><th>État</th><th>Actions</th></tr></thead><tbody id="loansTbody"></tbody></table>
+      <div class="table-wrap">
+        <table class="grid">
+          <thead><tr><th>Article</th><th>Code</th><th>Emprunteur</th><th>Retour prévu</th><th>Statut</th><th>Action</th></tr></thead>
+          <tbody id="loansTbody"></tbody>
+        </table>
+      </div>
     </section>
 
-    <!-- Paramètres -->
-    <section id="tab-settings" hidden>
-      <h3>Paramètres & Aide</h3>
-
-      <div class="section-card help-card" style="margin-bottom:12px">
-        <details class="help" open>
-          <summary>📘 Aide rapide</summary>
-          <p><strong>Scanner</strong> : Démarre la caméra, bip uniquement si le code correspond à un article. Codes inconnus : le flux reste ouvert pour vous laisser continuer, avec un message discret.</p>
-          <p><strong>Ajuster</strong> : Sur la ligne d’un article, utilisez <em>+1 / −1</em> pour corriger vite. Le bouton <em>Ajuster…</em> ouvre une fenêtre pour une entrée/sortie avec note.</p>
-          <p><strong>Étiquettes</strong> : Sélectionnez à gauche (Tout/Aucun), choisissez le gabarit (A4) et imprimez. Seule la planche est imprimée. Utilisez les <em>décalages X/Y</em> si votre imprimante dérive.</p>
-          <p><strong>Prêts</strong> : Scanner l’emprunt/retour, créer avec le nom et la date prévue. Les retards sont marqués en rouge.</p>
-        </details>
-      </div>
-
-      <div class="toolbar">
-        <button id="btnImportJSON" class="btn">Importer JSON</button>
-        <button id="btnExportFull" class="btn">Exporter JSON</button>
-        <button id="btnLinkSharedFile" class="btn">Activer fichier partagé (Desktop)</button>
-        <span id="sharedFileStatus" class="muted">Aucun fichier lié</span>
-      </div>
-
-      <div class="toolbar">
-        <label>Buffer d’alerte :
-          <input id="inputBuffer" type="number" min="0" value="0" class="btn" style="width:6rem">
-        </label>
-        <label style="display:flex;align-items:center;gap:.5rem">
-          <input type="checkbox" id="chkDebug" class="btn"> Mode développeur (overlay scanner)
-        </label>
-        <button id="btnResetCache" class="btn danger">Réinitialiser cache PWA</button>
-      </div>
+    <!-- PARAMETRES -->
+    <section id="tab-settings" class="tab" hidden>
+      <h1>Paramètres</h1>
+      <article class="help">
+        <h3>Aide intégrée</h3>
+        <p>Gstock fonctionne hors-ligne. Utilisez le scanner (📷) pour ajouter/retirer rapidement des quantités. Les codes-barres sont normalisés automatiquement (A-Z/0-9, max 10).</p>
+        <p>Les statuts de stock : <span class="badge ok">OK</span> quand au-dessus du seuil + buffer, <span class="badge low">Approche</span> quand proche du seuil (≤ buffer), <span class="badge under">Sous seuil</span> ou <span class="badge under">Épuisé</span>.</p>
+        <p>Les étiquettes (🏷️) proposent des modèles (dont A4 3×8). L’impression se fait dans une fenêtre dédiée sans l’UI.</p>
+        <p>En cas de souci de cache, ajoutez <code>?safe=1</code> à l’URL pour purger SW/IDB.</p>
+      </article>
 
       <div class="settings-grid">
-        <div class="section-card">
-          <h4>Tags — Stock <span class="pill-mini" id="countTagsStock">0</span></h4>
-          <div class="sort-wrap">
-            <div class="sort-add">
-              <input id="addTagStock" class="btn" placeholder="Ajouter un tag (Entrée pour valider)">
-              <button id="btnAddTagStock" class="btn">Ajouter</button>
-            </div>
-            <ul id="listTagsStock" class="sort-list" aria-label="Tags Stock (triables)"></ul>
+        <div>
+          <h3>Tags (Stock) <small><span id="countTagsStock">0</span></small></h3>
+          <div class="row-add">
+            <input id="addTagStock" placeholder="Nouveau tag…" />
+            <button id="btnAddTagStock">Ajouter</button>
           </div>
+          <ul id="listTagsStock" class="sortable"></ul>
         </div>
-        <div class="section-card">
-          <h4>Tags — Atelier <span class="pill-mini" id="countTagsAtelier">0</span></h4>
-          <div class="sort-wrap">
-            <div class="sort-add">
-              <input id="addTagAtelier" class="btn" placeholder="Ajouter un tag (Entrée pour valider)">
-              <button id="btnAddTagAtelier" class="btn">Ajouter</button>
-            </div>
-            <ul id="listTagsAtelier" class="sort-list" aria-label="Tags Atelier (triables)"></ul>
+        <div>
+          <h3>Tags (Atelier) <small><span id="countTagsAtelier">0</span></small></h3>
+          <div class="row-add">
+            <input id="addTagAtelier" placeholder="Nouveau tag…" />
+            <button id="btnAddTagAtelier">Ajouter</button>
           </div>
+          <ul id="listTagsAtelier" class="sortable"></ul>
         </div>
-        <div class="section-card">
-          <h4>Emplacements — Stock <span class="pill-mini" id="countLocsStock">0</span></h4>
-          <div class="sort-wrap">
-            <div class="sort-add">
-              <input id="addLocStock" class="btn" placeholder="Ajouter un emplacement (Entrée pour valider)">
-              <button id="btnAddLocStock" class="btn">Ajouter</button>
-            </div>
-            <ul id="listLocsStock" class="sort-list" aria-label="Emplacements Stock (triables)"></ul>
+        <div>
+          <h3>Emplacements (Stock) <small><span id="countLocsStock">0</span></small></h3>
+          <div class="row-add">
+            <input id="addLocStock" placeholder="Ex. Atelier/Étagère 1…" />
+            <button id="btnAddLocStock">Ajouter</button>
           </div>
+          <ul id="listLocsStock" class="sortable"></ul>
         </div>
-        <div class="section-card">
-          <h4>Emplacements — Atelier <span class="pill-mini" id="countLocsAtelier">0</span></h4>
-          <div class="sort-wrap">
-            <div class="sort-add">
-              <input id="addLocAtelier" class="btn" placeholder="Ajouter un emplacement (Entrée pour valider)">
-              <button id="btnAddLocAtelier" class="btn">Ajouter</button>
-            </div>
-            <ul id="listLocsAtelier" class="sort-list" aria-label="Emplacements Atelier (triables)"></ul>
+        <div>
+          <h3>Emplacements (Atelier) <small><span id="countLocsAtelier">0</span></small></h3>
+          <div class="row-add">
+            <input id="addLocAtelier" placeholder="Ex. Atelier/Étagère 1…" />
+            <button id="btnAddLocAtelier">Ajouter</button>
           </div>
+          <ul id="listLocsAtelier" class="sortable"></ul>
         </div>
       </div>
 
-      <div class="toolbar" style="justify-content:flex-end">
-        <button id="btnSaveSettings" class="btn primary">💾 Enregistrer</button>
+      <div class="toolbar">
+        <label>Buffer alerte (pièces) <input id="inputBuffer" type="number" min="0" step="1" value="0"></label>
+        <label><input id="chkDebug" type="checkbox"> Mode debug</label>
+        <span class="spacer"></span>
+        <button id="btnSaveSettings">💾 Enregistrer</button>
+        <button id="btnExportFull" class="ghost">Exporter (tout)</button>
+        <button id="btnImportJSON" class="ghost">Importer (JSON)</button>
+        <button id="btnLinkSharedFile" class="ghost">Lier fichier partagé</button>
+        <span id="sharedFileStatus" class="muted"></span>
+        <button id="btnResetCache" class="danger">Purgez SW/IDB</button>
       </div>
     </section>
   </main>
 
-  <!-- Dialogs (création, ajustement, scan prêts) -->
+  <!-- DIALOGS =================================================== -->
+
+  <!-- Créer / Éditer / Dupliquer -->
   <dialog id="newItemDialog">
-    <form method="dialog" style="min-width:340px;max-width:520px">
-      <h3 style="margin:.2rem 0 1rem" id="niTitle">Nouvel élément</h3>
-      <input type="hidden" id="niType" value="stock">
-      <div style="display:grid;gap:.5rem">
-        <label>Nom<br><input id="niName" class="btn" required></label>
-        <label>Code<br>
-          <div style="display:flex;gap:.5rem">
-            <input id="niCode" class="btn" required>
-            <button id="niGen" class="btn" type="button">Générer</button>
-          </div>
+    <form method="dialog">
+      <h3 id="niTitle">Nouvel article</h3>
+      <div class="row">
+        <label>Type
+          <select id="niType">
+            <option value="stock">Stock</option>
+            <option value="atelier">Atelier</option>
+          </select>
         </label>
-        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-          <label style="flex:1 1 140px">Qté<br><input id="niQty" class="btn" type="number" min="0" value="0" required></label>
-          <label style="flex:1 1 140px">Seuil<br><input id="niThr" class="btn" type="number" min="0" value="0" required></label>
+        <label>Désignation
+          <input id="niName" required />
+        </label>
+        <label>Référence
+          <input id="niRef" />
+        </label>
+      </div>
+      <div class="row">
+        <label>Code-barres
+          <input id="niCode" maxlength="10" placeholder="Auto si vide" />
+        </label>
+        <button id="niGen" type="button">Générer</button>
+        <button id="niCopyRefToCode" type="button">Ref → Code</button>
+      </div>
+      <div class="row">
+        <label>Quantité
+          <input id="niQty" type="number" min="0" step="1" value="0" />
+        </label>
+        <label>Seuil
+          <input id="niThr" type="number" min="0" step="1" value="0" />
+        </label>
+      </div>
+      <div class="row">
+        <label>Emplacement
+          <select id="niLocSelect"></select>
+        </label>
+        <div id="niLocCustomWrap">
+          <label>Perso
+            <input id="niLocCustom" />
+          </label>
         </div>
-
-        <!-- Sélecteur rapide d’emplacement -->
-        <label>Emplacement<br>
-          <select id="niLocSelect" class="btn"></select>
-        </label>
-        <div id="niLocCustomWrap" style="display:flex;gap:.4rem;align-items:center" hidden>
-          <span class="muted">Autre :</span>
-          <input id="niLocCustom" class="btn" placeholder="Saisir un emplacement">
-        </div>
-        <div id="niLocChips" style="display:flex;gap:.4rem;flex-wrap:wrap"></div>
-
-        <fieldset style="border:1px solid var(--bd);border-radius:.5rem;padding:.5rem">
-          <legend style="padding:0 .4rem">Tags prédéfinis (<span id="niTagCategory">Stock</span>)</legend>
-          <div id="niTagChecks" style="display:flex;flex-wrap:wrap;gap:.5rem"></div>
-          <div style="display:flex;gap:.4rem;margin-top:.4rem">
-            <input id="niTagsExtra" class="btn" placeholder="Tags supplémentaires (virgules)">
-            <button id="niTagsClear" type="button" class="btn">Tout décocher</button>
-          </div>
-        </fieldset>
-
-        <label>Liens (un par ligne)<br>
-          <textarea id="niLinks" class="btn" rows="3" placeholder="https://…&#10;http://…"></textarea>
+      </div>
+      <div class="row">
+        <div id="niLocChips" class="chips"></div>
+      </div>
+      <div class="row">
+        <strong id="niTagCategory">Stock</strong>
+        <div id="niTagChecks" class="chips" style="flex:1"></div>
+        <button id="niTagsClear" type="button" class="ghost">Tout décocher</button>
+      </div>
+      <div class="row">
+        <label>Tags supplémentaires (séparés par des virgules)
+          <input id="niTagsExtra" placeholder="ex: critique, fragile" />
         </label>
       </div>
-      <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">
-        <button class="btn" value="cancel">Annuler</button>
-        <button id="niSave" class="btn primary" value="default">Créer</button>
+      <div class="row">
+        <label>Liens (un par ligne)
+          <textarea id="niLinks" rows="3" placeholder="https://…"></textarea>
+        </label>
       </div>
+      <menu>
+        <button value="cancel">Annuler</button>
+        <button id="niSave" class="primary">Enregistrer</button>
+      </menu>
     </form>
   </dialog>
 
-  <dialog id="adjustDialog" aria-labelledby="adjTitle">
-    <form method="dialog" style="min-width:320px">
-      <h3 id="adjTitle" style="margin:.2rem 0 1rem">Ajuster le stock</h3>
-      <div id="dlgItem" class="muted" style="margin-bottom:.5rem"></div>
-      <label>Type de mouvement<br>
-        <select id="dlgType" class="btn"><option value="add">Entrée</option><option value="remove">Sortie</option></select>
-      </label>
-      <div style="display:flex;gap:.5rem;margin-top:.5rem">
-        <label>Quantité<br><input id="dlgQty" class="btn" type="number" min="1" value="1"></label>
-        <label>Note<br><input id="dlgNote" class="btn" placeholder="Motif"></label>
+  <!-- Ajuster les quantités après scan ou manuel -->
+  <dialog id="adjustDialog">
+    <form method="dialog">
+      <h3>Ajuster le stock</h3>
+      <p><strong id="adjName">—</strong> <code id="adjCode">—</code></p>
+      <div class="row">
+        <label>Quantité
+          <input id="adjQty" type="number" min="1" step="1" value="1" />
+        </label>
       </div>
-      <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">
-        <button id="dlgClose" class="btn" value="cancel">Annuler</button>
-        <button id="dlgValidate" class="btn primary" value="default">Valider</button>
-      </div>
+      <menu>
+        <button id="adjRemove" type="button">Retirer</button>
+        <button id="adjAdd" type="button" class="primary">Ajouter</button>
+        <button value="cancel">Fermer</button>
+      </menu>
     </form>
   </dialog>
 
-  <dialog id="loanScanDialog">
-    <form method="dialog" style="min-width:320px;max-width:520px">
-      <h3 id="loanScanTitle">Scan</h3>
-      <div class="toolbar">
-        <button id="btnLoanTorch" class="btn" type="button">🔦 Lampe</button>
-        <button id="btnLoanStop" class="btn" type="button">⏹️ Arrêter</button>
-      </div>
-      <video id="loanVideo" style="width:100%;max-height:60vh;background:#000;border-radius:8px" playsinline></video>
-      <p id="loanScanHint" class="muted" style="margin:.5rem 0 0">Visez le code-barres…</p>
-      <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.5rem">
-        <button class="btn" value="cancel">Fermer</button>
-      </div>
-    </form>
-  </dialog>
-
-  <dialog id="borrowDialog">
-    <form method="dialog" style="min-width:320px">
+  <!-- Nouvel emprunt -->
+  <dialog id="loanDialog">
+    <form method="dialog">
       <h3>Nouvel emprunt</h3>
-      <div id="borrowItem" class="muted"></div>
-      <label>Emprunteur<br><input id="brwPerson" class="btn" required></label>
-      <label>Date prévue retour<br><input id="brwDue" class="btn" type="date" required></label>
-      <label>Note<br><input id="brwNote" class="btn"></label>
-      <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.6rem">
-        <button class="btn" value="cancel">Annuler</button>
-        <button id="brwCreate" class="btn primary" value="default">Créer</button>
+      <div class="row">
+        <label>Code article
+          <input id="loanCode" />
+        </label>
+        <button id="btnScanInLoan" type="button">📷 Scanner</button>
       </div>
+      <div class="row">
+        <label>Emprunteur
+          <input id="loanPerson" />
+        </label>
+        <label>Retour prévu
+          <input id="loanDue" type="date" />
+        </label>
+      </div>
+      <div class="row">
+        <label>Note
+          <input id="loanNote" />
+        </label>
+      </div>
+      <menu>
+        <button value="cancel">Annuler</button>
+        <button id="loanSave" class="primary">Valider</button>
+      </menu>
     </form>
   </dialog>
 
-  <div id="sr" class="sr-only" aria-live="polite"></div>
+  <!-- Scan prêt/retour dédié -->
+  <dialog id="loanScanDialog">
+    <form method="dialog">
+      <h3 id="loanScanTitle">Scanner</h3>
+      <video id="loanVideo" playsinline muted></video>
+      <menu>
+        <button id="loanScanStop" type="button">Arrêter</button>
+        <button value="cancel">Fermer</button>
+      </menu>
+    </form>
+  </dialog>
 
-  <!-- Scripts -->
-  <script src="js/db.js?v=2.1.8"></script>
-  <script src="js/barcode.js?v=2.1.8"></script>
-  <script src="js/code39.js?v=2.1.8"></script>
-  <script src="js/sync-github.js?v=2.1.8"></script>
-  <script src="js/app.js?v=2.7.1"></script>
+  <div id="sr" class="sr" aria-live="polite" aria-atomic="true"></div>
 
-  <!-- SW avec test de stockage (évite "Failed to access storage") -->
-  <script>
-  (async () => {
-    async function storageOK(){
-      try {
-        if (!('caches' in window)) return false;
-        const name = 'gstock-probe-' + Date.now();
-        const c = await caches.open(name);
-        await c.put(new Request('data:,1'), new Response('1'));
-        await caches.delete(name);
-        return true;
-      } catch (e) {
-        console.warn('Storage test failed:', e);
-        return false;
-      }
-    }
-    if (!('serviceWorker' in navigator)) return;
-    const ok = await storageOK();
-    if (!ok) {
-      console.warn('Running without Service Worker (storage unavailable).');
-      document.body.dataset.pwa = 'off';
-      const el = document.getElementById('sharedFileStatus');
-      if (el) el.textContent = 'PWA désactivée (stockage indisponible)';
-      return;
-    }
-    try {
-      await navigator.serviceWorker.register('sw.js?v=' + (window.APP_VERSION || ''));
-    } catch (e) {
-      console.warn('SW register failed', e);
-      const el = document.getElementById('sharedFileStatus');
-      if (el) el.textContent = 'Échec Service Worker (voir console)';
-    }
-  })();
+  
+  <script>window.APP_VERSION="2.9.6";</script>
+<script>
+  // URL publique de l’API sur le NAS (adapter host/port/protocole)
+  window.GSTOCK_BACKEND = 'http://10.66.12.235/Gestionnaire_de_stock/gstock-api/api.php'; 
+  window.GSTOCK_API_KEY = 'change-me-very-strong'; // même clé que api.php
+</script>
+<script src="js/code39.js?v=2.9.3"></script>
+<script src="js/db.js?v=2.9.7"></script>
+<script src="js/db.remote.js?v=1.0.0"></script>
+<script src="js/app.js?v=2.9.6"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js?v=2.9.3').catch(e=>{
+        console.warn('SW non enregistré:', e);
+      });
+    });
+  }
   </script>
 </body>
 </html>

@@ -1,55 +1,42 @@
-/* Gstock - sw.js v2.7.0 (cache shell only + safe puts) */
-const CACHE='gstock-2.7.0';
-const SHELL=[
+/* Gstock SW v2.9.0 – stratégie mixte + purge */
+const VERSION = 'v2.9.1';
+const CORE = [
   './',
-  'index.html',
-  'js/app.js?v=2.7.0',
-  'js/db.js?v=2.1.8',
-  'js/barcode.js?v=2.1.8',
-  'js/code39.js?v=2.1.8',
-  'js/sync-github.js?v=2.1.8',
-  'manifest.json',
-  'icons/icon-192.png',
-  'icons/icon-512.png'
+  './index.html',
+  './css/styles.css?v=2.9.0',
+  './js/app.js?v=2.9.6',
+  './js/db.js?v=2.9.7',
+  './js/code39.js?v=2.9.0',
+  './manifest.json?v=2.9.0'
 ];
 
-self.addEventListener('install', e => {
-  e.waitUntil((async () => {
-    const c = await caches.open(CACHE);
-    try { await c.addAll(SHELL); } catch (err) { /* ignore quota */ }
-    self.skipWaiting();
-  })());
+self.addEventListener('install', (e)=>{
+  e.waitUntil(caches.open(VERSION).then(c=>c.addAll(CORE)).then(()=>self.skipWaiting()));
 });
-
-self.addEventListener('activate', e => {
-  e.waitUntil((async () => {
-    const keys = await caches.keys();
-    await Promise.all(keys.map(k => k !== CACHE && caches.delete(k)));
-    await self.clients.claim();
-  })());
+self.addEventListener('activate', (e)=>{
+  e.waitUntil(
+    caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==VERSION).map(k=>caches.delete(k))))
+    .then(()=>self.clients.claim())
+  );
 });
-
-self.addEventListener('fetch', e => {
+self.addEventListener('fetch', (e)=>{
   const url = new URL(e.request.url);
-  const isShell = url.origin === location.origin &&
-    (url.pathname.endsWith('/') ||
-     /index\.html$/.test(url.pathname) ||
-     /(app|db|barcode|code39|sync-github)\.js/.test(url.pathname) ||
-     /manifest\.json$/.test(url.pathname) ||
-     /icons\/icon-(192|512)\.png$/.test(url.pathname));
-
-  if (isShell) {
-    e.respondWith((async () => {
-      try {
-        const net = await fetch(e.request, { cache: 'no-store' });
-        try { const c = await caches.open(CACHE); await c.put(e.request, net.clone()); } catch (_) {}
-        return net;
-      } catch (_) {
-        const hit = await caches.match(e.request);
-        return hit || caches.match('index.html');
-      }
-    })());
-  } else {
-    e.respondWith(fetch(e.request).catch(() => caches.match('index.html')));
+  const isCritical = url.pathname.endsWith('/index.html') || url.pathname.endsWith('/js/app.js') || url.pathname.endsWith('/js/db.js');
+  if (isCritical) {
+    e.respondWith(
+      fetch(e.request).then(r=>{
+        const copy = r.clone(); caches.open(VERSION).then(c=>c.put(e.request, copy)); return r;
+      }).catch(()=>caches.match(e.request))
+    );
+    return;
   }
+  e.respondWith(
+    caches.match(e.request).then(cached=>{
+      return cached || fetch(e.request).then(r=>{
+        const copy = r.clone();
+        caches.open(VERSION).then(c=>c.put(e.request, copy));
+        return r;
+      });
+    }).catch(()=>caches.match('./index.html'))
+  );
 });
