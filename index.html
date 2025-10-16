@@ -448,11 +448,18 @@
 
   <div id="sr" class="sr" aria-live="polite" aria-atomic="true"></div>
 
+  
   <script>window.APP_VERSION="2.9.6";</script>
-  <script src="js/code39.js?v=2.9.3"></script>
-  <script src="js/db.js?v=2.9.7"></script>
-  <script src="js/app.js?v=2.9.6"></script>
-  <script>
+<script>
+  // URL publique de l’API sur le NAS (adapter host/port/protocole)
+  window.GSTOCK_BACKEND = 'http://10.66.12.235/Gestionnaire_de_stock/gstock-api/api.php'; 
+  window.GSTOCK_API_KEY = 'change-me-very-strong'; // même clé que api.php
+</script>
+<script src="js/code39.js?v=2.9.3"></script>
+<script src="js/db.js?v=2.9.7"></script>
+<script src="js/db.remote.js?v=1.0.0"></script>
+<script src="js/app.js?v=2.9.6"></script>
+<script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('sw.js?v=2.9.3').catch(e=>{
