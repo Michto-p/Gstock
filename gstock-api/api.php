@@ -1,16 +1,21 @@
 <?php
-// Gstock API (SQLite + PHP) – version 1.0
-// Déposer ce fichier en /Web/gstock-api/api.php (QNAP Apache/PHP)
-// Requis: extension PDO + pdo_sqlite
-
+// Gstock API (MariaDB/MySQL + PHP) – v1.0
+// Dépendances: PHP 7.2+ avec PDO + pdo_mysql
 header('Content-Type: application/json; charset=utf-8');
 
-// --- CONFIG ---
-$API_SECRET = 'change-me-very-strong'; // <<< Mets une clé forte
-$DB_DIR = __DIR__ . '/data';
-$DB_FILE = $DB_DIR . '/gstock.sqlite';
+/* ================== CONFIG ================== */
+// Sécurité (change impérativement la clé)
+$API_SECRET = 'change-me-very-strong';
 
-// --- AUTH ---
+// Connexion MariaDB/MySQL
+$DB_HOST = '127.0.0.1';
+$DB_PORT = 3306;
+$DB_NAME = 'gstock';
+$DB_USER = 'gstock_user';          // ou 'root' si pas d’utilisateur dédié
+$DB_PASS = 'motDePasseTrèsLongEtSûr!'; // adapte le mot de passe
+$DB_CHARSET = 'utf8mb4';
+
+/* ================ AUTH & CORS =============== */
 $apiKey = $_SERVER['HTTP_X_API_KEY'] ?? '';
 if ($apiKey !== $API_SECRET) {
   http_response_code(401);
@@ -18,8 +23,8 @@ if ($apiKey !== $API_SECRET) {
   exit;
 }
 
-// --- CORS (si tu sers le front d’un autre host, sinon commente) ---
-// header('Access-Control-Allow-Origin: https://ton-front.local');
+// (décommente si front ≠ même origine)
+// header('Access-Control-Allow-Origin: http://ton-front.local');
 // header('Vary: Origin');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
   header('Access-Control-Allow-Headers: X-API-Key, Content-Type');
@@ -27,68 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
   exit;
 }
 
-// --- INIT DB ---
-if (!file_exists($DB_DIR)) { @mkdir($DB_DIR, 0775, true); }
-try {
-  $pdo = new PDO('sqlite:' . $DB_FILE);
-  $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-  $pdo->exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;');
-
-  // tables
-  $pdo->exec('CREATE TABLE IF NOT EXISTS items (
-    code TEXT PRIMARY KEY,
-    name TEXT,
-    ref TEXT,
-    qty INTEGER DEFAULT 0,
-    threshold INTEGER DEFAULT 0,
-    tags TEXT,        -- JSON
-    location TEXT,
-    links TEXT,       -- JSON
-    type TEXT,        -- stock | atelier
-    updated INTEGER
-  )');
-  $pdo->exec('CREATE TABLE IF NOT EXISTS moves (
-    id TEXT PRIMARY KEY,
-    ts INTEGER,
-    type TEXT,       -- ENTRY | EXIT
-    code TEXT,
-    name TEXT,
-    qty INTEGER,
-    note TEXT
-  )');
-  $pdo->exec('CREATE TABLE IF NOT EXISTS loans (
-    id TEXT PRIMARY KEY,
-    ts INTEGER,
-    code TEXT,
-    name TEXT,
-    person TEXT,
-    due TEXT,
-    note TEXT,
-    returnedAt INTEGER
-  )');
-  $pdo->exec('CREATE TABLE IF NOT EXISTS settings (
-    id TEXT PRIMARY KEY,
-    buffer INTEGER,
-    debug INTEGER,
-    defaultTagsStock TEXT,        -- JSON
-    defaultTagsAtelier TEXT,      -- JSON
-    defaultLocationsStock TEXT,   -- JSON
-    defaultLocationsAtelier TEXT  -- JSON
-  )');
-  // settings par défaut
-  $s = $pdo->query("SELECT 1 FROM settings WHERE id='settings'")->fetch();
-  if (!$s) {
-    $stmt = $pdo->prepare('INSERT INTO settings (id,buffer,debug,defaultTagsStock,defaultTagsAtelier,defaultLocationsStock,defaultLocationsAtelier)
-      VALUES ("settings",0,0,"[]","[]","[]","[]")');
-    $stmt->execute();
-  }
-} catch (Exception $e) {
-  http_response_code(500);
-  echo json_encode(['ok'=>false,'error'=>'db-fail','detail'=>$e->getMessage()]);
-  exit;
-}
-
-// --- Helpers ---
+/* ================= HELPERS ================== */
 function jbody() {
   $raw = file_get_contents('php://input');
   if (!$raw) return [];
@@ -98,11 +42,27 @@ function jbody() {
 function ok($data=null){ echo json_encode(['ok'=>true,'data'=>$data], JSON_UNESCAPED_UNICODE); exit; }
 function fail($code=400,$msg='bad-request'){ http_response_code($code); echo json_encode(['ok'=>false,'error'=>$msg]); exit; }
 function uid($p='ID'){ return $p.'-'.dechex(time()).'-'.substr(md5(uniqid('',true)),0,8); }
+function jenc($v){ return json_encode($v, JSON_UNESCAPED_UNICODE); }
+function jdec($s){ if($s===null||$s==='') return []; $v=json_decode($s,true); return is_array($v)?$v:[]; }
 
-// --- Router (via query r=/path...) OU via /api.php/path ---
+/* =============== DB CONNECT ================= */
+try{
+  $dsn = "mysql:host={$DB_HOST};port={$DB_PORT};dbname={$DB_NAME};charset={$DB_CHARSET}";
+  $pdo = new PDO($dsn, $DB_USER, $DB_PASS, [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+  ]);
+  // Optionnel : mode SQL strict allégé
+  $pdo->exec("SET NAMES {$DB_CHARSET}");
+}catch(Exception $e){
+  http_response_code(500);
+  echo json_encode(['ok'=>false,'error'=>'db-conn-fail','detail'=>$e->getMessage()]);
+  exit;
+}
+
+/* ================= ROUTING ================== */
 $path = $_GET['r'] ?? '';
 if (!$path) {
-  // Support /api.php/foo/bar
   $uri = $_SERVER['REQUEST_URI'];
   $pos = strpos($uri, 'api.php');
   $path = $pos!==false ? substr($uri, $pos+7) : '/';
@@ -110,19 +70,22 @@ if (!$path) {
 $path = strtok($path,'?');
 $method = $_SERVER['REQUEST_METHOD'];
 
-// normalise
-function jenc($v){ return json_encode($v, JSON_UNESCAPED_UNICODE); }
-function jdec($s){ if($s===null||$s==='') return null; $v=json_decode($s,true); return is_array($v)?$v:[]; }
-
-// --- Routes ---
+/* ================= ROUTES =================== */
 // GET /health
 if ($method==='GET' && $path==='/health') ok(['status'=>'up']);
 
-// SETTINGS
+/* ---- SETTINGS ---- */
 if ($path==='/settings') {
   if ($method==='GET') {
-    $row=$pdo->query("SELECT * FROM settings WHERE id='settings'")->fetch(PDO::FETCH_ASSOC);
-    if(!$row) $row=[];
+    $stmt=$pdo->query("SELECT * FROM settings WHERE id='settings' LIMIT 1");
+    $row=$stmt->fetch();
+    if(!$row){
+      $row=[
+        'id'=>'settings','buffer'=>0,'debug'=>0,
+        'defaultTagsStock'=>'[]','defaultTagsAtelier'=>'[]',
+        'defaultLocationsStock'=>'[]','defaultLocationsAtelier'=>'[]'
+      ];
+    }
     $row['defaultTagsStock']=jdec($row['defaultTagsStock']??'[]');
     $row['defaultTagsAtelier']=jdec($row['defaultTagsAtelier']??'[]');
     $row['defaultLocationsStock']=jdec($row['defaultLocationsStock']??'[]');
@@ -148,25 +111,29 @@ if ($path==='/settings') {
   fail(405,'method-not-allowed');
 }
 
-// ITEMS
+/* ---- ITEMS ---- */
 if ($path==='/items') {
   if ($method==='GET') {
     $type = $_GET['type'] ?? '';
     if ($type==='stock' || $type==='atelier') {
-      $stmt=$pdo->prepare('SELECT * FROM items WHERE type=:t ORDER BY name COLLATE NOCASE');
+      $stmt=$pdo->prepare('SELECT * FROM items WHERE type=:t ORDER BY name');
       $stmt->execute([':t'=>$type]);
     } else {
-      $stmt=$pdo->query('SELECT * FROM items ORDER BY name COLLATE NOCASE');
+      $stmt=$pdo->query('SELECT * FROM items ORDER BY name');
     }
-    $rows=$stmt->fetchAll(PDO::FETCH_ASSOC);
+    $rows=$stmt->fetchAll();
     foreach($rows as &$r){ $r['tags']=jdec($r['tags']??'[]'); $r['links']=jdec($r['links']??'[]'); }
     ok($rows);
   }
   if ($method==='POST') {
     $b=jbody();
     if(empty($b['code'])||empty($b['name'])) fail(400,'missing-fields');
-    $stmt=$pdo->prepare('INSERT OR REPLACE INTO items(code,name,ref,qty,threshold,tags,location,links,type,updated)
-      VALUES (:code,:name,:ref,:qty,:thr,:tags,:loc,:links,:type,:upd)');
+    $stmt=$pdo->prepare('INSERT INTO items(code,name,ref,qty,threshold,tags,location,links,type,updated)
+      VALUES (:code,:name,:ref,:qty,:thr,:tags,:loc,:links,:type,:upd)
+      ON DUPLICATE KEY UPDATE
+      name=VALUES(name), ref=VALUES(ref), qty=VALUES(qty), threshold=VALUES(threshold),
+      tags=VALUES(tags), location=VALUES(location), links=VALUES(links),
+      type=VALUES(type), updated=VALUES(updated)');
     $stmt->execute([
       ':code'=>$b['code'],
       ':name'=>$b['name'],
@@ -186,8 +153,8 @@ if ($path==='/items') {
 if (preg_match('#^/items/([A-Za-z0-9_-]+)$#',$path,$m)){
   $code=$m[1];
   if ($method==='GET'){
-    $stmt=$pdo->prepare('SELECT * FROM items WHERE code=:c'); $stmt->execute([':c'=>$code]);
-    $r=$stmt->fetch(PDO::FETCH_ASSOC);
+    $stmt=$pdo->prepare('SELECT * FROM items WHERE code=:c LIMIT 1'); $stmt->execute([':c'=>$code]);
+    $r=$stmt->fetch();
     if(!$r) fail(404,'not-found');
     $r['tags']=jdec($r['tags']??'[]'); $r['links']=jdec($r['links']??'[]');
     ok($r);
@@ -221,8 +188,8 @@ if (preg_match('#^/items/([A-Za-z0-9_-]+)/adjust$#',$path,$m)){
   if ($method==='POST'){
     $b=jbody(); $delta=intval($b['delta']??0);
     $pdo->beginTransaction();
-    $stmt=$pdo->prepare('SELECT qty,name FROM items WHERE code=:c'); $stmt->execute([':c'=>$code]);
-    $r=$stmt->fetch(PDO::FETCH_ASSOC);
+    $stmt=$pdo->prepare('SELECT qty,name FROM items WHERE code=:c FOR UPDATE'); $stmt->execute([':c'=>$code]);
+    $r=$stmt->fetch();
     if(!$r){ $pdo->rollBack(); fail(404,'not-found'); }
     $new=max(0, intval($r['qty']) + $delta);
     $stmt=$pdo->prepare('UPDATE items SET qty=:q, updated=:u WHERE code=:c');
@@ -233,7 +200,7 @@ if (preg_match('#^/items/([A-Za-z0-9_-]+)/adjust$#',$path,$m)){
   fail(405,'method-not-allowed');
 }
 
-// MOVES
+/* ---- MOVES ---- */
 if ($path==='/moves'){
   if ($method==='GET'){
     $from = isset($_GET['from']) ? intval($_GET['from']) : 0;
@@ -244,7 +211,7 @@ if ($path==='/moves'){
     $stmt->bindValue(':t',$to,PDO::PARAM_INT);
     $stmt->bindValue(':lim',$limit,PDO::PARAM_INT);
     $stmt->execute();
-    ok($stmt->fetchAll(PDO::FETCH_ASSOC));
+    ok($stmt->fetchAll());
   }
   if ($method==='POST'){
     $b=jbody();
@@ -257,15 +224,17 @@ if ($path==='/moves'){
       'qty'=> intval($b['qty']??0),
       'note'=> $b['note']??''
     ];
-    $stmt=$pdo->prepare('INSERT OR REPLACE INTO moves (id,ts,type,code,name,qty,note)
-      VALUES (:id,:ts,:type,:code,:name,:qty,:note)');
+    $stmt=$pdo->prepare('INSERT INTO moves (id,ts,type,code,name,qty,note)
+      VALUES (:id,:ts,:type,:code,:name,:qty,:note)
+      ON DUPLICATE KEY UPDATE ts=VALUES(ts), type=VALUES(type), code=VALUES(code),
+      name=VALUES(name), qty=VALUES(qty), note=VALUES(note)');
     $stmt->execute($rec);
     ok(true);
   }
   fail(405,'method-not-allowed');
 }
 
-// LOANS
+/* ---- LOANS ---- */
 if ($path==='/loans'){
   if ($method==='GET'){
     $inc = !empty($_GET['includeClosed']);
@@ -274,7 +243,7 @@ if ($path==='/loans'){
     } else {
       $stmt=$pdo->query('SELECT * FROM loans WHERE returnedAt IS NULL ORDER BY ts DESC');
     }
-    ok($stmt->fetchAll(PDO::FETCH_ASSOC));
+    ok($stmt->fetchAll());
   }
   if ($method==='POST'){
     $b=jbody();
@@ -285,7 +254,7 @@ if ($path==='/loans'){
       'name'=> $b['name']??'',
       'person'=> $b['person']??'',
       'due'=> $b['due']??null,
-      'note'=> $b['note']??''
+      'note'=> $b['note']??'',
     ];
     $stmt=$pdo->prepare('INSERT INTO loans (id,ts,code,name,person,due,note,returnedAt)
       VALUES (:id,:ts,:code,:name,:person,:due,:note,NULL)');
@@ -297,25 +266,29 @@ if ($path==='/loans'){
 if (preg_match('#^/loans/([A-Za-z0-9_-]+)/close$#',$path,$m)){
   $code=$m[1];
   if ($method==='POST'){
-    // marque le plus récent non rendu
-    $stmt=$pdo->prepare('SELECT * FROM loans WHERE code=:c AND returnedAt IS NULL ORDER BY ts DESC LIMIT 1');
+    $pdo->beginTransaction();
+    $stmt=$pdo->prepare('SELECT * FROM loans WHERE code=:c AND returnedAt IS NULL ORDER BY ts DESC LIMIT 1 FOR UPDATE');
     $stmt->execute([':c'=>$code]);
-    $l=$stmt->fetch(PDO::FETCH_ASSOC);
-    if(!$l) fail(404,'not-found');
+    $l=$stmt->fetch();
+    if(!$l){ $pdo->rollBack(); fail(404,'not-found'); }
     $stmt=$pdo->prepare('UPDATE loans SET returnedAt=:r WHERE id=:id');
     $stmt->execute([':r'=>time()*1000, ':id'=>$l['id']]);
+    $pdo->commit();
     ok(true);
   }
   fail(405,'method-not-allowed');
 }
 
-// IMPORT / EXPORT
+/* ---- EXPORT / IMPORT ---- */
 if ($path==='/export' && $method==='GET'){
-  $items = $pdo->query('SELECT * FROM items')->fetchAll(PDO::FETCH_ASSOC);
+  $items = $pdo->query('SELECT * FROM items')->fetchAll();
   foreach($items as &$r){ $r['tags']=jdec($r['tags']??'[]'); $r['links']=jdec($r['links']??'[]'); }
-  $moves = $pdo->query('SELECT * FROM moves')->fetchAll(PDO::FETCH_ASSOC);
-  $loans = $pdo->query('SELECT * FROM loans')->fetchAll(PDO::FETCH_ASSOC);
-  $s = $pdo->query("SELECT * FROM settings WHERE id='settings'")->fetch(PDO::FETCH_ASSOC);
+  $moves = $pdo->query('SELECT * FROM moves')->fetchAll();
+  $loans = $pdo->query('SELECT * FROM loans')->fetchAll();
+  $s = $pdo->query("SELECT * FROM settings WHERE id='settings'")->fetch();
+  if(!$s){
+    $s=['buffer'=>0,'debug'=>0,'defaultTagsStock'=>'[]','defaultTagsAtelier'=>'[]','defaultLocationsStock'=>'[]','defaultLocationsAtelier'=>'[]'];
+  }
   $s['defaultTagsStock']=jdec($s['defaultTagsStock']??'[]');
   $s['defaultTagsAtelier']=jdec($s['defaultTagsAtelier']??'[]');
   $s['defaultLocationsStock']=jdec($s['defaultLocationsStock']??'[]');
@@ -329,6 +302,7 @@ if ($path==='/import' && $method==='POST'){
     $pdo->exec('DELETE FROM items');
     $pdo->exec('DELETE FROM moves');
     $pdo->exec('DELETE FROM loans');
+
     $stmt=$pdo->prepare('INSERT INTO items (code,name,ref,qty,threshold,tags,location,links,type,updated)
       VALUES (:code,:name,:ref,:qty,:thr,:tags,:loc,:links,:type,:upd)');
     foreach(($b['items']??[]) as $it){
@@ -345,6 +319,7 @@ if ($path==='/import' && $method==='POST'){
         ':upd'=>intval($it['updated']??(time()*1000))
       ]);
     }
+
     $stmt=$pdo->prepare('INSERT INTO moves (id,ts,type,code,name,qty,note) VALUES (:id,:ts,:type,:code,:name,:qty,:note)');
     foreach(($b['moves']??[]) as $mv){
       $stmt->execute([
@@ -357,6 +332,7 @@ if ($path==='/import' && $method==='POST'){
         ':note'=>$mv['note']??''
       ]);
     }
+
     $stmt=$pdo->prepare('INSERT INTO loans (id,ts,code,name,person,due,note,returnedAt) VALUES (:id,:ts,:code,:name,:person,:due,:note,:ret)');
     foreach(($b['loans']??[]) as $ln){
       $stmt->execute([
@@ -370,6 +346,7 @@ if ($path==='/import' && $method==='POST'){
         ':ret'=> isset($ln['returnedAt']) ? intval($ln['returnedAt']) : null
       ]);
     }
+
     // settings
     $s=$b['settings']??[];
     $stmt=$pdo->prepare('UPDATE settings SET buffer=:buffer, debug=:debug,
